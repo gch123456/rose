@@ -1,0 +1,3 @@
+[submodule "extensions/funplay-cocos-mcp"]
+	path = extensions/funplay-cocos-mcp
+	url = https://github.com/FunplayAI/funplay-cocos-mcp.git

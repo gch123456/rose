@@ -1,0 +1,10 @@
+{
+  "name": "GoDuck",
+  "uuid": "ae54bd98-6dcc-469b-862b-10adce37a0dd",
+  "creator": {
+    "version": "3.8.8"
+  },
+  "scripts": {
+    "test": "node --test tests/game.test.mjs"
+  }
+}
