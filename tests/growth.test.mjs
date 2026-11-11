@@ -53,8 +53,8 @@ test('lid locks a ground point, attacks once and new windups wait for a pending 
  const g=fresh();const e=enemy(g,'lid',140,0);e.cooldown=0;g.tick(.01,0,0);assert.equal(e.state,'windup');const {aimX,aimY}=e;g.x=100;g.y=100;step(g,.91);assert.equal(e.state,'recover');assert.equal(e.aimX,aimX);assert.equal(e.aimY,aimY);assert.equal(g.hp,5);
  const h=fresh();h.time=25;const c=enemy(h,'clip',140,0);c.cooldown=0;h.tick(.01,0,0);assert.equal(c.state,'chase');assert.ok(h.choice);
 });
-test('150 second growth experiment ends and death wins over time completion',()=>{
- const g=fresh();g.time=149.99;g.tick(.02,0,0);assert.equal(g.phase,'complete');assert.equal(g.time,150);
+test('150 seconds hands over to the boss and death still wins the judgement over the transition',()=>{
+ const g=fresh();g.time=149.99;g.tick(.02,0,0);assert.ok(g.boss);assert.equal(g.phase,'playing');assert.ok(g.time>=150);
  const h=fresh();h.time=149.99;h.hp=1;enemy(h,'lid',0,0);h.tick(.02,0,0);assert.equal(h.phase,'lost');
 });
 test('corner with a legal ninety-unit pair still offers both gear choices',()=>{

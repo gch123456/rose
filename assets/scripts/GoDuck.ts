@@ -224,13 +224,13 @@ export class GoDuck extends Component {
         const now = this.audio.currentTime;
         if (now < this.soundAt)
             return;
-        const event = ['hurt', 'evolve', 'gear', 'level', 'heal', 'end', 'warning', 'bubble', 'kill', 'pickup', 'hit', 'shot'].find(e => events.includes(e));
+        const event = ['hurt', 'evolve', 'gear', 'level', 'heal', 'end', 'warning', 'bubble', 'boss', 'kill', 'pickup', 'hit', 'shot'].find(e => events.includes(e));
         if (!event)
             return;
         this.soundAt = now + .045;
         const o = this.audio.createOscillator(), gain = this.audio.createGain();
         o.type = event === 'hurt' ? 'sawtooth' : 'sine';
-        o.frequency.setValueAtTime(({ hurt: 110, evolve: 1100, gear: 820, level: 980, heal: 780, end: 220, warning: 390, bubble: 550, kill: 650, pickup: 950, hit: 480, shot: 300 } as any)[event], now);
+        o.frequency.setValueAtTime(({ hurt: 110, evolve: 1100, gear: 820, level: 980, heal: 780, end: 220, warning: 390, bubble: 550, boss: 140, kill: 650, pickup: 950, hit: 480, shot: 300 } as any)[event], now);
         o.frequency.exponentialRampToValueAtTime(event === 'hurt' ? 60 : 180, now + .07);
         gain.gain.setValueAtTime(.025, now);
         gain.gain.exponentialRampToValueAtTime(.001, now + .09);
@@ -248,17 +248,17 @@ export class GoDuck extends Component {
             n.destroy();
         if (g.phase === 'playing')
             return;
-        const title = g.phase === 'menu' ? '鸭命要紧' : g.phase === 'paused' ? '暂停追捕' : g.phase === 'complete' ? '成长小样结束' : '被抓住了！';
+        const title = g.phase === 'menu' ? '鸭命要紧' : g.phase === 'paused' ? '暂停追捕' : g.phase === 'won' ? '突围成功！' : '被做成鸭货了…';
         this.label(this.panel, title, 46, 0, 150, this.w - 30);
-        this.label(this.panel, g.phase === 'menu' ? '捡谷粒升级 · 拾装备变强' : g.phase === 'lost' ? `死因：${g.deathCause}` : g.phase === 'complete' ? '这是战斗实验，尚非正式通关' : '手动继续后恢复战斗', 23, 0, 85, this.w - 40);
-        this.button(this.panel, g.phase === 'paused' ? '继续逃跑' : '开始成长试玩', 0, -5, 340, () => {
+        this.label(this.panel, g.phase === 'menu' ? '捡谷粒升级 · 拾装备变强' : g.phase === 'paused' ? '手动继续后恢复战斗' : g.phase === 'won' ? '冲出了出口——下一只职业鸭等着被解救' : `包装出品 · 死因：${g.deathCause}`, 23, 0, 85, this.w - 40);
+        this.button(this.panel, g.phase === 'paused' ? '继续逃跑' : '再来一局', 0, -5, 340, () => {
             this.enableAudio();
             if (g.phase === 'paused')
                 g.phase = 'playing';
             else
                 g.start();
         });
-        this.label(this.panel, g.phase === 'menu' ? '单指拖动 / WASD 移动 · 自动攻击\n25 秒选分支 · 70 秒选辅助\n120 秒武器进化 · 150 秒小样' : `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}\nBoss 与职业解锁将在后续加入`, 21, 0, -145, this.w - 40);
+        this.label(this.panel, g.phase === 'menu' ? '单指拖动 / WASD 移动 · 自动攻击\n25 秒选分支 · 70 秒选辅助\n120 秒武器进化 · 150 秒 Boss · 180 秒突围' : `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}`, 21, 0, -145, this.w - 40);
     }
     update(dt: number) {
         const camera = this.node.parent.getComponent(Canvas)?.cameraComponent;
@@ -273,15 +273,16 @@ export class GoDuck extends Component {
         g.events = [];
         this.draw();
         this.menus();
-        this.hud.string = `生命 ${'♥'.repeat(g.hp)}${'·'.repeat(5 - g.hp)}   ${Math.ceil(g.duration - g.time)} 秒\nLv.${g.level}   击退 ${g.kills}   经验 ${g.level === 12 ? 'MAX' : `${g.xp}/${g.nextXp}`}`;
+        this.hud.string = `生命 ${'♥'.repeat(g.hp)}${'·'.repeat(Math.max(0, 5 - g.hp))}   ${Math.ceil((g.boss ? g.limit : g.duration) - g.time)} 秒\nLv.${g.level}   击退 ${g.kills}   经验 ${g.level === 12 ? 'MAX' : `${g.xp}/${g.nextXp}`}`;
         this.note.string = `${this.weaponName()}  /  ${this.auxiliaryName()}${this.muted ? ' · 静音' : ''}`;
         this.banner.string = g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
         const c = g.choice;
         this.progress.string = g.phase !== 'playing' ? '' : c
             ? `走近装备二选一 · ${Math.max(0, Math.ceil(c.due + 15 - g.time))} 秒后自动选${c.kind === 'branch' ? '长线' : '泡泡圈'}`
-            : g.time < 25 ? `捡谷粒自动升级 · ${Math.ceil(25 - g.time)} 秒后掉落武器分支`
-                : g.time < 70 ? `${Math.ceil(70 - g.time)} 秒后掉落辅助装备`
-                    : g.time < 120 ? `${Math.ceil(120 - g.time)} 秒后主武器进化` : '武器已进化！试试把追捕怪引成一群';
+            : g.boss ? `击败巨型捕鸭夹！${Math.max(0, Math.ceil(g.limit - g.time))} 秒内突围`
+                : g.time < 25 ? `捡谷粒自动升级 · ${Math.ceil(25 - g.time)} 秒后掉落武器分支`
+                    : g.time < 70 ? `${Math.ceil(70 - g.time)} 秒后掉落辅助装备`
+                        : g.time < 120 ? `${Math.ceil(120 - g.time)} 秒后主武器进化` : '武器已进化！准备迎接出口 Boss';
         const names = { line: '长线\n穿透 5 只', spread: '散射\n三向覆盖', bubble: '泡泡圈\n范围伤害 / 减速', feather: '飞羽\n穿透补刀' };
         this.gearLabels.forEach((label, i) => {
             const o = c?.options[i];
@@ -424,6 +425,55 @@ export class GoDuck extends Component {
                 p.circle(x, y, 22);
                 p.stroke();
             }
+        }
+        const b = g.boss;
+        if (b) {
+            const x = sx(b.x), y = sy(b.y);
+            if (b.state === 'arrive') {
+                p.strokeColor = new Color('#ff6d79');
+                p.lineWidth = 3;
+                p.circle(x, y, 36 + Math.sin(g.time * 9) * 4);
+                p.stroke();
+            }
+            if (b.state === 'windup') {
+                p.strokeColor = new Color('#ff6d79');
+                p.lineWidth = 26;
+                p.moveTo(x, y);
+                p.lineTo(x + b.dx * 200, y + b.dy * 200);
+                p.stroke();
+            }
+            if (b.state === 'fanwind') {
+                const base = Math.atan2(b.dy, b.dx);
+                p.strokeColor = new Color('#ff8191');
+                p.lineWidth = 9;
+                for (const off of [-25, 0, 25]) {
+                    const a = base + off * Math.PI / 180;
+                    p.moveTo(x, y);
+                    p.lineTo(x + Math.cos(a) * 450, y + Math.sin(a) * 450);
+                }
+                p.stroke();
+            }
+            p.fillColor = new Color('#c25b68');
+            p.moveTo(x - 30, y + 26);
+            p.lineTo(x, y - 28);
+            p.lineTo(x + 30, y + 26);
+            p.lineTo(x + 14, y + 34);
+            p.lineTo(x, y);
+            p.lineTo(x - 14, y + 34);
+            p.close();
+            p.fill();
+            p.strokeColor = new Color('#ffd578');
+            p.lineWidth = 3;
+            p.circle(x, y, 34);
+            p.stroke();
+            p.fillColor = new Color('#203c46');
+            p.roundRect(x - 45, y + 46, 90, 8, 4);
+            p.fill();
+            p.fillColor = new Color('#ff6d79');
+            p.roundRect(x - 45, y + 46, Math.max(1, 90 * Math.max(0, b.hp) / 900), 8, 4);
+            p.fill();
+            for (const s of b.shots || [])
+                this.circle(sx(s.x), sy(s.y), 8, '#ff8191');
         }
         for (const s of g.shots) {
             if (s.delay > 0)

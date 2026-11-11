@@ -1,4 +1,4 @@
-export type EnemyKind = 'glove' | 'clip' | 'lid';
+export type EnemyKind = 'glove' | 'clip' | 'lid' | 'boss';
 export type GearKey = 'line' | 'spread' | 'bubble' | 'feather';
 export interface Pursuer {
     id: number;
@@ -7,7 +7,7 @@ export interface Pursuer {
     y: number;
     hp: number;
     visibleFor: number;
-    state: 'chase' | 'windup' | 'dash' | 'recover';
+    state: 'chase' | 'windup' | 'dash' | 'recover' | 'arrive' | 'fanwind' | 'fan';
     timer: number;
     cooldown: number;
     dx: number;
@@ -15,6 +15,14 @@ export interface Pursuer {
     aimX: number;
     aimY: number;
     slowFor: number;
+    shots?: BossShot[];
+}
+export interface BossShot {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    left: number;
 }
 export interface Shot {
     x: number;
@@ -47,6 +55,8 @@ export interface GearChoice {
 }
 export class EscapeGame {
     readonly duration = 150;
+    readonly bossAt = 150;
+    readonly limit = 180;
     phase = 'menu';
     time = 0;
     hp = 5;
@@ -59,6 +69,8 @@ export class EscapeGame {
     branch: 'base' | 'line' | 'spread' = 'base';
     auxiliary: 'none' | 'bubble' | 'feather' = 'none';
     evolved = false;
+    boss: Pursuer | null = null;
+    bossNext: 'dash' | 'fan' = 'dash';
     choice: GearChoice | null = null;
     choiceRetries = 0;
     choiceHistory: {
@@ -133,6 +145,8 @@ export class EscapeGame {
         this.branch = 'base';
         this.auxiliary = 'none';
         this.evolved = false;
+        this.boss = null;
+        this.bossNext = 'dash';
         this.choice = null;
         this.choiceHistory = [];
         this.choiceRetries = 0;
@@ -213,6 +227,14 @@ export class EscapeGame {
     hit(e: Pursuer, damage: number) {
         if (e.hp <= 0)
             return;
+        if (e.kind === 'boss') {
+            if (e.state === 'arrive')
+                return; // Arrival preview cannot be damaged.
+            e.hp -= damage;
+            this.events.push('hit');
+            this.effect(e.x, e.y, 24, 'hit', .18);
+            return; // No drops, no pursuer kill count; judgment happens at end of step.
+        }
         e.hp -= damage;
         this.events.push('hit');
         this.effect(e.x, e.y, 20, 'hit', .18);
@@ -334,8 +356,14 @@ export class EscapeGame {
                 this.resolveChoice(option.key, 'picked');
         }
     }
+    private hittable(): Pursuer[] {
+        const list = this.enemies.filter(e => e.hp > 0);
+        if (this.boss && this.boss.hp > 0 && this.boss.state !== 'arrive')
+            list.push(this.boss);
+        return list;
+    }
     private target(range: number) {
-        return this.enemies.filter(e => e.hp > 0 && Math.hypot(e.x - this.x, e.y - this.y) <= range)
+        return this.hittable().filter(e => Math.hypot(e.x - this.x, e.y - this.y) <= range)
             .sort((a, b) => Math.hypot(a.x - this.x, a.y - this.y) - Math.hypot(b.x - this.x, b.y - this.y))[0];
     }
     private shoot(target: Pursuer, kind: 'grain' | 'feather') {
@@ -386,10 +414,10 @@ export class EscapeGame {
             s.x += s.dx * travel;
             s.y += s.dy * travel;
             s.left -= travel;
-            const hits = this.enemies.filter(e => e.hp > 0 && !s.hit.includes(e.id)).map(e => {
+            const hits = this.hittable().filter(e => !s.hit.includes(e.id)).map(e => {
                 const t = Math.max(0, Math.min(travel, (e.x - ax) * s.dx + (e.y - ay) * s.dy));
                 return { e, t, d: Math.hypot(e.x - ax - s.dx * t, e.y - ay - s.dy * t) };
-            }).filter(h => h.d <= (h.e.kind === 'lid' ? 22 : 14)).sort((a, b) => a.t - b.t);
+            }).filter(h => h.d <= (h.e.kind === 'boss' ? 32 : h.e.kind === 'lid' ? 22 : 14)).sort((a, b) => a.t - b.t);
             for (const { e } of hits) {
                 s.hit.push(e.id);
                 const count = s.budget.hits.get(e.id) || 0;
@@ -405,10 +433,10 @@ export class EscapeGame {
         }
         this.shots = this.shots.filter(s => s.left > 0);
     }
-    private hurt(cause: string) {
+    private hurt(cause: string, hearts = 1) {
         if (this.immunity > 0 || this.hp <= 0)
             return;
-        this.hp--;
+        this.hp -= hearts;
         this.immunity = 1;
         this.deathCause = cause;
         this.events.push('hurt');
@@ -483,6 +511,95 @@ export class EscapeGame {
         }
         this.enemies = this.enemies.filter(e => e.hp > 0);
     }
+    private spawnBoss(): Pursuer {
+        const candidates: { x: number; y: number }[] = [];
+        for (let i = 0; i < 8; i++) {
+            const a = i * Math.PI / 4;
+            candidates.push({ x: this.x + Math.cos(a) * 200, y: this.y + Math.sin(a) * 200 });
+        }
+        const inside = candidates.filter(c => Math.abs(c.x) <= 780 && Math.abs(c.y) <= 780);
+        // Prefer a visible point above the player; fall back to any in-bounds candidate, then a clamped point.
+        const pick = inside.find(c => c.y > this.y) || inside[0]
+            || { x: Math.max(-780, Math.min(780, this.x)), y: Math.max(-780, Math.min(780, this.y + 200)) };
+        return { id: ++this.serial, kind: 'boss', x: pick.x, y: pick.y, hp: 900, visibleFor: 1,
+            state: 'arrive', timer: 1, cooldown: 0, dx: 0, dy: -1, aimX: pick.x, aimY: pick.y, slowFor: 0, shots: [] };
+    }
+    private startBossMove(b: Pursuer) {
+        const a = Math.atan2(this.y - b.y, this.x - b.x);
+        b.dx = Math.cos(a);
+        b.dy = Math.sin(a);
+        b.state = this.bossNext === 'dash' ? 'windup' : 'fanwind';
+        b.timer = this.bossNext === 'dash' ? .9 : .8;
+        this.events.push('warning');
+    }
+    private updateBoss(dt: number) {
+        const b = this.boss!;
+        b.timer -= dt;
+        if (b.state === 'arrive') {
+            if (b.timer <= 0)
+                this.startBossMove(b);
+            return;
+        }
+        if (b.state === 'windup') {
+            // Stationary telegraph; direction was locked when the windup started.
+            if (b.timer <= 0) {
+                b.state = 'dash';
+                b.timer = .45;
+            }
+            return;
+        }
+        if (b.state === 'dash') {
+            const nx = b.x + b.dx * 420 * dt, ny = b.y + b.dy * 420 * dt;
+            b.x = Math.max(-850, Math.min(850, nx));
+            b.y = Math.max(-850, Math.min(850, ny));
+            if (Math.hypot(this.x - b.x, this.y - b.y) < 44)
+                this.hurt('Boss冲撞', 2);
+            if (b.timer <= 0 || b.x !== nx || b.y !== ny) {
+                b.state = 'recover';
+                b.timer = 1.2;
+                this.bossNext = 'fan';
+            }
+            return;
+        }
+        if (b.state === 'fanwind') {
+            if (b.timer <= 0) {
+                const base = Math.atan2(b.dy, b.dx);
+                for (const offset of [-25, 0, 25]) {
+                    const a = base + offset * Math.PI / 180;
+                    b.shots!.push({ x: b.x, y: b.y, dx: Math.cos(a), dy: Math.sin(a), left: 450 });
+                }
+                b.state = 'fan';
+                b.timer = 2.2;
+            }
+            return;
+        }
+        if (b.state === 'fan') {
+            // Boss holds position through the full 2.2s attack phase even if shells die early.
+            const kept: BossShot[] = [];
+            for (const s of b.shots!) {
+                s.x += s.dx * 150 * dt;
+                s.y += s.dy * 150 * dt;
+                s.left -= 150 * dt;
+                if (s.left <= 0 || Math.abs(s.x) > 850 || Math.abs(s.y) > 850)
+                    continue;
+                if (Math.hypot(s.x - this.x, s.y - this.y) < 20) {
+                    this.hurt('Boss弹丸');
+                    continue;
+                }
+                kept.push(s);
+            }
+            b.shots = kept;
+            if (b.timer <= 0) {
+                b.shots = [];
+                b.state = 'recover';
+                b.timer = 1.2;
+                this.bossNext = 'dash';
+            }
+            return;
+        }
+        if (b.timer <= 0)
+            this.startBossMove(b); // recover window: stationary, hittable, no attacks
+    }
     tick(dt: number, mx: number, my: number) {
         if (this.phase !== 'playing')
             return;
@@ -502,12 +619,21 @@ export class EscapeGame {
             this.announce(this.branch === 'spread' ? '进化！五向风暴' : '进化！双脉冲长线', 'evolve');
             this.effect(this.x, this.y, 180, 'evolve', 1);
         }
-        if (this.time + 1e-8 >= this.spawnAt) {
+        if (this.time + 1e-8 >= this.spawnAt && this.time < this.bossAt) {
             this.wave();
             this.spawnAt += 1 / (this.time < 20 ? 2 : this.time < 50 ? 3 : this.time < 90 ? 4 : this.time < 120 ? 5 : 6);
         }
         this.attacks(dt);
         this.moveEnemies(dt);
+        if (!this.boss && this.time >= this.bossAt) {
+            // Existing damage/kills of this step already settled above; survivors retire without rewards.
+            this.enemies = [];
+            this.choice = null;
+            this.boss = this.spawnBoss();
+            this.announce('出口出现巨型捕鸭夹！', 'boss');
+        }
+        if (this.boss)
+            this.updateBoss(dt);
         this.drops = this.drops.filter(d => {
             if (Math.hypot(d.x - this.x, d.y - this.y) >= 55)
                 return true;
@@ -531,14 +657,20 @@ export class EscapeGame {
             return false;
         });
         this.effects = this.effects.filter(e => (e.life -= dt) > 0);
+        // Judgement order: a lethal player hit wins over the boss dying; victory beats the countdown.
         if (this.hp <= 0) {
             this.hp = 0;
             this.phase = 'lost';
             this.events.push('end');
         }
-        else if (this.time >= this.duration) {
-            this.time = this.duration;
-            this.phase = 'complete';
+        else if (this.boss && this.boss.hp <= 0) {
+            this.phase = 'won';
+            this.events.push('end');
+        }
+        else if (this.time >= this.limit) {
+            this.time = this.limit;
+            this.deathCause = '出口被封锁';
+            this.phase = 'lost';
             this.events.push('end');
         }
         if (this.events.length > 64)
