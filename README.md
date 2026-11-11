@@ -24,6 +24,8 @@
 - [跨设备同步与会话记录](docs/SYNC.md)
 - [本机工具与 Cocos 安装 TODO](docs/TOOLS.md)
 - [当前设计、数值与边界](docs/DESIGN.md)
+- [V0.2 第一关玩法重设计评审稿](docs/superpowers/specs/2026-11-11-core-gameplay-v02-design.md)
+- [V0.2 试玩实验卡](docs/playtests/2026-11-11-v02-experiments.md)
 - [最新鸭子自救主题](docs/superpowers/specs/2026-11-11-duck-escape-theme-design.md)
 - [实现结构与修改指引](docs/DEVELOPMENT.md)
 - [最新接续与同步约定](docs/archive/2026-11-11-repository-sync-session.md)
