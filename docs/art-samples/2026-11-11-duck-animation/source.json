@@ -1,0 +1,103 @@
+{
+  "group_id": "7c9fd7c6-f86f-446e-9ba1-5b37672e471e",
+  "states": [
+    {
+      "character": {
+        "id": "420be4bc-d849-4e63-a772-6333377e612b",
+        "name": "Idle",
+        "prompt": "Rotate this same cream yellow cartoon DUCK with orange flat bill and webbed feet, green scarf and brown seed pouch into eight correctly labelled compass views for a top-down game. Preserve its bird body, short wings, colors and chunky native pixel style. No human limbs. Idle standing pose, consistent centered feet pivot, transparent background.",
+        "size": {
+          "width": 32,
+          "height": 32
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "high top-down",
+        "created_at": "2026-11-11T13:11:30.211991+00:00"
+      },
+      "folder": "Idle",
+      "frames": {
+        "rotations": {
+          "south": "Idle/rotations/south.png",
+          "south-east": "Idle/rotations/south-east.png",
+          "east": "Idle/rotations/east.png",
+          "north-east": "Idle/rotations/north-east.png",
+          "north": "Idle/rotations/north.png",
+          "north-west": "Idle/rotations/north-west.png",
+          "west": "Idle/rotations/west.png",
+          "south-west": "Idle/rotations/south-west.png"
+        },
+        "animations": {
+          "duck-walk": {
+            "north-west": [
+              "Idle/animations/duck-walk/north-west/frame_000.png",
+              "Idle/animations/duck-walk/north-west/frame_001.png",
+              "Idle/animations/duck-walk/north-west/frame_002.png",
+              "Idle/animations/duck-walk/north-west/frame_003.png",
+              "Idle/animations/duck-walk/north-west/frame_004.png",
+              "Idle/animations/duck-walk/north-west/frame_005.png"
+            ],
+            "north": [
+              "Idle/animations/duck-walk/north/frame_000.png",
+              "Idle/animations/duck-walk/north/frame_001.png",
+              "Idle/animations/duck-walk/north/frame_002.png",
+              "Idle/animations/duck-walk/north/frame_003.png",
+              "Idle/animations/duck-walk/north/frame_004.png",
+              "Idle/animations/duck-walk/north/frame_005.png"
+            ],
+            "east": [
+              "Idle/animations/duck-walk/east/frame_000.png",
+              "Idle/animations/duck-walk/east/frame_001.png",
+              "Idle/animations/duck-walk/east/frame_002.png",
+              "Idle/animations/duck-walk/east/frame_003.png",
+              "Idle/animations/duck-walk/east/frame_004.png",
+              "Idle/animations/duck-walk/east/frame_005.png"
+            ],
+            "south-east": [
+              "Idle/animations/duck-walk/south-east/frame_000.png",
+              "Idle/animations/duck-walk/south-east/frame_001.png",
+              "Idle/animations/duck-walk/south-east/frame_002.png",
+              "Idle/animations/duck-walk/south-east/frame_003.png",
+              "Idle/animations/duck-walk/south-east/frame_004.png",
+              "Idle/animations/duck-walk/south-east/frame_005.png"
+            ],
+            "south-west": [
+              "Idle/animations/duck-walk/south-west/frame_000.png",
+              "Idle/animations/duck-walk/south-west/frame_001.png",
+              "Idle/animations/duck-walk/south-west/frame_002.png",
+              "Idle/animations/duck-walk/south-west/frame_003.png",
+              "Idle/animations/duck-walk/south-west/frame_004.png",
+              "Idle/animations/duck-walk/south-west/frame_005.png"
+            ],
+            "west": [
+              "Idle/animations/duck-walk/west/frame_000.png",
+              "Idle/animations/duck-walk/west/frame_001.png",
+              "Idle/animations/duck-walk/west/frame_002.png",
+              "Idle/animations/duck-walk/west/frame_003.png",
+              "Idle/animations/duck-walk/west/frame_004.png",
+              "Idle/animations/duck-walk/west/frame_005.png"
+            ],
+            "south": [
+              "Idle/animations/duck-walk/south/frame_000.png",
+              "Idle/animations/duck-walk/south/frame_001.png",
+              "Idle/animations/duck-walk/south/frame_002.png",
+              "Idle/animations/duck-walk/south/frame_003.png",
+              "Idle/animations/duck-walk/south/frame_004.png",
+              "Idle/animations/duck-walk/south/frame_005.png"
+            ],
+            "north-east": [
+              "Idle/animations/duck-walk/north-east/frame_000.png",
+              "Idle/animations/duck-walk/north-east/frame_001.png",
+              "Idle/animations/duck-walk/north-east/frame_002.png",
+              "Idle/animations/duck-walk/north-east/frame_003.png",
+              "Idle/animations/duck-walk/north-east/frame_004.png",
+              "Idle/animations/duck-walk/north-east/frame_005.png"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-11-11T13:23:49.621798"
+}

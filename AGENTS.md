@@ -21,7 +21,7 @@
 - 用户已接受“玩法设计＋假设验证”的方法并授权策划重设计；最新具体方案见 `docs/superpowers/specs/2026-11-11-core-gameplay-v02-design.md`，其中 A/B 已按用户执行授权实现为150秒射手成长小样（经验、装备二选一、群伤、进化）；C/D 的Boss、职业解锁与存档仍待后续。实现/验证以STATUS和最新归档为准，勿沿用旧3＋3/配方作为新版必需约束。
 - 场景、Prefab、meta 通过 Creator 或已核实项目身份的 Cocos MCP 修改；先阅读对应 `.agents/skills/` 指引。
 - 本机 MCP 地址、路径、端口和客户端配置不能跨机器照搬。
-- 另一台设备的接续记录为缺少Cocos，当前原型Mac已可用，不据此重装。用户最新要求本机预装PixelLab MCP，已注册官方HTTP地址并验证可达，本机Bearer认证已通过；重启后聊天MCP实际调用与首张32×32射手鸭静态生成已完成，样例在docs/art-samples，尚未进入游戏/多方向动画；详见 `docs/TOOLS.md`。PixelLab账户密钥及本机Codex配置不得入库。
+- 另一台设备的接续记录为缺少Cocos，当前原型Mac已可用，不据此重装。用户最新要求本机预装PixelLab MCP，已注册官方HTTP地址并验证可达，本机Bearer认证已通过；重启后聊天MCP实际调用与首张32×32射手鸭静态生成已完成，样例在docs/art-samples，现已生成八方向静态及各6帧行走并接入GoDuck，运行原图在assets/resources/duck；手机和逐方向动画品质尚待验收；详见 `docs/TOOLS.md`。PixelLab账户密钥及本机Codex配置不得入库。
 
 ## 使用 Superpowers 与记录
 

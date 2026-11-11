@@ -23,6 +23,12 @@
 - [制作阶段与美术介入咨询](archive/2026-11-11-production-stage-art-session.md)
 - [克隆与同步约定](archive/2026-11-11-repository-sync-session.md)
 
+## 最新接入：射手鸭八方向行走（2026-11-11）
+
+用户要求继续，已生成八方向静态＋各6帧行走，共56张32×32透明PNG，并通过Creator导入assets/resources/duck。GoDuck已显示像素角色，按移动方向切换与播放，停步静止。网页实际移动/暂停/清怪验证，27项规则测试通过，Creator类型0错误。
+
+本轮生成消耗18次；原图和源记录见[素材说明](art-samples/2026-11-11-duck-animation/README.md)、[接入记录](archive/2026-11-11-duck-animation-integration-session.md)。敌人/场景仍程序占位，所有方向循环细节和iPhone未验收。下面“尚未接入/无动画”为此前静态小样的历史状态。
+
 ## 最新素材进展：PixelLab 首张射手鸭小样（2026-11-11）
 
 用户重启Codex后，本聊天已实际调用PixelLab MCP：只读认证通过，生成一张32×32透明射手鸭静态候选，实际消耗1次生成，已保存到图库及仓库。见 [原图与预览](art-samples/2026-11-11-shooter-duck/README.md)、[本轮记录](archive/2026-11-11-pixellab-first-duck-sample-session.md)。

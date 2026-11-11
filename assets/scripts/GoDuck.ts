@@ -1,10 +1,17 @@
-import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas } from 'cc';
+import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas, resources, Sprite, SpriteFrame, JsonAsset, Texture2D, isValid } from 'cc';
 import { EscapeGame } from './EscapeGame';
 const { ccclass } = _decorator;
 @ccclass('GoDuck')
 export class GoDuck extends Component {
     game = new EscapeGame();
     private pen: Graphics;
+    private duckSprite: Sprite;
+    private duckFrames = new Map<string, SpriteFrame>();
+    private duckManifest: { idle: Record<string, string>; walk: Record<string, string[]> };
+    private duckDirection = 'south';
+    private duckTime = 0;
+    private duckX = 0;
+    private duckY = 0;
     private hud: Label;
     private note: Label;
     private panel: Node;
@@ -29,6 +36,7 @@ export class GoDuck extends Component {
             preview.active = false;
         profiler.hideStats();
         this.pen = this.node.addComponent(Graphics);
+        this.loadDuck();
         this.hud = this.label(this.node, '', 24, 0, 0, 620);
         this.note = this.label(this.node, '', 20, 0, 0, 620);
         this.banner = this.label(this.node, '', 25, 0, 0, 590);
@@ -82,6 +90,38 @@ export class GoDuck extends Component {
         this.pauseButton.setPosition(this.w / 2 - 66, this.h / 2 - 174);
         this.audioButton.setPosition(-this.w / 2 + 66, this.h / 2 - 174);
         this.state = '';
+    }
+    private loadDuck() {
+        const n = new Node('PixelDuck'); n.layer = this.node.layer; this.node.addChild(n);
+        this.duckSprite = n.addComponent(Sprite); this.duckSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        n.addComponent(UITransform).setContentSize(48, 48); n.active = false;
+        resources.load('duck/manifest', JsonAsset, (error, asset) => {
+            if (!isValid(this)) return;
+            if (error) { console.warn('Duck sprite manifest could not load', error.message); return; }
+            this.duckManifest = asset.json as typeof this.duckManifest;
+            const paths = new Set([...Object.values(this.duckManifest.idle), ...Object.values(this.duckManifest.walk).reduce((all, frames) => all.concat(frames), [] as string[])]);
+            for (const path of paths) resources.load(path + '/texture', Texture2D, (err, texture) => {
+                if (!isValid(this) || err) return;
+                texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
+                const frame = new SpriteFrame(); frame.texture = texture;
+                this.duckFrames.set(path, frame);
+            });
+        });
+    }
+    private updateDuck(dt: number) {
+        const g = this.game, dx = g.x - this.duckX, dy = g.y - this.duckY;
+        this.duckX = g.x; this.duckY = g.y;
+        const moving = g.phase === 'playing' && Math.hypot(dx, dy) > .001;
+        if (moving) {
+            const directions = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
+            this.duckDirection = directions[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8];
+            this.duckTime += dt;
+        } else if (g.phase !== 'paused') this.duckTime = 0;
+        const walk = this.duckManifest?.walk[this.duckDirection];
+        const path = moving && walk?.length ? walk[Math.floor(this.duckTime * 9) % walk.length] : this.duckManifest?.idle[this.duckDirection];
+        const frame = path && this.duckFrames.get(path);
+        this.duckSprite.spriteFrame = frame || this.duckSprite.spriteFrame;
+        this.duckSprite.node.active = !!this.duckSprite.spriteFrame && g.phase === 'playing';
     }
     private clearInput() {
         this.keys.clear();
@@ -228,6 +268,7 @@ export class GoDuck extends Component {
         }
         const g = this.game;
         this.game.tick(dt, this.stick.x + Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT)), this.stick.y + Number(this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) - Number(this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN)));
+        this.updateDuck(dt);
         this.sound(g.events);
         g.events = [];
         this.draw();
@@ -414,6 +455,7 @@ export class GoDuck extends Component {
             p.circle(0, 0, 26 + Math.sin(g.time * 5) * 3);
             p.stroke();
         }
+        if (!this.duckSprite.spriteFrame) {
         this.circle(0, -8, 15, '#0b2027');
         this.circle(0, 0, 13, '#e6bc66');
         this.circle(5, 11, 10, '#74bcb0');
@@ -429,6 +471,7 @@ export class GoDuck extends Component {
         p.moveTo(0, 0);
         p.lineTo(g.facing.x * 24, g.facing.y * 24);
         p.stroke();
+        }
         if (this.finger !== -1) {
             p.strokeColor = new Color(210, 235, 230, 110);
             p.lineWidth = 3;
