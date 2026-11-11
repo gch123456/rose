@@ -1,9 +1,14 @@
-import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas, resources, Sprite, SpriteFrame, JsonAsset, Texture2D, isValid } from 'cc';
-import { EscapeGame } from './EscapeGame';
+import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas, resources, Sprite, SpriteFrame, JsonAsset, Texture2D, isValid, sys } from 'cc';
+import { EscapeGame, Character } from './EscapeGame';
+import { SaveState, loadSave, persist, recordResult, recordStart, SAVE_KEY } from './SaveData';
 const { ccclass } = _decorator;
+const CHARACTER_NAMES: Record<Character, string> = { shooter: '射手鸭', warrior: '战士鸭', mage: '法师鸭' };
 @ccclass('GoDuck')
 export class GoDuck extends Component {
     game = new EscapeGame();
+    private save: SaveState = loadSave(sys.localStorage.getItem(SAVE_KEY));
+    private selected: Character = 'shooter';
+    private newUnlocks: Character[] = [];
     private pen: Graphics;
     private duckSprite: Sprite;
     private duckFrames = new Map<string, SpriteFrame>();
@@ -36,6 +41,7 @@ export class GoDuck extends Component {
             preview.active = false;
         profiler.hideStats();
         this.pen = this.node.addComponent(Graphics);
+        this.selected = this.save.current;
         this.loadDuck();
         this.hud = this.label(this.node, '', 24, 0, 0, 620);
         this.note = this.label(this.node, '', 20, 0, 0, 620);
@@ -239,6 +245,9 @@ export class GoDuck extends Component {
         o.start(now);
         o.stop(now + .1);
     }
+    private writeSave() {
+        persist(this.save, (key, value) => sys.localStorage.setItem(key, value));
+    }
     private menus() {
         const g = this.game;
         if (this.state === g.phase)
@@ -248,17 +257,44 @@ export class GoDuck extends Component {
             n.destroy();
         if (g.phase === 'playing')
             return;
+        // A victory is settled exactly once per phase change; repeat wins re-reward nothing.
+        if (g.phase === 'won') {
+            const result = recordResult(this.save, g.character, true);
+            if (result.unlocked.length) {
+                this.save = result.save;
+                this.newUnlocks = result.unlocked;
+                this.writeSave();
+            }
+        }
+        const unlockText = this.newUnlocks.length ? `新解锁：${this.newUnlocks.map(c => CHARACTER_NAMES[c]).join('、')}！` : '';
         const title = g.phase === 'menu' ? '鸭命要紧' : g.phase === 'paused' ? '暂停追捕' : g.phase === 'won' ? '突围成功！' : '被做成鸭货了…';
         this.label(this.panel, title, 46, 0, 150, this.w - 30);
-        this.label(this.panel, g.phase === 'menu' ? '捡谷粒升级 · 拾装备变强' : g.phase === 'paused' ? '手动继续后恢复战斗' : g.phase === 'won' ? '冲出了出口——下一只职业鸭等着被解救' : `包装出品 · 死因：${g.deathCause}`, 23, 0, 85, this.w - 40);
-        this.button(this.panel, g.phase === 'paused' ? '继续逃跑' : '再来一局', 0, -5, 340, () => {
+        this.label(this.panel, g.phase === 'menu' ? '捡谷粒升级 · 拾装备变强' : g.phase === 'paused' ? '手动继续后恢复战斗' : g.phase === 'won' ? (unlockText || '冲出了出口——继续用本职业挑战或换新角色') : `包装出品 · 死因：${g.deathCause}`, 23, 0, 85, this.w - 40);
+        if (g.phase === 'menu') {
+            this.label(this.panel, '选择职业鸭', 20, 0, -40, this.w - 40);
+            (['shooter', 'warrior', 'mage'] as Character[]).forEach((c, i) => {
+                const x = (i - 1) * 130;
+                if (this.save.unlocked.includes(c))
+                    this.button(this.panel, `${CHARACTER_NAMES[c]}${this.selected === c ? ' ✓' : ''}`, x, -85, 118, () => {
+                        this.selected = c;
+                        this.save = recordStart(this.save, c);
+                        this.writeSave();
+                        this.state = '';
+                    });
+                else
+                    this.label(this.panel, `${CHARACTER_NAMES[c]}\n🔒 未解锁`, 16, x, -85, 118);
+            });
+        }
+        this.button(this.panel, g.phase === 'paused' ? '继续逃跑' : g.phase === 'menu' ? '开始逃跑' : '再来一局', 0, -5, 340, () => {
             this.enableAudio();
             if (g.phase === 'paused')
                 g.phase = 'playing';
-            else
+            else {
+                g.character = this.selected;
                 g.start();
+            }
         });
-        this.label(this.panel, g.phase === 'menu' ? '单指拖动 / WASD 移动 · 自动攻击\n25 秒选分支 · 70 秒选辅助\n120 秒武器进化 · 150 秒 Boss · 180 秒突围' : `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}`, 21, 0, -145, this.w - 40);
+        this.label(this.panel, g.phase === 'menu' ? '单指拖动 / WASD 移动 · 自动攻击\n25 秒选分支 · 70 秒选辅助 · 120 秒进化\n射手首胜解锁战士 · 战士首胜解锁法师' : `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}`, 21, 0, -145, this.w - 40);
     }
     update(dt: number) {
         const camera = this.node.parent.getComponent(Canvas)?.cameraComponent;
@@ -278,12 +314,12 @@ export class GoDuck extends Component {
         this.banner.string = g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
         const c = g.choice;
         this.progress.string = g.phase !== 'playing' ? '' : c
-            ? `走近装备二选一 · ${Math.max(0, Math.ceil(c.due + 15 - g.time))} 秒后自动选${c.kind === 'branch' ? '长线' : '泡泡圈'}`
+            ? `走近装备二选一 · ${Math.max(0, Math.ceil(c.due + 15 - g.time))} 秒后自动选${c.kind === 'branch' ? (g.character === 'warrior' ? '宽斩' : g.character === 'mage' ? '爆裂' : '长线') : '泡泡圈'}`
             : g.boss ? `击败巨型捕鸭夹！${Math.max(0, Math.ceil(g.limit - g.time))} 秒内突围`
                 : g.time < 25 ? `捡谷粒自动升级 · ${Math.ceil(25 - g.time)} 秒后掉落武器分支`
                     : g.time < 70 ? `${Math.ceil(70 - g.time)} 秒后掉落辅助装备`
                         : g.time < 120 ? `${Math.ceil(120 - g.time)} 秒后主武器进化` : '武器已进化！准备迎接出口 Boss';
-        const names = { line: '长线\n穿透 5 只', spread: '散射\n三向覆盖', bubble: '泡泡圈\n范围伤害 / 减速', feather: '飞羽\n穿透补刀' };
+        const names = { line: '长线\n穿透 5 只', spread: '散射\n三向覆盖', wide: '宽斩\n220° 清群', heavy: '重斩\n高伤窄角', blast: '爆裂\n半径 105', chain: '连锁\n跳两目标', bubble: '泡泡圈\n范围伤害 / 减速', feather: '飞羽\n穿透补刀' };
         this.gearLabels.forEach((label, i) => {
             const o = c?.options[i];
             label.node.active = !!o && g.phase === 'playing';
@@ -296,6 +332,10 @@ export class GoDuck extends Component {
     }
     private weaponName() {
         const g = this.game;
+        if (g.character === 'warrior')
+            return g.evolved ? (g.branch === 'wide' ? '全周宽斩' : '重斩震波') : g.branch === 'wide' ? '宽斩' : g.branch === 'heavy' ? '重斩' : '羽翼锅铲斩';
+        if (g.character === 'mage')
+            return g.evolved ? (g.branch === 'blast' ? '大爆裂水花' : '四段连锁') : g.branch === 'blast' ? '爆裂水泡' : g.branch === 'chain' ? '连锁水泡' : '水泡';
         return g.evolved ? (g.branch === 'spread' ? '五向风暴' : '双脉冲长线') : g.branch === 'line' ? '长线穿透' : g.branch === 'spread' ? '三向散射' : '谷粒弹';
     }
     private auxiliaryName() {
@@ -493,6 +533,32 @@ export class GoDuck extends Component {
             }
         }
         for (const f of g.effects) {
+            if (f.kind === 'slash') {
+                const cx = sx(f.x), cy = sy(f.y), a = Math.atan2(g.facing.y, g.facing.x);
+                p.strokeColor = new Color('#ffe4a5');
+                p.lineWidth = 6;
+                if ((f.angle ?? 0) >= Math.PI) {
+                    // Evolved wide: two-layer full-circle arc.
+                    p.circle(cx, cy, f.radius);
+                    p.stroke();
+                    p.lineWidth = 3;
+                    p.circle(cx, cy, f.radius * .8);
+                    p.stroke();
+                }
+                else {
+                    const half = f.angle ?? Math.PI / 3;
+                    p.arc(cx, cy, f.radius, a - half, a + half, false);
+                    p.stroke();
+                }
+                continue;
+            }
+            if (f.kind === 'burst') {
+                p.strokeColor = new Color('#82dee9');
+                p.lineWidth = 6;
+                p.circle(sx(f.x), sy(f.y), f.radius * (.4 + .6 * (1 - f.life / f.duration)));
+                p.stroke();
+                continue;
+            }
             const color = f.kind === 'bubble' ? '#82dee9' : f.kind === 'evolve' ? '#93efff' : f.kind === 'slam' ? '#ff8191' : '#ffe4a5';
             p.strokeColor = new Color(color);
             p.lineWidth = f.kind === 'bubble' ? 6 : 3;

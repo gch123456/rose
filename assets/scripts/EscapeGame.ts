@@ -1,5 +1,7 @@
 export type EnemyKind = 'glove' | 'clip' | 'lid' | 'boss';
-export type GearKey = 'line' | 'spread' | 'bubble' | 'feather';
+export type Character = 'shooter' | 'warrior' | 'mage';
+export type BranchKey = 'line' | 'spread' | 'wide' | 'heavy' | 'blast' | 'chain';
+export type GearKey = BranchKey | 'bubble' | 'feather';
 export interface Pursuer {
     id: number;
     kind: EnemyKind;
@@ -53,10 +55,20 @@ export interface GearChoice {
         y: number;
     }[];
 }
+export interface GameEffect {
+    x: number;
+    y: number;
+    life: number;
+    duration: number;
+    radius: number;
+    kind: string;
+    angle?: number;
+}
 export class EscapeGame {
     readonly duration = 150;
     readonly bossAt = 150;
     readonly limit = 180;
+    character: Character = 'shooter';
     phase = 'menu';
     time = 0;
     hp = 5;
@@ -66,7 +78,7 @@ export class EscapeGame {
     score = 0;
     x = 0;
     y = 0;
-    branch: 'base' | 'line' | 'spread' = 'base';
+    branch: 'base' | BranchKey = 'base';
     auxiliary: 'none' | 'bubble' | 'feather' = 'none';
     evolved = false;
     boss: Pursuer | null = null;
@@ -93,14 +105,7 @@ export class EscapeGame {
         x: number;
         y: number;
     }[] = [];
-    effects: {
-        x: number;
-        y: number;
-        life: number;
-        duration: number;
-        radius: number;
-        kind: string;
-    }[] = [];
+    effects: GameEffect[] = [];
     events: string[] = [];
     deathCause = '';
     facing = { x: 0, y: 1 };
@@ -122,11 +127,23 @@ export class EscapeGame {
     get nextXp() {
         return 10 + 4 * (this.level - 1);
     }
+    private get baseDamage() {
+        return this.character === 'warrior' ? 18 : 12;
+    }
+    private get baseInterval() {
+        return this.character === 'warrior' ? .75 : this.character === 'mage' ? .9 : .55;
+    }
     get damage() {
-        return 12 * (1 + .08 * (this.level - 1));
+        return this.baseDamage * (1 + .08 * (this.level - 1));
     }
     get attackInterval() {
-        return .55 / (1 + .04 * Math.floor(this.level / 2));
+        let interval = this.baseInterval / (1 + .04 * Math.floor(this.level / 2));
+        if (this.character === 'warrior' && this.branch === 'heavy')
+            interval *= 1.3;
+        return interval;
+    }
+    get attackRange() {
+        return this.character === 'warrior' ? (this.branch === 'heavy' ? 125 : 100) : this.character === 'mage' ? 260 : 280;
     }
     setViewport(w: number, h: number) {
         this.viewWidth = w;
@@ -175,8 +192,10 @@ export class EscapeGame {
         this.noticeFor = 2.5;
         this.events.push(event);
     }
-    private effect(x: number, y: number, radius: number, kind: string, life = .35) {
-        this.effects.push({ x, y, radius, kind, life, duration: life });
+    private effect(x: number, y: number, radius: number, kind: string, life = .35): GameEffect {
+        const entry: GameEffect = { x, y, radius, kind, life, duration: life };
+        this.effects.push(entry);
+        return entry;
     }
     private experience(value: number) {
         this.score += value;
@@ -275,7 +294,7 @@ export class EscapeGame {
     private resolveChoice(key: GearKey, reason: 'picked' | 'timeout') {
         const c = this.choice!;
         if (c.kind === 'branch')
-            this.branch = key as 'line' | 'spread';
+            this.branch = key as BranchKey;
         else {
             this.auxiliary = key as 'bubble' | 'feather';
             this.auxiliaryFire = 0;
@@ -293,7 +312,7 @@ export class EscapeGame {
                 }
             }
         }
-        const names = { line: '长线穿透', spread: '三向散射', bubble: '泡泡圈 · 范围减速', feather: '飞羽 · 远程补刀' };
+        const names = { line: '长线穿透', spread: '三向散射', wide: '宽斩 · 大范围清群', heavy: '重斩 · 高伤窄角', blast: '爆裂 · 大水花', chain: '连锁 · 跳两目标', bubble: '泡泡圈 · 范围减速', feather: '飞羽 · 远程补刀' };
         this.announce(`${reason === 'timeout' ? '自动装备' : '获得装备'}：${names[key]}`, 'gear');
         this.effect(this.x, this.y, 90, 'gear', .65);
     }
@@ -310,7 +329,8 @@ export class EscapeGame {
         if (!c)
             return;
         if (this.time + 1e-8 >= c.due + 15) {
-            this.resolveChoice(c.kind === 'branch' ? 'line' : 'bubble', 'timeout');
+            const fallback: GearKey = c.kind === 'branch' ? this.character === 'warrior' ? 'wide' : this.character === 'mage' ? 'blast' : 'line' : 'bubble';
+            this.resolveChoice(fallback, 'timeout');
             return;
         }
         // Revalidate on camera movement/resize; unsuitable tokens are placed again, never clamped onto a player.
@@ -345,7 +365,7 @@ export class EscapeGame {
                 }
             }
             if (a && b) {
-                const keys: GearKey[] = c.kind === 'branch' ? ['line', 'spread'] : ['bubble', 'feather'];
+                const keys: GearKey[] = c.kind === 'branch' ? this.character === 'warrior' ? ['wide', 'heavy'] : this.character === 'mage' ? ['blast', 'chain'] : ['line', 'spread'] : ['bubble', 'feather'];
                 c.options = [{ ...a, key: keys[0] }, { ...b, key: keys[1] }];
                 c.spawnedAt = this.time;
             }
@@ -383,10 +403,16 @@ export class EscapeGame {
     private attacks(dt: number) {
         this.fire -= dt;
         this.auxiliaryFire -= dt;
-        const target = this.target(280);
-        if (target && this.fire <= 0) {
-            this.shoot(target, 'grain');
-            this.fire = this.attackInterval;
+        if (this.character === 'warrior')
+            this.warriorAttack();
+        else if (this.character === 'mage')
+            this.mageAttack();
+        else {
+            const target = this.target(280);
+            if (target && this.fire <= 0) {
+                this.shoot(target, 'grain');
+                this.fire = this.attackInterval;
+            }
         }
         if (this.auxiliary === 'bubble' && this.auxiliaryFire <= 0) {
             this.auxiliaryFire = 1.5;
@@ -432,6 +458,78 @@ export class EscapeGame {
             }
         }
         this.shots = this.shots.filter(s => s.left > 0);
+    }
+    private warriorAttack() {
+        if (this.fire > 0)
+            return;
+        const range = this.branch === 'heavy' ? 125 : 100;
+        const target = this.target(range);
+        if (!target)
+            return;
+        const aim = Math.atan2(target.y - this.y, target.x - this.x);
+        this.facing = { x: Math.cos(aim), y: Math.sin(aim) };
+        this.fire = this.attackInterval;
+        this.events.push('shot');
+        if (this.branch === 'wide' && this.evolved) {
+            // Evolved wide: two-layer full-circle arc, each enemy takes the budget-capped 1.6D exactly once.
+            for (const e of this.hittable())
+                if (Math.hypot(e.x - this.x, e.y - this.y) <= range)
+                    this.hit(e, this.damage * 1.6);
+            this.effect(this.x, this.y, range, 'slash', .25).angle = Math.PI;
+            return;
+        }
+        // Half-arcs: heavy 90°, base 120°, wide 220°.
+        const half = this.branch === 'heavy' ? Math.PI / 4 : this.branch === 'wide' ? 11 * Math.PI / 18 : Math.PI / 3;
+        const slashed = new Set<number>();
+        for (const e of this.hittable()) {
+            const diff = Math.atan2(e.y - this.y, e.x - this.x) - aim;
+            const da = Math.atan2(Math.sin(diff), Math.cos(diff));
+            if (Math.hypot(e.x - this.x, e.y - this.y) <= range && Math.abs(da) <= half) {
+                slashed.add(e.id);
+                this.hit(e, this.damage * (this.branch === 'heavy' ? 1.6 : 1));
+            }
+        }
+        if (this.branch === 'heavy' && this.evolved)
+            // The extension shockwave only reaches enemies the slash did not already cover.
+            for (const e of this.hittable())
+                if (!slashed.has(e.id) && Math.hypot(e.x - this.x, e.y - this.y) <= 165)
+                    this.hit(e, this.damage * .96);
+        this.effect(this.x, this.y, range, 'slash', .25).angle = half;
+    }
+    private mageAttack() {
+        if (this.fire > 0)
+            return;
+        const target = this.target(260);
+        if (!target)
+            return;
+        this.facing = { x: Math.cos(Math.atan2(target.y - this.y, target.x - this.x)), y: Math.sin(Math.atan2(target.y - this.y, target.x - this.x)) };
+        this.fire = this.attackInterval;
+        this.events.push('shot');
+        const bx = target.x, by = target.y;
+        const byDistance = (a: Pursuer, b: Pursuer) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(b.x - bx, b.y - by);
+        if (this.branch === 'chain') {
+            // Chain: the bubble pops inside 50, then jumps outward to unhit enemies at .8D each.
+            const popped = new Set<number>();
+            for (const e of this.hittable().filter(e => Math.hypot(e.x - bx, e.y - by) <= 50).sort(byDistance)) {
+                popped.add(e.id);
+                this.hit(e, this.damage * (this.evolved ? 1.6 : 1));
+            }
+            let jumps = 0;
+            for (const e of this.hittable().filter(e => !popped.has(e.id) && Math.hypot(e.x - bx, e.y - by) <= 100).sort(byDistance)) {
+                if (jumps >= (this.evolved ? 4 : 2))
+                    break;
+                popped.add(e.id);
+                jumps++;
+                this.hit(e, this.damage * .8);
+            }
+            this.effect(bx, by, 50, 'burst', .3);
+            return;
+        }
+        // Blast: every enemy inside the burst radius takes one hit per burst, 1.6D when evolved.
+        const radius = this.evolved ? 105 : 65;
+        for (const e of this.hittable().filter(e => Math.hypot(e.x - bx, e.y - by) <= radius).sort(byDistance))
+            this.hit(e, this.damage * (this.evolved ? 1.6 : 1));
+        this.effect(bx, by, radius, 'burst', .3);
     }
     private hurt(cause: string, hearts = 1) {
         if (this.immunity > 0 || this.hp <= 0)
@@ -616,7 +714,12 @@ export class EscapeGame {
         this.updateChoice();
         if (!this.evolved && this.time >= 120) {
             this.evolved = true;
-            this.announce(this.branch === 'spread' ? '进化！五向风暴' : '进化！双脉冲长线', 'evolve');
+            const names: Record<Character, Record<string, string>> = {
+                shooter: { spread: '进化！五向风暴', line: '进化！双脉冲长线' },
+                warrior: { wide: '进化！全周宽斩', heavy: '进化！重斩震波' },
+                mage: { blast: '进化！大爆裂水花', chain: '进化！四段连锁' }
+            };
+            this.announce(names[this.character][this.branch] || '进化！武器强化', 'evolve');
             this.effect(this.x, this.y, 180, 'evolve', 1);
         }
         if (this.time + 1e-8 >= this.spawnAt && this.time < this.bossAt) {
