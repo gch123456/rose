@@ -23,9 +23,9 @@
 - [制作阶段与美术介入咨询](archive/2026-11-11-production-stage-art-session.md)
 - [克隆与同步约定](archive/2026-11-11-repository-sync-session.md)
 
-## 最新工具状态：PixelLab 本机预装（2026-11-11）
+## 最新工具状态：PixelLab 本机已认证（2026-11-11）
 
-用户改为要求先预装PixelLab与MCP。原型Mac已注册官方HTTP MCP，服务初始化/138项工具目录检查成功；只读余额返回401缺少授权，账号Token与客户端重新加载仍待办。没有生成素材、购买或订阅；当前游戏继续使用程序占位图。详见 [预装记录](archive/2026-11-11-pixellab-preinstall-mac-session.md) 与 [TOOLS](TOOLS.md)。下文“留在另一设备”的内容为此前决定，由本段覆盖当前工具状态。
+用户要求先预装PixelLab与MCP，并随后提供密钥。原型Mac已注册官方HTTP MCP，服务初始化/138项工具目录检查成功；Bearer认证已安全保存并通过只读余额检查，当前聊天重新加载工具仍待办。没有生成素材、购买或订阅；当前游戏继续使用程序占位图。详见 [预装记录](archive/2026-11-11-pixellab-preinstall-mac-session.md)、[认证记录](archive/2026-11-11-pixellab-auth-mac-session.md) 与 [TOOLS](TOOLS.md)。下文“留在另一设备”的内容为此前决定，由本段覆盖当前工具状态。
 
 ## 最新交付：阶段 B 成长与装备（2026-11-11）
 
