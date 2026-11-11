@@ -173,7 +173,7 @@
     "_priority": 0,
     "_fov": 45,
     "_fovAxis": 0,
-    "_orthoHeight": 505.0094161958569,
+    "_orthoHeight": 466.92957746478874,
     "_near": 1,
     "_far": 1000,
     "_color": {
@@ -408,7 +408,7 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 304.03125,
+      "width": 378.671875,
       "height": 50.4
     },
     "_anchorPoint": {
@@ -438,7 +438,7 @@
       "b": 212,
       "a": 255
     },
-    "_string": "家园保卫战 · GoDuck",
+    "_string": "鸭命要紧 · 射手战斗小样 A",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 32,
@@ -540,7 +540,7 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 487.78125,
+      "width": 401.14453125,
       "height": 50.4
     },
     "_anchorPoint": {
@@ -570,7 +570,7 @@
       "b": 212,
       "a": 255
     },
-    "_string": "编辑器场景预览 · 点击顶部 ▶ 在浏览器中试玩",
+    "_string": "90 秒实验 · 点击顶部 ▶ 在浏览器试玩",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -672,7 +672,7 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 473.701171875,
+      "width": 415.546875,
       "height": 50.4
     },
     "_anchorPoint": {
@@ -702,7 +702,7 @@
       "b": 212,
       "a": 255
     },
-    "_string": "WASD / 方向键移动 · 无需攻击键，靠近敌人自动攻击",
+    "_string": "移动躲追捕 · 谷粒弹自动穿透 · 红线预警请侧移",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,

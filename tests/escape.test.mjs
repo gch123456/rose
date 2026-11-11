@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {EscapeGame} from '../assets/scripts/EscapeGame.ts';
+const step=(g,n)=>{for(let i=0;i<n;i++)g.tick(1/60,0,0);};
+test('first wave starts at one second outside visible edge and leaves a retreat sector',()=>{const g=new EscapeGame(()=>.5);g.start();step(g,59);assert.equal(g.enemies.length,0);step(g,3);assert.ok(g.enemies.length);for(const e of g.enemies){assert.ok(Math.abs(e.x)>320||Math.abs(e.y)>g.viewHeight/2);assert.ok(e.y<=Math.abs(e.x));}});
+test('projectile hits at most two distinct enemies along its swept path',()=>{const g=new EscapeGame();g.start();for(const x of [50,90,130]){const e=g.spawn('glove',x,0);e.visibleFor=1;}step(g,20);assert.equal(g.kills,2);assert.equal(g.enemies.filter(e=>e.hp>0).length,1);});
+test('entry protection and one second damage protection prevent stacked contact',()=>{const g=new EscapeGame();g.start();g.spawn('clip',0,0);g.tick(.01,0,0);assert.equal(g.hp,5);for(const e of g.enemies)e.visibleFor=1;g.tick(.01,0,0);assert.equal(g.hp,4);g.tick(.01,0,0);assert.equal(g.hp,4);});
+test('clip windup locks direction and recovers after dash',()=>{const g=new EscapeGame();g.start();const e=g.spawn('clip',180,0);e.visibleFor=1;e.cooldown=0;g.tick(.01,0,0);assert.equal(e.state,'windup');const dy=e.dy;g.y=100;step(g,50);assert.equal(e.state,'dash');assert.equal(e.dy,dy);step(g,30);assert.equal(e.state,'recover');});
+test('bounded drops remain reachable; pause and restart reset the run',()=>{const g=new EscapeGame();g.start();for(let i=0;i<300;i++){const e=g.spawn('glove',1000,1000);if(e)g.hit(e,12);}assert.ok(g.drops.length<=260);assert.ok(g.drops.every(d=>d.x<=830&&d.y<=830));const t=g.time;g.phase='paused';step(g,60);assert.equal(g.time,t);g.start();assert.equal(g.kills,0);assert.equal(g.hp,5);assert.equal(g.time,0);});
+test('90 seconds ends an experiment rather than unlocking a character',()=>{const g=new EscapeGame();g.start();g.time=89.99;g.tick(.02,0,0);assert.equal(g.phase,'complete');assert.equal(g.level,1);});
+test('stopped near-center player keeps upward retreat rather than stale movement',()=>{const g=new EscapeGame(()=>.25);g.start();g.tick(.01,1,0);g.x=0;g.time=1;g.tick(.01,0,0);assert.equal(g.enemies.length,0);});

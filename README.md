@@ -2,17 +2,17 @@
 
 竖屏单手生存割草游戏，使用 Cocos Creator 3.8.8 + TypeScript。最新剧情方向：不同职业的鸭子自救，逃离被怪物变成鸭货的命运；通关解锁新角色，失败变成熟食。
 已确认可爱像素与荒诞逃生喜剧的表现方向；项目代号仍为 GoDuck。
-当前代码仍是鸡/鸭/鹅与农场占位场景的旧原型，尚未迁移剧情、全鸭职业或失败动画。玩家只负责移动，武器自动攻击；当前仍有暂停三选一，连续成长方案待实现。
+**当前可试玩：V0.2 阶段 A，90 秒射手鸭战斗小样。** 固定一级、自动谷粒弹穿透、手套追击/夹子冲刺、浮动摇杆和暂停。B–D 的成长二选一、进化、Boss、职业解锁尚待实施；不把实验结束当正式通关。旧规则代码 Game.ts 保留作历史测试，不再作为默认试玩入口。
 
 ## 开始试玩
 
 1. 克隆仓库并初始化插件：`git submodule update --init --recursive`。
 2. 使用 **Cocos Creator 3.8.8** 打开仓库，等待资源导入完成。
 3. 在资源面板双击 `assets/Home.scene`；场景编辑器切换 **2D**，双击层级中的 `EditorPreview` 居中。
-4. 点击顶部 ▶，在浏览器选择鸡、鸭或鹅。
-5. WASD / 方向键移动；触屏按住拖动；Esc 暂停；升级点击或按 1/2/3。
+4. 点击顶部 ▶，在浏览器点击“开始 90 秒试玩”。
+5. WASD / 方向键移动；触屏按住拖动；Esc 暂停；点击左上声音开关控制音效。
 
-无需攻击键。接近敌人自动攻击，走近绿色谷物拾取经验。编辑器中的画面是静态预览，游戏行为以运行后的预览为准。
+无需攻击键。接近敌人自动攻击，走近金色谷粒拾取计分（阶段 A 固定一级）。编辑器中的画面是静态预览，游戏行为以运行后的预览为准。
 
 规则测试使用支持直接执行 TypeScript 的 Node.js（本次验证版本 25.2.1）：`npm test`。
 首次打开项目后，Creator 会生成 `library/`、`temp/` 等缓存，不需要上传。
@@ -28,7 +28,7 @@
 - [V0.2 试玩实验卡](docs/playtests/2026-11-11-v02-experiments.md)
 - [最新鸭子自救主题](docs/superpowers/specs/2026-11-11-duck-escape-theme-design.md)
 - [实现结构与修改指引](docs/DEVELOPMENT.md)
-- [最新接续与同步约定](docs/archive/2026-11-11-repository-sync-session.md)
+- [最新实施与验证记录](docs/archive/2026-11-11-combat-a-implementation-session.md)
 - [聊天、操作与验证归档](docs/archive/2026-11-10-session.md)
 - [用户提供的前序聊天原文](docs/archive/2026-11-10-imported-chat.txt)
 - [后续需求与已知问题](docs/ROADMAP.md)
