@@ -1,20 +1,23 @@
 # 工具接入与跨设备 TODO
 
-记录日期：2026-11-11（北京时间）。以下“本机”主要指此前提交文档的另一台设备，不是所有接手设备。原型开发 Mac 已核实安装 Creator 3.8.8（2026-11-11 拉取分析时检查应用目录），无需重复安装；未据此声称本轮已连接 MCP 或运行引擎。PixelLab 仍须按目标设备实际配置核实。
+记录日期：2026-11-11（北京时间）。每台设备分别核实工具、路径和认证，不能复制另一台电脑的本机配置。
 
-用户最新决定：本机暂不安装/接入 PixelLab，回另一台电脑再完成；本文件保留接续步骤。
+## PixelLab：原型 Mac 已预装 MCP，待账号认证
 
-## PixelLab：本机不接入，另一台电脑待配置
+用户最新要求“先预装一下PixelLab和mcp”，取代此前延后本机接入的决定。
 
-- PixelLab 是在线服务，网页编辑器无需安装桌面软件。
-- 官方 MCP 地址：`https://api.pixellab.ai/mcp`。
-- 此前本机临时注册并验证过服务握手和目录；用户改为另一台电脑操作后，已移除刚添加的 `pixellab` MCP 条目，保留其他 Codex 配置。
-- 已关闭为接入创建的登录页，不再等待用户在本机登录；未存储 Token、生成素材、购买或订阅。
-- 历史验证记录见 [接入会话](archive/2026-11-11-pixellab-setup-approved-direction-session.md)，不代表另一台电脑已接通。
+- PixelLab 使用官方远程 MCP，地址 `https://api.pixellab.ai/mcp`；本轮没有安装额外桌面图像软件或 npm 桥接。
+- 原型 Mac 已在本机 Codex 配置注册 `pixellab`，备份配置并确认原有设置全部保留、配置/备份仅本人可读。
+- 实际验证：服务初始化成功，PixelLab MCP Server 0.2.0，工具目录138项；只读 `get_balance` 返回401缺少Authorization。说明服务器可达，账号尚未认证。
+- 没有配置Token、登录账户、生成素材、购买或订阅。当前聊天工具集尚未重新加载，不把手动服务检查视为聊天已经可以调用素材工具。
+- 后续：在官方账户页取得Token，在本机MCP配置中安全填写Bearer认证，重新加载客户端工具，再用余额只读检查验证。
+- 本机全局 `codex` 启动器缺少其可执行文件，本轮用桌面应用内置CLI 0.167.0-alpha.3.2完成注册；没有顺带更改全局CLI安装。
+- 操作与验证见 [本机预装记录](archive/2026-11-11-pixellab-preinstall-mac-session.md)。以前移除配置的记录保留为历史，不再代表当前Mac状态。
 
-### 在另一台电脑完成接入 TODO
+### 认证与其他电脑的接续 TODO
 
-- [ ] 拉取 `main` 最新文档，检查目标电脑现有工具和配置，不直接复制本机 Codex 配置。
+- [x] 原型Mac已注册官方HTTP MCP并验证服务可达。
+- [ ] 其他电脑拉取 `main` 最新文档，检查目标电脑现有工具和配置，不直接复制本机Codex配置。
 - [ ] 用 `codex --version`、`codex mcp add --help` 核对目标客户端支持；支持原生 HTTP 时执行下方命令，无须 npm 桥接。
 - [ ] 在 [PixelLab](https://www.pixellab.ai/signin) 登录，确认账号的 MCP/API 权限、订阅和余额。
 - [ ] 从 [官方 MCP 页面](https://www.pixellab.ai/mcp) / 账户页面取得账户 Token，在目标电脑完成认证配置；不要发到聊天、写入项目文档或提交 Git。
@@ -36,11 +39,12 @@ url = "https://api.pixellab.ai/mcp"
 bearer_token_env_var = "PIXELLAB_API_KEY"
 ```
 
-本机目前没有 PixelLab MCP 条目；以上仅供目标电脑接续使用。
+原型Mac当前已存在上述URL条目，但没有Bearer认证；示例只说明认证字段，不含真实Token。
 
-## Cocos：本机尚未安装，按用户要求列为 TODO
+## Cocos：原型 Mac 已可用，其他设备分别配置
 
-- [ ] 安装 Cocos Dashboard，再安装与项目匹配的 **Cocos Creator 3.8.8**。
+- [x] 原型Mac已核实Creator **3.8.8**、MCP和Home场景，完成A/B网页及类型检查。
+- [ ] 其他设备安装与项目匹配的Creator **3.8.8**。
 - [ ] 使用 Creator 打开本仓库，等待导入完成，生成 `library/`、`temp/` 等本机文件；这些不提交。
 - [ ] 打开 `assets/Home.scene`，切换 2D 并核对编辑器预览。
 - [ ] 确认子模块 `extensions/funplay-cocos-mcp` 已初始化，使用仓库固定版本；从本机插件面板取得项目地址并配置客户端。
@@ -48,7 +52,7 @@ bearer_token_env_var = "PIXELLAB_API_KEY"
 - [ ] 执行引擎 TypeScript 诊断与网页预览，检查触屏拖动、角色菜单、升级及完整一局。
 - [ ] 在目标 iPhone 上验证输入、界面、怪潮性能与音效；网页或规则测试不能替代实际目标平台验证。
 
-当前缺少 Creator 不影响继续维护普通 TypeScript 规则与文档，但场景、资源导入和运行效果只能在相应环境中验证。
+其他设备若缺少Creator，可维护普通TypeScript规则与文档；场景、资源导入和运行效果须在对应环境验证。
 
 ## 像素和音频工具
 
@@ -61,4 +65,4 @@ bearer_token_env_var = "PIXELLAB_API_KEY"
 
 - [PixelLab 使用方式与集成条件](https://www.pixellab.ai/docs/ways-to-use-pixellab)
 - [PixelLab 官方 MCP](https://www.pixellab.ai/mcp)
-- [Codex MCP 命令](https://learn.chatgpt.com/docs/developer-commands#codex-mcp)
+- [Codex MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)

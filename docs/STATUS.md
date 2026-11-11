@@ -16,12 +16,16 @@
 - [多角色设计增补与候选职业表](superpowers/specs/2026-11-11-character-unlock-effects-design.md)
 - [持久化数据与离线/后端边界](PERSISTENCE-NOTES.md)
 - [尚需补全的设计与候选参数](OPEN-DESIGN.md)
-- [PixelLab 延后到另一台设备](archive/2026-11-11-pixellab-deferred-device-session.md)
+- [PixelLab 本机预装与认证待办](archive/2026-11-11-pixellab-preinstall-mac-session.md)
 - [PixelLab 接入历史与路线确认](archive/2026-11-11-pixellab-setup-approved-direction-session.md)
 - [本机工具状态与 Cocos 安装 TODO](TOOLS.md)
 - [不停顿成长、像素风与基础音画建议](archive/2026-11-11-continuous-play-pixel-audio-session.md)
 - [制作阶段与美术介入咨询](archive/2026-11-11-production-stage-art-session.md)
 - [克隆与同步约定](archive/2026-11-11-repository-sync-session.md)
+
+## 最新工具状态：PixelLab 本机预装（2026-11-11）
+
+用户改为要求先预装PixelLab与MCP。原型Mac已注册官方HTTP MCP，服务初始化/138项工具目录检查成功；只读余额返回401缺少授权，账号Token与客户端重新加载仍待办。没有生成素材、购买或订阅；当前游戏继续使用程序占位图。详见 [预装记录](archive/2026-11-11-pixellab-preinstall-mac-session.md) 与 [TOOLS](TOOLS.md)。下文“留在另一设备”的内容为此前决定，由本段覆盖当前工具状态。
 
 ## 最新交付：阶段 B 成长与装备（2026-11-11）
 
