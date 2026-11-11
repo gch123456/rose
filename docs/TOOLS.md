@@ -2,15 +2,15 @@
 
 记录日期：2026-11-11（北京时间）。每台设备分别核实工具、路径和认证，不能复制另一台电脑的本机配置。
 
-## PixelLab：原型 Mac MCP 已认证，待聊天重新加载
+## PixelLab：本机 MCP 可调用，首张小样已生成
 
 用户最新要求“先预装一下PixelLab和mcp”，取代此前延后本机接入的决定。
 
 - PixelLab 使用官方远程 MCP，地址 `https://api.pixellab.ai/mcp`；本轮没有安装额外桌面图像软件或 npm 桥接。
 - 原型 Mac 已在本机 Codex 配置注册 `pixellab`，备份配置并确认原有设置全部保留、配置/备份仅本人可读。
 - 实际验证：服务初始化成功，PixelLab MCP Server 0.2.0，工具目录138项；预装时只读 `get_balance` 返回401；用户随后提供密钥，现已安全写入本机私有配置并通过只读余额认证。
-- Token仅在本机私有配置，未进入仓库；没有生成素材、购买或订阅。当前聊天工具集尚未重新加载，不把手动服务检查视为聊天已经可以调用素材工具。
-- 后续：重新加载客户端工具，确认本聊天可调用PixelLab，再按已确认主题制作像素小样。
+- Token仅在本机私有配置，未进入仓库；重启后当前聊天已实际调用MCP并生成首张射手鸭小样（1次生成），没有购买或订阅。
+- 当前工具链已跑通，样例见 [射手鸭小样](art-samples/2026-11-11-shooter-duck/README.md)；后续先确认造型，再做方向/动画与批量素材。
 - 本机全局 `codex` 启动器缺少其可执行文件，本轮用桌面应用内置CLI 0.167.0-alpha.3.2完成注册；没有顺带更改全局CLI安装。
 - 操作与验证见 [本机预装记录](archive/2026-11-11-pixellab-preinstall-mac-session.md)。以前移除配置的记录保留为历史，不再代表当前Mac状态。
 
@@ -23,8 +23,10 @@
 - [ ] 其他电脑：在 [PixelLab](https://www.pixellab.ai/signin) 登录，确认账号MCP权限与额度。
 - [ ] 从 [官方 MCP 页面](https://www.pixellab.ai/mcp) / 账户页面取得账户 Token，在目标电脑完成认证配置；不要发到聊天、写入项目文档或提交 Git。
 - [ ] 为目标电脑的 HTTP MCP 配置 `Authorization` Bearer 头，或使用 `bearer_token_env_var` 引用该电脑的环境变量。环境变量必须在启动 Codex 的进程中可见，单独终端 export 不代表已运行的桌面应用能读取。
-- [ ] 重新加载 MCP 或重启客户端，确认目标设备上的聊天可以发现 PixelLab 工具。
-- [ ] 用 `get_balance` 做只读认证检查，之后按最新自救/全鸭主题先生成一只职业鸭的小样，验证风格和帧间一致性，再扩展素材。
+- [x] 原型Mac重启后当前聊天已发现PixelLab工具并实际调用。
+- [ ] 其他设备分别重新加载并验证自己的工具连接。
+- [x] 原型Mac通过MCP只读余额验证并生成首张全鸭主题静态小样。
+- [ ] 确认造型、方向与动画连续性，再扩展素材。
 
 ```bash
 codex mcp add pixellab --url https://api.pixellab.ai/mcp

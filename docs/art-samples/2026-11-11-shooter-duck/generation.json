@@ -1,0 +1,25 @@
+{
+  "provider": "PixelLab",
+  "tool": "create_image_pixen",
+  "model": "pixen",
+  "job_id": "27633456-2fee-41b4-a14c-034f45ce74a9",
+  "asset_id": "7dbff41c-6793-5e12-80cb-fcaf9689d48b",
+  "seed": 11112026,
+  "width": 32,
+  "height": 32,
+  "transparent": true,
+  "outline": "single color outline",
+  "view": "high top-down",
+  "direction": "south-east",
+  "detail": "low detail",
+  "generations_charged": 1,
+  "sha256": "d6b0cf93946b55d118e21d01ff23d7729f2b87252ff4ff41d534c68364170e25",
+  "status": "style sample, not integrated into gameplay",
+  "description": "A single cute plump duck survivor hero for a colorful pixel art top-down survival game, clearly a DUCK with a broad flat orange bill, cream-yellow feathers, round head and round bird body, two short orange webbed feet and small wings, emerald green scarf tied at neck, tiny brown seed pouch and a simple small wooden slingshot held by one wing. Brave funny expression, big readable dark eye. Compact chibi BIRD proportions, clear one-pixel dark navy outline, crisp chunky pixel clusters, simple two-tone shading, warm cream yellow and orange with green accent. Whole body centered with small transparent padding on all sides, facing southeast three-quarter view, no ground, no scenery, no text, no border, no human hands, no human arms, no armor, no hat. Native 32x32 game sprite readable at small mobile size.",
+  "visual_review": {
+    "observed": "cream-yellow duck, green scarf, clear bill and webbed feet; transparent background verified",
+    "direction_note": "visually faces screen-left; requested south-east label is not an accepted directional reference",
+    "weapon_note": "small pouch/weapon detail needs later readability review",
+    "approval": "candidate only, user has not approved final art style"
+  }
+}

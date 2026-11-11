@@ -16,16 +16,18 @@
 - [多角色设计增补与候选职业表](superpowers/specs/2026-11-11-character-unlock-effects-design.md)
 - [持久化数据与离线/后端边界](PERSISTENCE-NOTES.md)
 - [尚需补全的设计与候选参数](OPEN-DESIGN.md)
-- [PixelLab 本机预装与认证待办](archive/2026-11-11-pixellab-preinstall-mac-session.md)
+- [PixelLab 首张射手鸭素材小样](archive/2026-11-11-pixellab-first-duck-sample-session.md)
 - [PixelLab 接入历史与路线确认](archive/2026-11-11-pixellab-setup-approved-direction-session.md)
 - [本机工具状态与 Cocos 安装 TODO](TOOLS.md)
 - [不停顿成长、像素风与基础音画建议](archive/2026-11-11-continuous-play-pixel-audio-session.md)
 - [制作阶段与美术介入咨询](archive/2026-11-11-production-stage-art-session.md)
 - [克隆与同步约定](archive/2026-11-11-repository-sync-session.md)
 
-## 最新工具状态：PixelLab 本机已认证（2026-11-11）
+## 最新素材进展：PixelLab 首张射手鸭小样（2026-11-11）
 
-用户要求先预装PixelLab与MCP，并随后提供密钥。原型Mac已注册官方HTTP MCP，服务初始化/138项工具目录检查成功；Bearer认证已安全保存并通过只读余额检查，当前聊天重新加载工具仍待办。没有生成素材、购买或订阅；当前游戏继续使用程序占位图。详见 [预装记录](archive/2026-11-11-pixellab-preinstall-mac-session.md)、[认证记录](archive/2026-11-11-pixellab-auth-mac-session.md) 与 [TOOLS](TOOLS.md)。下文“留在另一设备”的内容为此前决定，由本段覆盖当前工具状态。
+用户重启Codex后，本聊天已实际调用PixelLab MCP：只读认证通过，生成一张32×32透明射手鸭静态候选，实际消耗1次生成，已保存到图库及仓库。见 [原图与预览](art-samples/2026-11-11-shooter-duck/README.md)、[本轮记录](archive/2026-11-11-pixellab-first-duck-sample-session.md)。
+
+小样为浅黄鸭/绿色围巾的造型候选；实际朝向偏左，方向标签与武器细节仍需评审。没有批量生成、多方向或行走动画，也没有替换游戏程序图形。此前“当前聊天待重新加载/未生成素材”是历史状态，由本段覆盖。
 
 ## 最新交付：阶段 B 成长与装备（2026-11-11）
 
