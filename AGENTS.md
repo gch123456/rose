@@ -13,10 +13,12 @@
 
 - Cocos Creator **3.8.8** + TypeScript，沿用现有项目与资源 UUID。
 - 玩家专注自身走位和割草，只有移动输入，武器自动攻击。
+- 用户已选“自动小成长＋走过去二选一”，并授权首套彩色像素音画按已记录建议推进；当前代码是否完成以 DESIGN / STATUS 为准，不能把确认方案当作已实现。
 - 家园仅为叙事和场景背景；用户已明确排除谷仓血条、回防与护送任务。
 - `docs/DESIGN.md` 区分当前实现与后续提案。未确认的建议不得写成用户已批准的功能。
 - 场景、Prefab、meta 通过 Creator 或已核实项目身份的 Cocos MCP 修改；先阅读对应 `.agents/skills/` 指引。
 - 本机 MCP 地址、路径、端口和客户端配置不能跨机器照搬。
+- 当前设备缺少 Cocos，用户要求将安装列为 TODO；工具与认证接续见 `docs/TOOLS.md`。PixelLab 账户密钥及本机 Codex 配置不得入库。
 
 ## 使用 Superpowers 与记录
 

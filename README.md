@@ -21,6 +21,7 @@
 - [当前状态与下一步](docs/STATUS.md)
 - [AI 与开发者协作规则](AGENTS.md)
 - [跨设备同步与会话记录](docs/SYNC.md)
+- [本机工具与 Cocos 安装 TODO](docs/TOOLS.md)
 - [当前设计、数值与边界](docs/DESIGN.md)
 - [实现结构与修改指引](docs/DEVELOPMENT.md)
 - [最新接续与同步约定](docs/archive/2026-11-11-repository-sync-session.md)
