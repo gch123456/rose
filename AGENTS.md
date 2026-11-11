@@ -21,7 +21,7 @@
 - 用户已接受“玩法设计＋假设验证”的方法并授权策划重设计；最新具体方案见 `docs/superpowers/specs/2026-11-11-core-gameplay-v02-design.md`，它仍是待评审的新规则稿，不等于代码实现/试玩证据，勿沿用旧 3＋3/配方作为新版必需约束。
 - 场景、Prefab、meta 通过 Creator 或已核实项目身份的 Cocos MCP 修改；先阅读对应 `.agents/skills/` 指引。
 - 本机 MCP 地址、路径、端口和客户端配置不能跨机器照搬。
-- 当前设备缺少 Cocos，用户要求将安装列为 TODO；工具与认证接续见 `docs/TOOLS.md`。PixelLab 账户密钥及本机 Codex 配置不得入库。
+- 另一台设备的接续记录为缺少 Cocos、安装列为 TODO；当前设备需独立核实，不据此重装；工具与认证接续见 `docs/TOOLS.md`。PixelLab 账户密钥及本机 Codex 配置不得入库。
 
 ## 使用 Superpowers 与记录
 
