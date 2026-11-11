@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSave, loadSave, persist, recordStart, recordResult, SAVE_KEY} from '../assets/scripts/SaveData.ts';
+import {defaultSave, loadSave, persist, recordStart, recordResult, nextUnlockTarget, SAVE_KEY} from '../assets/scripts/SaveData.ts';
 
 test('a fresh save only has the shooter unlocked and the shooter as current',()=>{
  const s=defaultSave();
@@ -82,4 +82,12 @@ test('a valid save round-trips through persist and loadSave, written in one atom
 
 test('the save key is stable so the ui and tests agree on storage',()=>{
  assert.equal(SAVE_KEY,'goduck-save');
+});
+
+test('the rescue target is the first locked character on the unlock chain',()=>{
+ assert.equal(nextUnlockTarget(defaultSave()),'warrior','a fresh save rescues the warrior');
+ const afterShooter=recordResult(defaultSave(),'shooter',true).save;
+ assert.equal(nextUnlockTarget(afterShooter),'mage','after the shooter wins the mage is next');
+ const afterWarrior=recordResult(afterShooter,'warrior',true).save;
+ assert.equal(nextUnlockTarget(afterWarrior),null,'a fully unlocked chain rescues nobody');
 });

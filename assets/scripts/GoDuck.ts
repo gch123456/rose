@@ -1,6 +1,6 @@
 import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas, resources, Sprite, SpriteFrame, JsonAsset, Texture2D, isValid, sys } from 'cc';
 import { EscapeGame, Character } from './EscapeGame';
-import { SaveState, loadSave, persist, recordResult, recordStart, SAVE_KEY } from './SaveData';
+import { SaveState, loadSave, persist, recordResult, recordStart, nextUnlockTarget, SAVE_KEY } from './SaveData';
 const { ccclass } = _decorator;
 const CHARACTER_NAMES: Record<Character, string> = { shooter: '射手鸭', warrior: '战士鸭', mage: '法师鸭' };
 @ccclass('GoDuck')
@@ -9,6 +9,8 @@ export class GoDuck extends Component {
     private save: SaveState = loadSave(sys.localStorage.getItem(SAVE_KEY));
     private selected: Character = 'shooter';
     private newUnlocks: Character[] = [];
+    // Settlement performance: -1 idle, 0..2 animation playing, >=2 results panel. Tap or any key skips.
+    private settleFor = -1;
     private pen: Graphics;
     private duckSprite: Sprite;
     private duckFrames = new Map<string, SpriteFrame>();
@@ -150,6 +152,10 @@ export class GoDuck extends Component {
     }
     private keyDown(e: EventKeyboard) {
         this.keys.add(e.keyCode);
+        if ((this.game.phase === 'won' || this.game.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2) {
+            this.settleFor = 2;
+            return;
+        }
         if (e.keyCode === KeyCode.ESCAPE)
             this.pause();
     }
@@ -157,6 +163,10 @@ export class GoDuck extends Component {
         this.keys.delete(e.keyCode);
     }
     private touchStart(e: EventTouch) {
+        if ((this.game.phase === 'won' || this.game.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2) {
+            this.settleFor = 2;
+            return;
+        }
         if (this.game.phase !== 'playing' || this.finger !== -1)
             return;
         const p = e.getUILocation();
@@ -250,6 +260,16 @@ export class GoDuck extends Component {
     }
     private menus() {
         const g = this.game;
+        const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
+        if (settling) {
+            // The panel waits until the performance finishes or is skipped; clear stale panel content once.
+            if (this.state !== g.phase) {
+                this.state = g.phase;
+                for (const n of this.panel.children.slice())
+                    n.destroy();
+            }
+            return;
+        }
         if (this.state === g.phase)
             return;
         this.state = g.phase;
@@ -307,13 +327,22 @@ export class GoDuck extends Component {
         this.updateDuck(dt);
         this.sound(g.events);
         g.events = [];
+        if (g.phase === 'won' || g.phase === 'lost') {
+            if (this.settleFor < 0)
+                this.settleFor = 0;
+            else if (this.settleFor < 2)
+                this.settleFor += dt;
+        }
+        else
+            this.settleFor = -1;
+        const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
         this.draw();
         this.menus();
         this.hud.string = `生命 ${'♥'.repeat(g.hp)}${'·'.repeat(Math.max(0, 5 - g.hp))}   ${Math.ceil((g.boss ? g.limit : g.duration) - g.time)} 秒\nLv.${g.level}   击退 ${g.kills}   经验 ${g.level === 12 ? 'MAX' : `${g.xp}/${g.nextXp}`}`;
         this.note.string = `${this.weaponName()}  /  ${this.auxiliaryName()}${this.muted ? ' · 静音' : ''}`;
-        this.banner.string = g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
+        this.banner.string = settling ? (g.phase === 'won' ? this.rescueText() : `被做成${this.dishName(g.deathCause)}…`) : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
         const c = g.choice;
-        this.progress.string = g.phase !== 'playing' ? '' : c
+        this.progress.string = settling ? '点按任意处跳过' : g.phase !== 'playing' ? '' : c
             ? `走近装备二选一 · ${Math.max(0, Math.ceil(c.due + 15 - g.time))} 秒后自动选${c.kind === 'branch' ? (g.character === 'warrior' ? '宽斩' : g.character === 'mage' ? '爆裂' : '长线') : '泡泡圈'}`
             : g.boss ? `击败巨型捕鸭夹！${Math.max(0, Math.ceil(g.limit - g.time))} 秒内突围`
                 : g.time < 25 ? `捡谷粒自动升级 · ${Math.ceil(25 - g.time)} 秒后掉落武器分支`
@@ -607,6 +636,95 @@ export class GoDuck extends Component {
             p.fillColor = new Color(8, 23, 30, 235);
             p.rect(-this.w / 2, -this.h / 2, this.w, this.h);
             p.fill();
+        }
+        if ((g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2)
+            this.drawSettlement();
+    }
+    private dishName(cause: string) {
+        return ({ '手套怪接触': '手撕鸭', '夹子怪冲撞 / 接触': '脆皮鸭卷', '锅盖怪压盖': '铁板鸭', '锅盖怪接触': '铁板鸭', 'Boss冲撞': '包装鸭脖', 'Boss弹丸': '爆浆鸭丸', '出口被封锁': '封坛老鸭' } as Record<string, string>)[cause] || '卤鸭拼盘';
+    }
+    private rescueText() {
+        const target = nextUnlockTarget(this.save);
+        return target ? `解救了${CHARACTER_NAMES[target]}！` : '三只职业鸭都自由了！';
+    }
+    private drawSettleDuck(x: number, y: number, scale: number) {
+        const p = this.pen;
+        p.fillColor = new Color('#e6bc66');
+        p.circle(x, y - 10 * scale, 13 * scale);
+        p.fill();
+        p.circle(x, y - 24 * scale, 10 * scale);
+        p.fill();
+        p.fillColor = new Color('#ed9957');
+        p.moveTo(x + 8 * scale, y - 22 * scale);
+        p.lineTo(x + 20 * scale, y - 26 * scale);
+        p.lineTo(x + 8 * scale, y - 29 * scale);
+        p.close();
+        p.fill();
+        p.fillColor = new Color('#0b2027');
+        p.circle(x + 3 * scale, y - 26 * scale, 2.2 * scale);
+        p.fill();
+        p.fillColor = new Color('#74bcb0');
+        p.roundRect(x - 6 * scale, y - 4 * scale, 12 * scale, 9 * scale, 4 * scale);
+        p.fill();
+    }
+    private drawSettlement() {
+        const g = this.game, p = this.pen, t = Math.max(0, Math.min(1, this.settleFor / 2));
+        const ease = (x: number) => x * x * (3 - 2 * x);
+        if (g.phase === 'lost') {
+            // The duck slides into the gift box, the lid shuts and the dish label pops on.
+            const sink = ease(Math.min(1, t * 1.6));
+            const duckY = 120 - sink * 140, duckScale = 1 - .7 * sink;
+            this.drawSettleDuck(0, duckY, duckScale);
+            p.fillColor = new Color('#5a3d4a');
+            p.roundRect(-75, -85, 150, 110, 10);
+            p.fill();
+            p.strokeColor = new Color('#e4c76d');
+            p.lineWidth = 3;
+            p.roundRect(-75, -85, 150, 110, 10);
+            p.stroke();
+            const lid = ease(Math.max(0, Math.min(1, (t - .35) / .35)));
+            const lidY = 130 - lid * 105;
+            p.fillColor = new Color('#6d4a58');
+            p.roundRect(-80, lidY - 12, 160, 24, 8);
+            p.fill();
+            p.strokeColor = new Color('#e4c76d');
+            p.roundRect(-80, lidY - 12, 160, 24, 8);
+            p.stroke();
+            if (t > .75) {
+                const pop = ease((t - .75) / .25);
+                p.fillColor = new Color('#fff0c4');
+                p.roundRect(-55 * pop, -50 * pop, 110 * pop, 40 * pop, 6);
+                p.fill();
+                p.strokeColor = new Color('#cf665f');
+                p.lineWidth = 4;
+                p.moveTo(-55 * pop, -30 * pop);
+                p.lineTo(55 * pop, -30 * pop);
+                p.stroke();
+            }
+        }
+        else {
+            // The exit gate glows open, the duck runs out and the next character pops in beside it.
+            const run = ease(Math.min(1, t / .55));
+            const gateW = 60 + run * 90;
+            p.fillColor = new Color('#ffe9a8');
+            p.roundRect(-gateW / 2, this.h / 2 - 150, gateW, 130, 12);
+            p.fill();
+            p.strokeColor = new Color('#f5cf7d');
+            p.lineWidth = 3;
+            p.roundRect(-gateW / 2, this.h / 2 - 150, gateW, 130, 12);
+            p.stroke();
+            const bob = Math.sin(this.settleFor * 18) * 4 * (1 - run);
+            this.drawSettleDuck(0, 40 - run * (this.h / 2 - 190) + bob, 1 + run * .2);
+            if (t > .5) {
+                const pop = ease(Math.min(1, (t - .5) / .3));
+                const bounce = Math.abs(Math.sin((t - .5) * 14)) * (1 - pop) * 26;
+                this.drawSettleDuck(130, -this.h / 2 + 240 + bounce, .9);
+                for (let i = 0; i < 10; i++) {
+                    const a = i * Math.PI / 5 + this.settleFor * 3;
+                    const r = 60 + (i * 37) % 90;
+                    this.circle(Math.cos(a) * r * 1.4, Math.sin(a) * r, 4 + i % 3, ['#ffe09a', '#9bf7ff', '#ff9bb0'][i % 3]);
+                }
+            }
         }
     }
 }

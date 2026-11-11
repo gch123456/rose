@@ -58,3 +58,10 @@ export function recordResult(save: SaveState, character: Character, won: boolean
         unlock('mage');
     return { save: next, unlocked: added };
 }
+// The duck to rescue after a win: the first locked character along the fixed unlock chain, null when all are free.
+export function nextUnlockTarget(save: SaveState): Character | null {
+    for (const c of ['warrior', 'mage'] as Character[])
+        if (!save.unlocked.includes(c))
+            return c;
+    return null;
+}
