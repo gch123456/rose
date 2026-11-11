@@ -8,7 +8,9 @@
 - [当前实现与设计基线](DESIGN.md)
 - [后续清单](ROADMAP.md)
 - [跨设备同步](SYNC.md)
-- [最新会话：PixelLab 延后到另一台设备](archive/2026-11-11-pixellab-deferred-device-session.md)
+- [最新会话：生命、重玩与关卡讨论](archive/2026-11-11-health-retry-level-scope-session.md)
+- [尚需补全的设计与候选参数](OPEN-DESIGN.md)
+- [PixelLab 延后到另一台设备](archive/2026-11-11-pixellab-deferred-device-session.md)
 - [PixelLab 接入历史与路线确认](archive/2026-11-11-pixellab-setup-approved-direction-session.md)
 - [本机工具状态与 Cocos 安装 TODO](TOOLS.md)
 - [不停顿成长、像素风与基础音画建议](archive/2026-11-11-continuous-play-pixel-audio-session.md)
@@ -47,7 +49,8 @@
 用户已确认“自动小成长 + 场内走位二选一”，首套彩色像素音画按上一轮建议推进；玩法代码尚未改造。
 此前临时注册的本机 PixelLab MCP 已按用户最新要求移除，其他配置保留，登录页已关闭；另一台电脑的接入与认证全部待办。此前握手成功仅为历史验证，不代表当前已连接。未生成素材。
 Aseprite 未安装且不是首阶段前置条件。Cocos Creator 3.8.8 尚未安装，步骤与验收见 [TOOLS.md](TOOLS.md)。
-本次完成本机接入清理与文档同步，未运行游戏、引擎或真机测试，未购买工具或订阅。
+此前已完成本机接入清理；本次只讨论并归档生命、重玩与关卡范围，没有运行游戏、引擎或真机测试，未购买工具或订阅。
+新建议为五格生命、免费重开、可选单局广告复活、先一关再考虑首发三关，均未确认；“血条”指生命还是开局次数仍待用户澄清。
 
 ## 接下来的工作
 
