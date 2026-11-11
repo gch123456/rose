@@ -1,6 +1,6 @@
 import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas, resources, Sprite, SpriteFrame, JsonAsset, Texture2D, isValid, sys } from 'cc';
 import { EscapeGame, Character } from './EscapeGame';
-import { SaveState, loadSave, persist, recordResult, recordStart, nextUnlockTarget, SAVE_KEY } from './SaveData';
+import { SaveState, loadSave, persist, recordResult, recordStart, nextUnlockTarget, regenAttempts, spendAttempt, grantAdBonus, MAX_ATTEMPTS, REGEN_MS, AD_BONUS, SAVE_KEY } from './SaveData';
 const { ccclass } = _decorator;
 const CHARACTER_NAMES: Record<Character, string> = { shooter: '射手鸭', warrior: '战士鸭', mage: '法师鸭' };
 @ccclass('GoDuck')
@@ -9,6 +9,7 @@ export class GoDuck extends Component {
     private save: SaveState = loadSave(sys.localStorage.getItem(SAVE_KEY));
     private selected: Character = 'shooter';
     private newUnlocks: Character[] = [];
+    private menuSig: string | undefined;
     // Settlement performance: -1 idle, 0..2 animation playing, >=2 results panel. Tap or any key skips.
     private settleFor = -1;
     private pen: Graphics;
@@ -258,6 +259,14 @@ export class GoDuck extends Component {
     private writeSave() {
         persist(this.save, (key, value) => sys.localStorage.setItem(key, value));
     }
+    private attemptLine() {
+        const atk = regenAttempts(this.save, Date.now());
+        if (atk.attempts >= MAX_ATTEMPTS)
+            return `开局次数 ${atk.attempts}/${MAX_ATTEMPTS} · 充足`;
+        const rest = Math.max(0, Math.ceil((REGEN_MS - (Date.now() - atk.attemptUpdatedAt)) / 1000));
+        const mm = String(Math.floor(rest / 60)).padStart(2, '0'), ss = String(rest % 60).padStart(2, '0');
+        return `开局次数 ${atk.attempts}/${MAX_ATTEMPTS} · 下 1 次 ${mm}:${ss}`;
+    }
     private menus() {
         const g = this.game;
         const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
@@ -305,15 +314,35 @@ export class GoDuck extends Component {
                     this.label(this.panel, `${CHARACTER_NAMES[c]}\n🔒 未解锁`, 16, x, -85, 118);
             });
         }
-        this.button(this.panel, g.phase === 'paused' ? '继续逃跑' : g.phase === 'menu' ? '开始逃跑' : '再来一局', 0, -5, 340, () => {
-            this.enableAudio();
-            if (g.phase === 'paused')
-                g.phase = 'playing';
-            else {
-                g.character = this.selected;
-                g.start();
-            }
-        });
+        // One run costs one attempt, deducted when the run actually starts (not when resuming from pause).
+        const atk = regenAttempts(this.save, Date.now());
+        const canStart = atk.attempts > 0;
+        const startLabel = g.phase === 'paused' ? '继续逃跑' : g.phase === 'menu' ? `开始逃跑（余 ${atk.attempts} 次）` : `再来一局（余 ${atk.attempts} 次）`;
+        if (g.phase !== 'paused' && !canStart) {
+            this.label(this.panel, `开局次数不足（0/${MAX_ATTEMPTS}）· 恢复中`, 26, 0, -5, 340);
+            this.button(this.panel, `看广告补 ${AD_BONUS} 次（占位）`, 0, -55, 340, () => {
+                this.save = grantAdBonus(this.save, Date.now());
+                this.writeSave();
+                this.state = '';
+            });
+        }
+        else
+            this.button(this.panel, startLabel, 0, -5, 340, () => {
+                this.enableAudio();
+                if (g.phase === 'paused')
+                    g.phase = 'playing';
+                else {
+                    const spent = spendAttempt(this.save, Date.now());
+                    if (!spent.ok) {
+                        this.state = '';
+                        return;
+                    }
+                    this.save = spent.save;
+                    this.writeSave();
+                    g.character = this.selected;
+                    g.start();
+                }
+            });
         this.label(this.panel, g.phase === 'menu' ? '单指拖动 / WASD 移动 · 自动攻击\n25 秒选分支 · 70 秒选辅助 · 120 秒进化\n射手首胜解锁战士 · 战士首胜解锁法师' : `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}`, 21, 0, -145, this.w - 40);
     }
     update(dt: number) {
@@ -336,13 +365,21 @@ export class GoDuck extends Component {
         else
             this.settleFor = -1;
         const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
+        // Rebuild the menu when regen changes start availability while the player sits on a panel.
+        if (g.phase !== 'playing' && g.phase !== 'paused') {
+            const atk = regenAttempts(this.save, Date.now());
+            const sig = atk.attempts >= MAX_ATTEMPTS ? 'full' : String(atk.attempts);
+            if (this.menuSig !== undefined && this.menuSig !== sig)
+                this.state = '';
+            this.menuSig = sig;
+        }
         this.draw();
         this.menus();
         this.hud.string = `生命 ${'♥'.repeat(g.hp)}${'·'.repeat(Math.max(0, 5 - g.hp))}   ${Math.ceil((g.boss ? g.limit : g.duration) - g.time)} 秒\nLv.${g.level}   击退 ${g.kills}   经验 ${g.level === 12 ? 'MAX' : `${g.xp}/${g.nextXp}`}`;
         this.note.string = `${this.weaponName()}  /  ${this.auxiliaryName()}${this.muted ? ' · 静音' : ''}`;
         this.banner.string = settling ? (g.phase === 'won' ? this.rescueText() : `被做成${this.dishName(g.deathCause)}…`) : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
         const c = g.choice;
-        this.progress.string = settling ? '点按任意处跳过' : g.phase !== 'playing' ? '' : c
+        this.progress.string = settling ? '点按任意处跳过' : g.phase !== 'playing' ? this.attemptLine() : c
             ? `走近装备二选一 · ${Math.max(0, Math.ceil(c.due + 15 - g.time))} 秒后自动选${c.kind === 'branch' ? (g.character === 'warrior' ? '宽斩' : g.character === 'mage' ? '爆裂' : '长线') : '泡泡圈'}`
             : g.boss ? `击败巨型捕鸭夹！${Math.max(0, Math.ceil(g.limit - g.time))} 秒内突围`
                 : g.time < 25 ? `捡谷粒自动升级 · ${Math.ceil(25 - g.time)} 秒后掉落武器分支`

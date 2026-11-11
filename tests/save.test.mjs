@@ -56,7 +56,7 @@ test('corrupt or foreign-version saves fall back to defaults without crashing',(
   const s=loadSave(raw);
   assert.deepEqual(s.unlocked,['shooter'],String(raw).slice(0,20));
   assert.equal(s.current,'shooter');
-  assert.equal(s.version,1);
+  assert.equal(s.version,2);
  }
 });
 
