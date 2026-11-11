@@ -1,27 +1,30 @@
-# 本机工具与接入清单
+# 工具接入与跨设备 TODO
 
-记录日期：2026-11-11（北京时间）。这是当前设备的接续说明，不是所有设备均已具备的环境。
+记录日期：2026-11-11（北京时间）。用户最新决定：本机暂不安装/接入 PixelLab，回另一台电脑再完成；本文件保留接续步骤。
 
-## PixelLab：MCP 已注册，账户认证待完成
+## PixelLab：本机不接入，另一台电脑待配置
 
 - PixelLab 是在线服务，网页编辑器无需安装桌面软件。
 - 官方 MCP 地址：`https://api.pixellab.ai/mcp`。
-- 本机 Codex CLI 0.146.0 支持原生 Streamable HTTP，因此直接连接，不需要 npm 桥接包。
-- 已执行 `codex mcp add pixellab --url https://api.pixellab.ai/mcp`，写入本机 `~/.codex/config.toml`；原有配置已保留，修改前备份在同目录，未入 Git。
-- 已核对 `codex mcp get pixellab --json`：条目启用、HTTP URL 正确。
-- 已实际验证初始化握手成功，服务版本 0.2.0，工具目录可读取（本次返回 137 个工具）。
-- 未携带账户 Token 调用只读 `get_balance`，明确返回缺少 Authorization；**不等同于已认证或可生成素材**。
-- 本机未发现已有 PixelLab Token，浏览器尚未登录，已打开官方登录页供用户接续。未生成、购买或订阅。
+- 此前本机临时注册并验证过服务握手和目录；用户改为另一台电脑操作后，已移除刚添加的 `pixellab` MCP 条目，保留其他 Codex 配置。
+- 已关闭为接入创建的登录页，不再等待用户在本机登录；未存储 Token、生成素材、购买或订阅。
+- 历史验证记录见 [接入会话](archive/2026-11-11-pixellab-setup-approved-direction-session.md)，不代表另一台电脑已接通。
 
-### 完成接入 TODO
+### 在另一台电脑完成接入 TODO
 
+- [ ] 拉取 `main` 最新文档，检查目标电脑现有工具和配置，不直接复制本机 Codex 配置。
+- [ ] 用 `codex --version`、`codex mcp add --help` 核对目标客户端支持；支持原生 HTTP 时执行下方命令，无须 npm 桥接。
 - [ ] 在 [PixelLab](https://www.pixellab.ai/signin) 登录，确认账号的 MCP/API 权限、订阅和余额。
-- [ ] 从 [官方 MCP 页面](https://www.pixellab.ai/mcp) / 账户页面取得账户 Token，在本机完成认证配置；不要发到聊天、写入项目文档或提交 Git。
-- [ ] 可为本机 HTTP MCP 配置 `Authorization` Bearer 头；也可使用 Codex 的 `bearer_token_env_var` 引用本机环境变量。环境变量必须在启动 Codex 的进程中可见，单独终端 export 不代表已运行的桌面应用能读取。
-- [ ] 重新加载 MCP 或重启客户端，确认本次聊天可以发现 PixelLab 工具。
+- [ ] 从 [官方 MCP 页面](https://www.pixellab.ai/mcp) / 账户页面取得账户 Token，在目标电脑完成认证配置；不要发到聊天、写入项目文档或提交 Git。
+- [ ] 为目标电脑的 HTTP MCP 配置 `Authorization` Bearer 头，或使用 `bearer_token_env_var` 引用该电脑的环境变量。环境变量必须在启动 Codex 的进程中可见，单独终端 export 不代表已运行的桌面应用能读取。
+- [ ] 重新加载 MCP 或重启客户端，确认目标设备上的聊天可以发现 PixelLab 工具。
 - [ ] 用 `get_balance` 做只读认证检查，之后先生成一只鸡的小样，验证风格和帧间一致性，再扩展素材。
 
-本机配置可保护为仅本人可读；不得把真实认证头复制进下面的示例或仓库。
+```bash
+codex mcp add pixellab --url https://api.pixellab.ai/mcp
+```
+
+该命令只注册服务器，不包含账户认证。配置可保护为仅本人可读；不得把真实认证头复制进下面的示例或仓库。
 
 无密钥的配置结构示例（不是已配置认证的证明）：
 
@@ -31,7 +34,7 @@ url = "https://api.pixellab.ai/mcp"
 bearer_token_env_var = "PIXELLAB_API_KEY"
 ```
 
-当前条目只注册 URL，尚未加入这个环境变量引用，因为本机还没有相应 Token。
+本机目前没有 PixelLab MCP 条目；以上仅供目标电脑接续使用。
 
 ## Cocos：本机尚未安装，按用户要求列为 TODO
 
