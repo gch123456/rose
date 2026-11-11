@@ -18,7 +18,7 @@
 - [ ] 从 [官方 MCP 页面](https://www.pixellab.ai/mcp) / 账户页面取得账户 Token，在目标电脑完成认证配置；不要发到聊天、写入项目文档或提交 Git。
 - [ ] 为目标电脑的 HTTP MCP 配置 `Authorization` Bearer 头，或使用 `bearer_token_env_var` 引用该电脑的环境变量。环境变量必须在启动 Codex 的进程中可见，单独终端 export 不代表已运行的桌面应用能读取。
 - [ ] 重新加载 MCP 或重启客户端，确认目标设备上的聊天可以发现 PixelLab 工具。
-- [ ] 用 `get_balance` 做只读认证检查，之后先生成一只鸡的小样，验证风格和帧间一致性，再扩展素材。
+- [ ] 用 `get_balance` 做只读认证检查，之后按最新自救/全鸭主题先生成一只职业鸭的小样，验证风格和帧间一致性，再扩展素材。
 
 ```bash
 codex mcp add pixellab --url https://api.pixellab.ai/mcp

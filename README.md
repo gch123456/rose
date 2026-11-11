@@ -1,7 +1,7 @@
-# GoDuck · 家园保卫战
+# GoDuck · 鸭子自救
 
-鸡鸭鹅主角的三分钟生存游戏原型，使用 Cocos Creator 3.8.8 + TypeScript。
-玩家只负责移动，武器自动攻击；拾取谷物升级，搭配装备、开箱进化，最终击败首领。
+竖屏单手生存割草游戏，使用 Cocos Creator 3.8.8 + TypeScript。最新剧情方向：不同职业的鸭子自救，逃离被怪物变成鸭货的命运；通关解锁新角色，失败变成熟食。
+当前代码仍是鸡/鸭/鹅与农场占位场景的旧原型，尚未迁移剧情、全鸭职业或失败动画。玩家只负责移动，武器自动攻击；当前仍有暂停三选一，连续成长方案待实现。
 
 ## 开始试玩
 
@@ -23,6 +23,7 @@
 - [跨设备同步与会话记录](docs/SYNC.md)
 - [本机工具与 Cocos 安装 TODO](docs/TOOLS.md)
 - [当前设计、数值与边界](docs/DESIGN.md)
+- [最新鸭子自救主题](docs/superpowers/specs/2026-11-11-duck-escape-theme-design.md)
 - [实现结构与修改指引](docs/DEVELOPMENT.md)
 - [最新接续与同步约定](docs/archive/2026-11-11-repository-sync-session.md)
 - [聊天、操作与验证归档](docs/archive/2026-11-10-session.md)
