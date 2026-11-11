@@ -1,6 +1,6 @@
 # 当前状态与接续入口
 
-更新日期：2026-11-11（北京时间）。
+更新日期：2026-11-12（北京时间）。
 
 ## 先读这些
 
@@ -27,6 +27,10 @@
 - [不停顿成长、像素风与基础音画建议](archive/2026-11-11-continuous-play-pixel-audio-session.md)
 - [制作阶段与美术介入咨询](archive/2026-11-11-production-stage-art-session.md)
 - [克隆与同步约定](archive/2026-11-11-repository-sync-session.md)
+
+## 最新同步核查（2026-11-12）
+
+fetch全部远程后，main与origin/main同为4236b27，已包含Boss、职业解锁/存档、结算演出和开局次数的6个后续提交，无待合入功能分支。master为已包含旧基线；本地归档分支虽独立历史，但文件树与旧master相同，不需强行合并。最新68项测试通过、Creator类型0错误。README/AGENTS中的B阶段旧描述已按实际校正；.workbuddy未跟踪目录保留未动。见[本轮核查](archive/2026-11-12-git-integration-audit-session.md)。
 
 ## 最新接入：射手鸭八方向行走（2026-11-11）
 
