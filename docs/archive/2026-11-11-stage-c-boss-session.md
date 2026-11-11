@@ -37,4 +37,4 @@
 
 本记录与 STATUS / ROADMAP / DESIGN / CHANGELOG 同步更新；只暂存本任务明确修改的文件（11 个，含新增 3 个），提交 `16b08dd`。
 
-**同步状态：本地已提交、推送受阻。** 终端 `git push` 因 HTTPS 无认证失败（`could not read Username`），本机 `gh` 未安装、osxkeychain 无 github.com 凭据、WorkBuddy 未连接 GitHub 连接器（推荐卡片未获选择）。提交保留在本地 `main`，待用户提供认证（GitHub 连接器、gh CLI 或本机 Git 凭据）后快进推送；在同步成功前不视为已备份，另一设备拉取不到本次内容。
+**同步状态：已推送远程。** 终端 HTTPS `git push` 起初因无认证失败（本机无 `gh`、钥匙串无凭据、GitHub 连接器按需安装被平台私有网络限制拒绝），改走 SSH：生成 ed25519 密钥（私钥仅本机、已入钥匙串），用户在 GitHub 添加公钥后认证成功（识别为 `gch123456`），远程地址切换为 `git@github.com:gch123456/rose.git`，`e21da72..2294c01` 已快进推送至 `main`，本地与远程一致。
