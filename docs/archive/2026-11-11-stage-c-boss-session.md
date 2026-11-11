@@ -35,4 +35,6 @@
 
 ## 归档与同步
 
-本记录与 STATUS / ROADMAP / DESIGN / CHANGELOG 同步更新；只暂存本任务明确修改的文件；提交前检查 `git diff --cached` 并保持快进推送 `main`。
+本记录与 STATUS / ROADMAP / DESIGN / CHANGELOG 同步更新；只暂存本任务明确修改的文件（11 个，含新增 3 个），提交 `16b08dd`。
+
+**同步状态：本地已提交、推送受阻。** 终端 `git push` 因 HTTPS 无认证失败（`could not read Username`），本机 `gh` 未安装、osxkeychain 无 github.com 凭据、WorkBuddy 未连接 GitHub 连接器（推荐卡片未获选择）。提交保留在本地 `main`，待用户提供认证（GitHub 连接器、gh CLI 或本机 Git 凭据）后快进推送；在同步成功前不视为已备份，另一设备拉取不到本次内容。
