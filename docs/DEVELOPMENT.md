@@ -35,3 +35,6 @@
 
 Git 同步：换电脑前提交 / 推送；另一台先拉取，执行 `git submodule update --init --recursive`，再打开 Creator。
 不要同时在两个终端修改同一个场景后直接覆盖，先合并代码并在编辑器中检查引用。
+
+完整的交替/并行分支流程见 [SYNC.md](SYNC.md)。每次接手先读 [STATUS.md](STATUS.md) 与根目录 [AGENTS.md](../AGENTS.md)，每次有新决定或改动时新增会话归档并更新状态，验证后提交同步。
+Superpowers 在每台机器分别安装/启用；设计和实施计划保存到仓库 `docs/superpowers/` 对应目录，实际创建任务时再新增。Git 不会同步本机的技能安装或聊天上下文。

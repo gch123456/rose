@@ -18,8 +18,12 @@
 
 ## 文档入口
 
+- [当前状态与下一步](docs/STATUS.md)
+- [AI 与开发者协作规则](AGENTS.md)
+- [跨设备同步与会话记录](docs/SYNC.md)
 - [当前设计、数值与边界](docs/DESIGN.md)
 - [实现结构与修改指引](docs/DEVELOPMENT.md)
+- [最新接续与同步约定](docs/archive/2026-11-11-repository-sync-session.md)
 - [聊天、操作与验证归档](docs/archive/2026-11-10-session.md)
 - [用户提供的前序聊天原文](docs/archive/2026-11-10-imported-chat.txt)
 - [后续需求与已知问题](docs/ROADMAP.md)
@@ -27,7 +31,8 @@
 
 ## 开发协作
 
-每次改动同步更新设计或后续清单，在更新记录写清改了什么及如何验证，再提交推送。
-其他电脑先拉取最新提交、初始化子模块，再用 Creator 打开项目。编辑器需要在本机运行；Git 同步文件，不连接远程编辑器。
+每次有新决定或改动，更新状态、相关设计/待办与独立会话记录，写明验证结果，再提交同步。用户已授权普通任务完成后的提交与推送。
+本项目以 `main` 为协作基线；首次显式使用 `git clone --branch main --recurse-submodules https://github.com/gch123456/rose.git`，因为远程默认分支仍是 `master`。
+其他电脑先在干净工作区拉取最新提交、初始化子模块，再用 Creator 打开项目；同时开发使用不同分支，详见 [同步指引](docs/SYNC.md)。编辑器需要在本机运行；Git 同步文件，不连接远程编辑器。
 
 Funplay Cocos MCP 以 Git 子模块固定版本，遵循其 MIT 许可。本机 MCP 客户端配置不入库，请在插件面板重新配置；不要直接沿用另一台电脑的项目 URL。
