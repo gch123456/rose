@@ -438,7 +438,7 @@
       "b": 212,
       "a": 255
     },
-    "_string": "鸭命要紧 · 射手战斗小样 A",
+    "_string": "鸭命要紧 · 成长与装备小样 B",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 32,
@@ -570,7 +570,7 @@
       "b": 212,
       "a": 255
     },
-    "_string": "90 秒实验 · 点击顶部 ▶ 在浏览器试玩",
+    "_string": "150 秒实验 · 点击顶部 ▶ 试玩",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -702,7 +702,7 @@
       "b": 212,
       "a": 255
     },
-    "_string": "移动躲追捕 · 谷粒弹自动穿透 · 红线预警请侧移",
+    "_string": "捡谷粒升级 · 走近装备二选一 · 120 秒进化",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,

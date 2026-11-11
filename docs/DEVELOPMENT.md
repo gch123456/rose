@@ -4,21 +4,21 @@
 
 | 文件 | 用途 / 常见修改 |
 | --- | --- |
-| `assets/scripts/EscapeGame.ts` | 当前阶段 A 的独立规则：弹道、刷怪、夹子状态机、生命、掉落、90 秒结束 |
+| `assets/scripts/EscapeGame.ts` | 当前阶段 B 的独立规则：弹道、刷怪、夹子状态机、生命、掉落、经验/装备/群伤/进化、150 秒结束 |
 | `assets/scripts/Game.ts` | 保留的旧原型规则；装备、经验、进化、Boss，不再用于默认入口 |
 | `assets/scripts/GoDuck.ts` | 当前战斗绘制、实验菜单、键盘 / 浮动摇杆输入、暂停、声音与 HUD |
 | `assets/scripts/EditorHomePreview.ts` | 在编辑模式绘制静态场景；游戏运行时由 GoDuck 隐藏 |
 | `assets/Home.scene` | 已保存 Canvas / UI Camera / GoDuck / EditorPreview 及组件绑定 |
-| `tests/escape.test.mjs` / `tests/game.test.mjs` | 当前阶段 A 与旧规则回归检查；用 npm test 一并运行 |
+| `tests/growth.test.mjs` / `tests/escape.test.mjs` / `tests/game.test.mjs` | 当前阶段 B 与旧规则回归检查；用 npm test 一并运行 |
 | `settings/` | Creator 项目设置 |
 | `.agents/skills/` | 已有 Cocos 操作指引，供后续 AI 协作参考 |
 
 ## 常见需求改哪里
 
-- 调阶段 A 敌人、刷怪节奏与 90 秒时长：`EscapeGame.wave`、`EscapeGame.tick`；同步实验卡与回归测试。
+- 调阶段 B 敌人、刷怪节奏与 150 秒时长：`EscapeGame.wave`、`EscapeGame.tick`；同步实验卡与回归测试。
 - 调基础谷粒弹、穿透、生命及掉落：`EscapeGame.tick`、`EscapeGame.hit`。
 - 改 UI、轮廓、预警、合成音：`GoDuck.menus`、`GoDuck.draw`、`GoDuck.sound`；编辑器静态预览另见 `EditorHomePreview`。
-- 成长二选一、进化、Boss 与职业解锁按 B–D 逐步接入当前模型，不直接把旧 Game 的 3＋3 和配方视为新规则。
+- 成长见 `EscapeGame.experience`、装备见 `updateChoice` / `resolveChoice`、群伤见 `attacks`；Boss 与职业解锁按 C/D 逐步接入当前模型，不直接把旧 Game 的 3＋3 和配方视为新规则。
 - 当前程序图形与声音为反馈占位；正式像素资产、鸭货结算动画尚未接入。
 
 ## Cocos 编辑注意
