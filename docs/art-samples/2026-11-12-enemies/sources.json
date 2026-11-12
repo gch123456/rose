@@ -1,0 +1,34 @@
+{
+  "provider": "PixelLab",
+  "tool": "create_image_pixen",
+  "size": [
+    32,
+    32
+  ],
+  "transparent": true,
+  "generations_total": 4,
+  "assets": {
+    "glove": {
+      "job_id": "4bc83ed1-0620-435a-b426-f0340ec357c6",
+      "seed": 12112026,
+      "sha256": "c667e152a608d1d469d34bd82cffd349325006a4c21df907c876426db10cbaf4"
+    },
+    "clip": {
+      "job_id": "0e3d584b-85b8-4978-8763-0eae4594c201",
+      "seed": 12112027,
+      "sha256": "76ee4bdd4f8b9b1301e393248d635e97378a4fb72fd2d4cf6fd0e8865945b96c"
+    },
+    "lid": {
+      "job_id": "b49c8735-761f-4afc-8cc6-b4c125c30b6d",
+      "seed": 12112029,
+      "sha256": "0321d269c704e303a344aabd2c00b95675e86508cdab16be5af91f1ca70ddc66"
+    }
+  },
+  "rejected": [
+    {
+      "kind": "lid",
+      "job_id": "0ccb3dd3-ae06-49cd-a7e8-d7ce807b07eb",
+      "reason": "duck body appeared under lid; silhouette conflicts with hero"
+    }
+  ]
+}

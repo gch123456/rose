@@ -8,7 +8,8 @@
 - [当前实现与设计基线](DESIGN.md)
 - [后续清单](ROADMAP.md)
 - [跨设备同步](SYNC.md)
-- [最新会话：开局次数系统](archive/2026-11-11-attempts-system-session.md)
+- [最新会话：敌人像素接入](archive/2026-11-12-enemy-pixels-session.md)
+- [开局次数系统](archive/2026-11-11-attempts-system-session.md)
 - [上一会话：结算演出（鸭货包装/突围解救）](archive/2026-11-11-settlement-performance-session.md)
 - [阶段 D 归档](archive/2026-11-11-stage-d-characters-save-session.md)
 - [阶段 D 实施计划](superpowers/plans/2026-11-11-stage-d-characters-save-plan.md)
@@ -27,6 +28,12 @@
 - [不停顿成长、像素风与基础音画建议](archive/2026-11-11-continuous-play-pixel-audio-session.md)
 - [制作阶段与美术介入咨询](archive/2026-11-11-production-stage-art-session.md)
 - [克隆与同步约定](archive/2026-11-11-repository-sync-session.md)
+
+## 最新素材接入：三类敌人像素图（2026-11-12）
+
+手套/夹子/锅盖最终三张32×32透明静态图已接入GoDuck，复用可见Sprite（最多160），缺图回退。夹子校准朝向，原预警线/圆保留，战斗规则与存档不变。本批含一次锅盖重做共4次生成。68项测试通过、类型0错误，网页观察约80秒混合怪群/升级/装备，浏览器无错误；真机/密度性能和所有预警可读性尚待验证。
+
+见[素材预览与来源](art-samples/2026-11-12-enemies/README.md)、[本轮归档](archive/2026-11-12-enemy-pixels-session.md)。Boss、背景、特效仍为程序图形；下文敌人占位表述为历史状态。
 
 ## 最新同步核查（2026-11-12）
 

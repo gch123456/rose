@@ -38,3 +38,7 @@ Git 同步：换电脑前提交 / 推送；另一台先拉取，执行 `git subm
 
 完整的交替/并行分支流程见 [SYNC.md](SYNC.md)。每次接手先读 [STATUS.md](STATUS.md) 与根目录 [AGENTS.md](../AGENTS.md)，每次有新决定或改动时新增会话归档并更新状态，验证后提交同步。
 Superpowers 在每台机器分别安装/启用；设计和实施计划保存到仓库 `docs/superpowers/` 对应目录，实际创建任务时再新增。Git 不会同步本机的技能安装或聊天上下文。
+
+## 敌人像素资源
+
+assets/resources/enemies保存glove/clip/lid三张原始PNG及Creator meta。GoDuck.loadEnemies/updateEnemies负责最近邻纹理与最多160个复用Sprite；draw保留危险提示与缺图回退。修改敌人素材不应顺带改规则/存档，静态资源方向偏移要与预警方向一起验证。

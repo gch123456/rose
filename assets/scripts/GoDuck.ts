@@ -13,6 +13,9 @@ export class GoDuck extends Component {
     // Settlement performance: -1 idle, 0..2 animation playing, >=2 results panel. Tap or any key skips.
     private settleFor = -1;
     private pen: Graphics;
+    private enemyRoot: Node;
+    private enemyFrames = new Map<string, SpriteFrame>();
+    private enemySprites: Sprite[] = [];
     private duckSprite: Sprite;
     private duckFrames = new Map<string, SpriteFrame>();
     private duckManifest: { idle: Record<string, string>; walk: Record<string, string[]> };
@@ -45,6 +48,7 @@ export class GoDuck extends Component {
         profiler.hideStats();
         this.pen = this.node.addComponent(Graphics);
         this.selected = this.save.current;
+        this.loadEnemies();
         this.loadDuck();
         this.hud = this.label(this.node, '', 24, 0, 0, 620);
         this.note = this.label(this.node, '', 20, 0, 0, 620);
@@ -99,6 +103,44 @@ export class GoDuck extends Component {
         this.pauseButton.setPosition(this.w / 2 - 66, this.h / 2 - 174);
         this.audioButton.setPosition(-this.w / 2 + 66, this.h / 2 - 174);
         this.state = '';
+    }
+    private loadEnemies() {
+        this.enemyRoot = new Node('PixelEnemies'); this.enemyRoot.layer = this.node.layer;
+        this.node.addChild(this.enemyRoot);
+        for (const kind of ['glove', 'clip', 'lid']) {
+            resources.load('enemies/' + kind + '/texture', Texture2D, (error, texture) => {
+                if (!isValid(this)) return;
+                if (error) { console.warn('Enemy texture could not load: ' + kind); return; }
+                texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
+                const frame = new SpriteFrame(); frame.texture = texture;
+                this.enemyFrames.set(kind, frame);
+            });
+        }
+    }
+    private updateEnemies() {
+        const g = this.game;
+        this.enemyRoot.active = g.phase === 'playing';
+        if (!this.enemyRoot.active) return;
+        let count = 0;
+        for (const enemy of g.enemies) {
+            const x = enemy.x - g.x, y = enemy.y - g.y, frame = this.enemyFrames.get(enemy.kind);
+            if (!frame || enemy.hp <= 0 || Math.abs(x) > this.w / 2 + 48 || Math.abs(y) > this.h / 2 + 48) continue;
+            let sprite = this.enemySprites[count];
+            if (!sprite) {
+                if (count >= 160) break;
+                const n = new Node('Enemy'); n.layer = this.node.layer; this.enemyRoot.addChild(n);
+                sprite = n.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+                this.enemySprites.push(sprite);
+            }
+            sprite.node.active = true; sprite.spriteFrame = frame;
+            const size = enemy.kind === 'lid' ? 48 : 36;
+            sprite.node.getComponent(UITransform).setContentSize(size, size);
+            sprite.node.setPosition(x, y);
+            const locked = enemy.state === 'windup' || enemy.state === 'dash';
+            sprite.node.angle = enemy.kind === 'clip' ? Math.atan2(locked ? enemy.dy : -y, locked ? enemy.dx : -x) * 180 / Math.PI + 135 : 0;
+            count++;
+        }
+        for (let i = count; i < this.enemySprites.length; i++) this.enemySprites[i].node.active = false;
     }
     private loadDuck() {
         const n = new Node('PixelDuck'); n.layer = this.node.layer; this.node.addChild(n);
@@ -354,6 +396,7 @@ export class GoDuck extends Component {
         const g = this.game;
         this.game.tick(dt, this.stick.x + Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT)), this.stick.y + Number(this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) - Number(this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN)));
         this.updateDuck(dt);
+        this.updateEnemies();
         this.sound(g.events);
         g.events = [];
         if (g.phase === 'won' || g.phase === 'lost') {
@@ -496,6 +539,7 @@ export class GoDuck extends Component {
                 p.lineTo(x + e.dx * 160, y + e.dy * 160);
                 p.stroke();
             }
+            if (!this.enemyFrames.has(e.kind)) {
             p.fillColor = new Color(e.kind === 'clip' ? '#dd8596' : '#b6c5c3');
             if (e.kind === 'lid') {
                 this.circle(x, y, 18, '#8096ad');
@@ -524,6 +568,7 @@ export class GoDuck extends Component {
                     p.roundRect(x - 11 + i * 8, y + 5, 6, 17, 3);
                     p.fill();
                 }
+            }
             }
             if (e.visibleFor < .7) {
                 p.strokeColor = new Color('#ffd578');
