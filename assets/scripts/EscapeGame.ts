@@ -64,6 +64,20 @@ export interface GameEffect {
     kind: string;
     angle?: number;
 }
+// ── 传送阵救援 ──────────────────────────────────────────────
+// 待救小鸭是拾取物而非护送对象：走过去即经出生点传送阵撤离，
+// 不改变「移动输入＋自动攻击」的核心循环，也不引入护送血条。
+export const RESCUE_PICKUP_RADIUS = 55;
+export const RESCUE_BATCH = 2;
+export const RESCUE_INTERVAL = 9;
+export const RESCUE_MAX_ACTIVE = 8;
+export const RESCUE_OPENING_COUNT = 3;
+export const WIN_RESCUE_BONUS = 12;
+export interface StrayDuck {
+    x: number;
+    y: number;
+    bob: number;
+}
 export class EscapeGame {
     readonly duration = 150;
     readonly bossAt = 150;
@@ -76,6 +90,9 @@ export class EscapeGame {
     xp = 0;
     kills = 0;
     score = 0;
+    strays: StrayDuck[] = [];
+    rescued = 0;
+    rescueBonus = 0;
     x = 0;
     y = 0;
     branch: 'base' | BranchKey = 'base';
@@ -113,6 +130,7 @@ export class EscapeGame {
     noticeFor = 0;
     private serial = 0;
     private spawnAt = 1;
+    private rescueAt = RESCUE_INTERVAL;
     private clipAt = 30;
     private lidAt = 55;
     private fire = 0;
@@ -123,6 +141,9 @@ export class EscapeGame {
     random: () => number;
     constructor(random: () => number = Math.random) {
         this.random = random;
+    }
+    get totalRescued() {
+        return this.rescued + this.rescueBonus;
     }
     get nextXp() {
         return 10 + 4 * (this.level - 1);
@@ -186,6 +207,25 @@ export class EscapeGame {
         this.move = { x: 0, y: 1 };
         this.facing = { x: 0, y: 1 };
         this.foodThresholds = [45, 100];
+        this.strays = [];
+        this.rescued = 0;
+        this.rescueBonus = 0;
+        this.rescueAt = RESCUE_INTERVAL;
+        this.spawnStrays(RESCUE_OPENING_COUNT, true);
+    }
+    // Spawn stray ducks around the player (or around the portal at run start).
+    // They stay inside the arena and are capped so they never pile up.
+    private spawnStrays(count: number, nearPortal = false) {
+        const cx = nearPortal ? 0 : this.x, cy = nearPortal ? 0 : this.y;
+        for (let i = 0; i < count && this.strays.length < RESCUE_MAX_ACTIVE; i++) {
+            const a = this.random() * Math.PI * 2;
+            const r = nearPortal ? 95 + this.random() * 90 : 170 + this.random() * 190;
+            this.strays.push({
+                x: Math.max(-820, Math.min(820, cx + Math.cos(a) * r)),
+                y: Math.max(-820, Math.min(820, cy + Math.sin(a) * r)),
+                bob: this.random() * Math.PI * 2
+            });
+        }
     }
     private announce(message: string, event: string) {
         this.notice = message;
@@ -726,6 +766,11 @@ export class EscapeGame {
             this.wave();
             this.spawnAt += 1 / (this.time < 20 ? 2 : this.time < 50 ? 3 : this.time < 90 ? 4 : this.time < 120 ? 5 : 6);
         }
+        // Boss phase stops new arrivals; strays already on the field remain collectible.
+        if (this.time + 1e-8 >= this.rescueAt && this.time < this.bossAt) {
+            this.spawnStrays(RESCUE_BATCH);
+            this.rescueAt += RESCUE_INTERVAL;
+        }
         this.attacks(dt);
         this.moveEnemies(dt);
         if (!this.boss && this.time >= this.bossAt) {
@@ -759,6 +804,14 @@ export class EscapeGame {
             }
             return false;
         });
+        this.strays = this.strays.filter(d => {
+            if (Math.hypot(d.x - this.x, d.y - this.y) >= RESCUE_PICKUP_RADIUS)
+                return true;
+            this.rescued++;
+            this.events.push('rescue');
+            this.effect(d.x, d.y, 72, 'rescue', .5);
+            return false;
+        });
         this.effects = this.effects.filter(e => (e.life -= dt) > 0);
         // Judgement order: a lethal player hit wins over the boss dying; victory beats the countdown.
         if (this.hp <= 0) {
@@ -768,6 +821,7 @@ export class EscapeGame {
         }
         else if (this.boss && this.boss.hp <= 0) {
             this.phase = 'won';
+            this.rescueBonus = WIN_RESCUE_BONUS;
             this.events.push('end');
         }
         else if (this.time >= this.limit) {

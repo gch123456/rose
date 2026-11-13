@@ -27,6 +27,7 @@ const PAL = {
     floorLine: '#7186A8',
     danger: '#FF6F80',
 };
+const PORTAL_INTRO = 1.35; // 开局传送阵演出时长（秒）
 const rgbOf = (h: string) => ({
     r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16),
 });
@@ -49,6 +50,13 @@ export class GoDuck extends Component {
     private menuSig: string | undefined;
     // Settlement performance: -1 idle, 0..2 animation playing, >=2 results panel. Tap or any key skips.
     private settleFor = -1;
+    // 传送阵入场演出与救鸭提示：纯表现层状态，不参与规则判定。
+    private portalIntro = 0;
+    private rescueToast = 0;
+    private toastCount = 0;
+    private toastY = 0;
+    private lastRescued = 0;
+    private toastLabel: Label;
     private pen: Graphics;
     // 渲染分层：静态氛围 / 世界地面 / 动态对象 / 精灵 / HUD 与菜单 / 文字 / 按钮。
     private bgPen: Graphics;
@@ -110,6 +118,8 @@ export class GoDuck extends Component {
         this.banner = this.label(this.node, '', 25, 0, 0, 590, { color: PAL.gold, bold: true });
         this.progress = this.label(this.node, '', 18, 0, 0, 590, { color: PAL.text });
         this.gearLabels = [0, 1].map(() => this.label(this.node, '', 19, 0, 0, 190, { color: PAL.text, bold: true }));
+        this.toastLabel = this.label(this.node, '', 22, 0, 140, 340, { color: PAL.mint, bold: true });
+        this.toastLabel.node.active = false;
         this.panel = new Node('Menus');
         this.panel.layer = this.node.layer;
         this.node.addChild(this.panel);
@@ -162,7 +172,7 @@ export class GoDuck extends Component {
         this.pauseButton.setPosition(this.w / 2 - 62 * s, this.h / 2 - 174 * s);
         this.audioButton.setPosition(-this.w / 2 + 62 * s, this.h / 2 - 174 * s);
         const fit = (l: Label, base: number) => { l.fontSize = Math.round(base * s); l.lineHeight = Math.round(base * 1.4 * s); };
-        fit(this.hud, 24); fit(this.note, 18); fit(this.banner, 25); fit(this.progress, 18);
+        fit(this.hud, 24); fit(this.note, 18); fit(this.banner, 25); fit(this.progress, 18); fit(this.toastLabel, 22);
         this.gearLabels.forEach(l => fit(l, 19));
         for (const b of [this.pauseButton, this.audioButton]) {
             const l = b.getComponentInChildren(Label);
@@ -402,13 +412,13 @@ export class GoDuck extends Component {
         const now = this.audio.currentTime;
         if (now < this.soundAt)
             return;
-        const event = ['hurt', 'evolve', 'gear', 'level', 'heal', 'end', 'warning', 'bubble', 'boss', 'kill', 'pickup', 'hit', 'shot'].find(e => events.includes(e));
+        const event = ['hurt', 'evolve', 'gear', 'level', 'heal', 'end', 'warning', 'bubble', 'boss', 'rescue', 'kill', 'pickup', 'hit', 'shot'].find(e => events.includes(e));
         if (!event)
             return;
         this.soundAt = now + .045;
         const o = this.audio.createOscillator(), gain = this.audio.createGain();
         o.type = event === 'hurt' ? 'sawtooth' : 'sine';
-        o.frequency.setValueAtTime(({ hurt: 110, evolve: 1100, gear: 820, level: 980, heal: 780, end: 220, warning: 390, bubble: 550, boss: 140, kill: 650, pickup: 950, hit: 480, shot: 300 } as any)[event], now);
+        o.frequency.setValueAtTime(({ hurt: 110, evolve: 1100, gear: 820, level: 980, heal: 780, end: 220, warning: 390, bubble: 550, boss: 140, rescue: 720, kill: 650, pickup: 950, hit: 480, shot: 300 } as any)[event], now);
         o.frequency.exponentialRampToValueAtTime(event === 'hurt' ? 60 : 180, now + .07);
         gain.gain.setValueAtTime(.025, now);
         gain.gain.exponentialRampToValueAtTime(.001, now + .09);
@@ -479,10 +489,20 @@ export class GoDuck extends Component {
                     }, { variant: 'career', h: 88 * s, selected: unlocked && this.selected === c, disabled: !unlocked });
             });
         }
-        else {
-            this.label(this.panel, g.phase === 'paused' ? '本局进度' : '本局战绩', Math.round(20 * s), 0, 130 * s, W - 60, { color: PAL.textFaint });
+        else if (g.phase === 'paused') {
+            this.label(this.panel, '本局进度', Math.round(20 * s), 0, 130 * s, W - 60, { color: PAL.textFaint });
             this.label(this.panel, `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}`,
                 Math.round(20 * s), 0, 70 * s, W - 60, { color: PAL.text });
+        }
+        else {
+            // 结算主数字：这一局有多少只鸭免于上餐桌。
+            this.label(this.panel, `${g.totalRescued} 只鸭`, Math.round(54 * s), 0, 165 * s, W - 60, { color: PAL.gold, bold: true });
+            this.label(this.panel, g.phase === 'won' ? '免于上餐桌 · 一起冲出了加工厂' : '免于上餐桌 · 你替它们争取了时间',
+                Math.round(21 * s), 0, 122 * s, W - 48, { color: PAL.textDim });
+            this.label(this.panel, `经传送阵撤离 ${g.rescued} 只${g.rescueBonus ? ` · 突围加成 ${g.rescueBonus} 只` : ''}`,
+                Math.round(18 * s), 0, 88 * s, W - 60, { color: PAL.textFaint });
+            this.label(this.panel, `Lv.${g.level} · 击退 ${g.kills} · 谷粒 ${g.score}\n${this.weaponName()} / ${this.auxiliaryName()}`,
+                Math.round(18 * s), 0, 44 * s, W - 60, { color: PAL.text });
         }
         // One run costs one attempt, deducted when the run actually starts (not when resuming from pause).
         const atk = regenAttempts(this.save, Date.now());
@@ -512,6 +532,10 @@ export class GoDuck extends Component {
                     this.writeSave();
                     g.character = this.selected;
                     g.start();
+                    // 点「开始」后先播放传送阵入场演出，玩法推进在 update 中冻结。
+                    this.portalIntro = PORTAL_INTRO;
+                    this.lastRescued = 0;
+                    this.rescueToast = 0;
                 }
             }, { variant: 'primary', h: 76 * s });
         const tip = isMenu ? '单指拖动 / WASD 移动 · 自动攻击\n25 秒选分支 · 70 秒选辅助 · 120 秒进化\n射手首胜解锁战士 · 战士首胜解锁法师'
@@ -526,11 +550,33 @@ export class GoDuck extends Component {
             this.node.setWorldPosition(pos.x, pos.y, 0);
         }
         const g = this.game;
-        this.game.tick(dt, this.stick.x + Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT)), this.stick.y + Number(this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) - Number(this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN)));
+        const mx = this.stick.x + Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
+        const my = this.stick.y + Number(this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) - Number(this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN));
+        // 入场演出期间冻结计时、刷怪与伤害，玩家看清传送阵后再正式开局。
+        if (g.phase === 'playing' && this.portalIntro > 0)
+            this.portalIntro = Math.max(0, this.portalIntro - dt);
+        else
+            this.game.tick(dt, mx, my);
         this.updateDuck(dt);
         this.updateEnemies();
         this.sound(g.events);
         g.events = [];
+        if (g.rescued !== this.lastRescued) {
+            this.toastCount = g.rescued - this.lastRescued;
+            this.lastRescued = g.rescued;
+            this.rescueToast = 1;
+        }
+        this.rescueToast = Math.max(0, this.rescueToast - dt);
+        this.toastY = (140 + (1 - this.rescueToast) * 55) * this.s;
+        this.toastLabel.node.active = this.rescueToast > 0 && g.phase === 'playing';
+        if (this.toastLabel.node.active) {
+            this.toastLabel.node.setPosition(0, this.toastY);
+            this.toastLabel.string = `+${this.toastCount} 只鸭经传送阵撤离`;
+        }
+        const introOn = g.phase === 'playing' && this.portalIntro > 0;
+        this.hud.node.active = !introOn;
+        this.note.node.active = !introOn;
+        this.progress.node.active = !introOn;
         if (g.phase === 'won' || g.phase === 'lost') {
             if (this.settleFor < 0)
                 this.settleFor = 0;
@@ -557,9 +603,11 @@ export class GoDuck extends Component {
         this.menuDuck.node.active = g.phase === 'menu' && !!this.menuDuck.spriteFrame;
         const left = Math.max(0, Math.ceil((g.boss ? g.limit : g.duration) - g.time));
         const mm = String(Math.floor(left / 60)).padStart(2, '0'), ss = String(left % 60).padStart(2, '0');
-        this.hud.string = `${mm}:${ss}    Lv.${g.level}\n击退 ${g.kills}   经验 ${g.level === 12 ? 'MAX' : `${g.xp}/${g.nextXp}`}`;
+        this.hud.string = `${mm}:${ss}   Lv.${g.level}   救出 ${g.rescued} 只\n击退 ${g.kills}   经验 ${g.level === 12 ? 'MAX' : `${g.xp}/${g.nextXp}`}`;
         this.note.string = `${this.weaponName()}  /  ${this.auxiliaryName()}${this.muted ? ' · 静音' : ''}`;
-        this.banner.string = settling ? (g.phase === 'won' ? this.rescueText() : `被做成${this.dishName(g.deathCause)}…`) : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
+        this.banner.string = g.phase === 'playing' && this.portalIntro > 0 ? '传送阵启动 · 鸭子入场'
+            : settling ? (g.phase === 'won' ? this.rescueText() : `被做成${this.dishName(g.deathCause)}… · 仍有 ${g.totalRescued} 只被你送走`)
+                : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
         const c = g.choice;
         this.progress.string = settling ? '点按任意处跳过' : g.phase !== 'playing' ? this.attemptLine() : c
             ? `走近装备二选一 · ${Math.max(0, Math.ceil(c.due + 15 - g.time))} 秒后自动选${c.kind === 'branch' ? (g.character === 'warrior' ? '宽斩' : g.character === 'mage' ? '爆裂' : '长线') : '泡泡圈'}`
@@ -674,6 +722,27 @@ export class GoDuck extends Component {
                 }
             }
         }
+        // 出生点传送阵：鸭子从这里入场，待救小鸭也从这里撤离。
+        const px = sx(0), py = sy(0), R = 62;
+        if (Math.abs(px) < this.w / 2 + R && Math.abs(py) < this.h / 2 + R) {
+            const spin = this.clock * 1.1, pulse = .55 + .45 * Math.sin(this.clock * 3);
+            this.glow(p, px, py, R * 2.2, PAL.glowCool, Math.round(30 * pulse), 5);
+            p.fillColor = this.c(PAL.ink, 170);
+            p.circle(px, py, R); p.fill();
+            p.strokeColor = this.c(PAL.mint, 175); p.lineWidth = 4;
+            p.circle(px, py, R); p.stroke();
+            p.strokeColor = this.c(PAL.gold, 120); p.lineWidth = 2.5;
+            p.circle(px, py, R * .72); p.stroke();
+            p.strokeColor = this.c(PAL.lilac, 140); p.lineWidth = 2;
+            for (let i = 0; i < 12; i++) {
+                const a = spin + i * Math.PI / 6, r0 = i % 3 === 0 ? R * .56 : R * .8;
+                p.moveTo(px + Math.cos(a) * r0, py + Math.sin(a) * r0);
+                p.lineTo(px + Math.cos(a) * R * .95, py + Math.sin(a) * R * .95);
+            }
+            p.stroke();
+            p.fillColor = this.c(PAL.mint, Math.round(45 + 35 * pulse));
+            p.circle(px, py, R * .32); p.fill();
+        }
         const limit = 850, pad = 26;
         p.strokeColor = this.c(PAL.goldDeep, 125); p.lineWidth = 4;
         for (const e of [[-limit, -limit, limit, -limit], [-limit, limit, limit, limit], [-limit, -limit, -limit, limit], [limit, -limit, limit, limit]]) {
@@ -725,6 +794,8 @@ export class GoDuck extends Component {
                 const bw2 = Math.min(w - 56 * s, Math.max(250 * s, this.banner.string.length * 27 * s));
                 this.card(p, -bw2 / 2, h / 2 - 330 * s, bw2, 60 * s, 30 * s, PAL.card, 225, PAL.gold, 120, 1.5);
             }
+            if (this.rescueToast > 0)
+                this.card(p, -150 * s, this.toastY - 23 * s, 300 * s, 46 * s, 23 * s, PAL.card, 230, PAL.mint, 165, 1.5);
             if (this.finger !== -1) {
                 const ox = this.origin.x, oy = this.origin.y;
                 p.fillColor = this.c(PAL.card, 70);
@@ -737,6 +808,8 @@ export class GoDuck extends Component {
                 p.strokeColor = this.c('#FFFFFF', 85); p.lineWidth = 2 * s;
                 p.circle(kx, ky, 21 * s); p.stroke();
             }
+            if (this.portalIntro > 0)
+                this.drawPortalIntro();
         }
         else if (settling) {
             p.fillColor = this.c(PAL.ink, 195);
@@ -777,6 +850,39 @@ export class GoDuck extends Component {
             p.circle(14 * s, 340 * s, 3 * s); p.fill();
         }
     }
+    // 开局传送阵演出：旋转符环、中心亮盘、鸭子由光中放大现身，两端柔和淡入淡出。
+    private drawPortalIntro() {
+        const p = this.framePen, s = this.s, w = this.w, h = this.h;
+        const t = 1 - this.portalIntro / PORTAL_INTRO;
+        const fade = Math.min(1, t * 5) * Math.min(1, (1 - t) * 5);
+        const R = (90 + 150 * Math.min(1, t * 1.6)) * s, spin = this.clock * 3.4;
+        p.fillColor = this.c(PAL.ink, Math.round(215 * fade));
+        p.rect(-w / 2, -h / 2, w, h); p.fill();
+        this.glow(p, 0, 0, R * 2.4, PAL.glowCool, Math.round(52 * fade), 7);
+        this.glow(p, 0, 0, R * 1.3, PAL.glowWarm, Math.round(40 * fade), 5);
+        for (let ring = 0; ring < 3; ring++) {
+            p.strokeColor = this.c([PAL.gold, PAL.mint, PAL.lilac][ring], Math.round((215 - ring * 48) * fade));
+            p.lineWidth = (5 - ring) * s;
+            p.circle(0, 0, R * (1 - ring * .24)); p.stroke();
+        }
+        p.strokeColor = this.c(PAL.text, Math.round(145 * fade)); p.lineWidth = 3 * s;
+        for (let i = 0; i < 16; i++) {
+            const a = spin + i * Math.PI / 8;
+            p.moveTo(Math.cos(a) * R * .82, Math.sin(a) * R * .82);
+            p.lineTo(Math.cos(a) * R * .97, Math.sin(a) * R * .97);
+        }
+        p.stroke();
+        p.fillColor = this.c(PAL.ink, Math.round(232 * fade));
+        p.circle(0, 0, R * .7); p.fill();
+        p.fillColor = this.c(PAL.text, Math.round(28 * fade));
+        p.circle(0, 0, R * .66); p.fill();
+        this.drawSettleDuck(0, 8 * s, Math.max(.05, Math.min(1, t * 2.2) * 1.5));
+        for (let i = 0; i < 12; i++) {
+            const a = i * Math.PI / 6 + spin * .6, r = R * (1.06 + .16 * Math.sin(this.clock * 4 + i));
+            p.fillColor = this.c(i % 2 ? PAL.gold : PAL.mint, Math.round(190 * fade));
+            p.circle(Math.cos(a) * r, Math.sin(a) * r, (3 + i % 3) * s); p.fill();
+        }
+    }
     private draw() {
         const g = this.game, p = this.pen, sx = (x: number) => x - g.x, sy = (y: number) => y - g.y;
         p.clear();
@@ -789,6 +895,22 @@ export class GoDuck extends Component {
             p.rect(x - 3, y - 8, 6, 16);
             p.rect(x - 8, y - 3, 16, 6);
             p.fill();
+        }
+        for (const d of g.strays) {
+            const x = sx(d.x), y = sy(d.y);
+            if (Math.abs(x) > this.w / 2 + 48 || Math.abs(y) > this.h / 2 + 48) continue;
+            const bob = Math.sin(this.clock * 3 + d.bob) * 4, cy = y + bob;
+            this.glow(p, x, cy, 40, PAL.mint, 20, 3);
+            p.strokeColor = this.c(PAL.mint, 150); p.lineWidth = 2.5;
+            p.circle(x, cy - 8, 21); p.stroke();
+            this.circle(x, cy - 2, 11, '#F3D58C');
+            this.circle(x + 4, cy + 3, 8, PAL.mint);
+            p.fillColor = this.c(PAL.goldDeep);
+            p.moveTo(x + 10, cy); p.lineTo(x + 21, cy - 3); p.lineTo(x + 10, cy - 6); p.close(); p.fill();
+            p.fillColor = this.c(PAL.ink);
+            p.circle(x + 5, cy + 1, 2); p.fill();
+            p.fillColor = this.c(PAL.mint, 190);
+            p.circle(x, cy + 13, 3); p.fill();
         }
         for (const o of g.choice?.options || []) {
             const x = sx(o.x), y = sy(o.y), ready = g.time - g.choice!.spawnedAt >= .8;
@@ -969,7 +1091,7 @@ export class GoDuck extends Component {
                 p.stroke();
                 continue;
             }
-            const color = f.kind === 'bubble' ? '#82dee9' : f.kind === 'evolve' ? '#93efff' : f.kind === 'slam' ? '#ff8191' : '#ffe4a5';
+            const color = f.kind === 'bubble' ? '#82dee9' : f.kind === 'evolve' ? '#93efff' : f.kind === 'slam' ? '#ff8191' : f.kind === 'rescue' ? '#8FE3D0' : '#ffe4a5';
             p.strokeColor = new Color(color);
             p.lineWidth = f.kind === 'bubble' ? 6 : 3;
             p.circle(sx(f.x), sy(f.y), f.radius * (.4 + .6 * (1 - f.life / f.duration)));
@@ -1003,8 +1125,8 @@ export class GoDuck extends Component {
         return ({ '手套怪接触': '手撕鸭', '夹子怪冲撞 / 接触': '脆皮鸭卷', '锅盖怪压盖': '铁板鸭', '锅盖怪接触': '铁板鸭', 'Boss冲撞': '包装鸭脖', 'Boss弹丸': '爆浆鸭丸', '出口被封锁': '封坛老鸭' } as Record<string, string>)[cause] || '卤鸭拼盘';
     }
     private rescueText() {
-        const target = nextUnlockTarget(this.save);
-        return target ? `解救了${CHARACTER_NAMES[target]}！` : '三只职业鸭都自由了！';
+        const target = nextUnlockTarget(this.save), n = this.game.totalRescued;
+        return target ? `解救了${CHARACTER_NAMES[target]}！· ${n} 只鸭免于上餐桌` : `三只职业鸭都自由了！· ${n} 只鸭撤离`;
     }
     private drawSettleDuck(x: number, y: number, scale: number) {
         const p = this.framePen;
