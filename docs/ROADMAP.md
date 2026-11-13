@@ -2,6 +2,19 @@
 
 已确认路线和待实现事项分开记录；未确认的新增功能仍属于建议。
 
+## 工程优化候选（2026-11-14 调研，未实施）
+
+用户指示「找 cocos 官方的素材库，找到有没有可以优化的地方」。核查结论：**收益最大的不是素材，而是引擎/渲染层**。以下均为候选，本轮只登记、未改代码、未重建产物；完整证据、授权边界与未验证项见 [本轮归档](archive/2026-11-14-cocos-official-assets-review.md)。
+
+- [ ] **P0-1 功能裁剪**：纯 2D 项目却把 3D 物理 Bullet（458K wasm）与 Spine（200K wasm）等约 **700K 未压缩体积**打进微信包（主包 5.0M 的约 14%）。官方[物理选项文档](https://docs.cocos.com/creator/3.0/manual/zh/physics/physics-item.html)说明不用物理时可取消勾选以缩包；`settings/v2/packages/engine.json` 目前只有 `__version__`，即走默认全开。改法：编辑器「项目 → 项目设置 → 功能裁剪」取消 3D 物理 / 3D / Spine，重建后对比体积并双模式回归。
+- [ ] **P0-2 动态合图**：官方[动态合图文档](https://docs.cocos.com/creator/3.8/manual/zh/advanced-topics/dynamic-atlas.html)注明小游戏与原生平台**默认禁用**；项目未写 `macro.CLEANUP_IMAGE_CACHE` / `DynamicAtlasManager`，59 张独立 `Texture2D` 是 DrawCall 主因。官方代码须写在脚本**最外层**（不能放 `onLoad`/`start`），贴图 < 512 才参与（现有 48px 精灵全满足）。代价是额外内存，须真机验证。
+- [ ] **P0-3 Label CacheMode**：约 30 个 `Label` 均未设置 `cacheMode`（默认 NONE，一个 Label 一个 DrawCall）。固定文本用 `BITMAP`、频繁变动的 HUD / 伤害数字用 `CHAR`；按 3.8.8 API 实测。
+- [ ] **P0-4 图集化**：`duck/manifest` 逐张 `resources.load` 56 帧 → 改 `SpriteAtlas` / Auto Atlas，一次加载一张纹理；另按官方建议把不需动态加载的图移出 `resources/` 以免撑大 settings 映射。
+- [ ] **P0-5 先量基线**：`GoDuck.ts` 已 `import { profiler }`，先在真机/微信开发者工具采 190 敌人时的 DrawCall 与帧率，再决定上面几项的取舍。
+- [ ] **P1 候选**：官方技术方案里的 `Creator3.6.0_2D_QuadtreeCollision`（190 敌人 × 弹幕的碰撞空间划分，需移植到纯规则层）、`Creator3.6.0_2D_Light`（若采纳沉没地牢的发光水母/水下光柱）、`Creator3.6.0_GameTimeScale`（tween 变速，与已登记的 pixelfx `act` / animista 缓动同一议题）；`Graphics` 无法合批且会打断合批，8 处每帧 `clear()` 重绘可改成分层按需重绘；音频从 `AudioContext` 换 `AudioSource` ＋预加载；微信[初始场景分包 / 分离引擎 / 纹理压缩](https://docs.cocos.com/creator/3.7/manual/zh/editor/publish/publish-wechatgame.html)（像素风慎用有损压缩）。
+- [ ] **不建议现阶段做**：Store 付费「98K 多纹理合批 3.x」（第三方、需改材质）、Spine / DragonBones、3D 光照与后处理、VideoTexture（官方明确不支持微信小游戏）、Marionette、TiledMap 寻路。
+- 触发条件：用户明确要求做性能优化或真机帧率不达标时，从 P0-1 与 P0-5 开始，落地属渲染/构建层改动，需重跑 `npm test`、重建微信竖屏产物并单独归档。
+
 ## 备选方案（未采纳 · 待触发评估）
 
 ### pixelfx · 代码绘制的像素特效库（2026-11-13 记录，本轮明确不实施）
@@ -14,6 +27,14 @@
 - 触发条件：真机帧率达标后、且用户明确要求提升打击感或替换手绘特效时再评审；**本轮只记录，不引入依赖、不改动渲染层**。
 
 ## 素材与参考资源（2026-11-13 登记）
+
+### Cocos 官方资源库与免费素材（2026-11-14 登记）
+
+- [Cocos Store](https://store.cocos.com) 是 **Cocos 官方运营的商城**，但商品由第三方上传（插件 / 源码 / 美术 / 音效 / 模板），不是官方原创美术库；免费 ≠ 无限制，授权以每个商品页版权声明与包内 LICENSE 为准（详见[提交协议](https://store-my.cocos.com/cocos-store-submission-agreement.html)与[资源提交规范](https://store.cocos.com/document/zh/developer/cocos-store-resource-standard.html)）。
+- 可补美术缺口的免费资源：[免费通用 UI 素材](https://store.cocos.com/app/detail/4354)（Kenney CC0，146 PNG）、[免费 2D 卡通 UI 素材包](https://store.cocos.com/app/detail/4301)（CamTatz CC0，188 PNG）、[平台游戏素材包](https://store.cocos.com/dashboard/detail/4285)（Kenny CC0，数百精灵＋序列帧＋瓦片地图）、[极简移动 UI 音效包](https://store.cocos.com/app/detail/9490)（20 WAV，免费免版税可商用，**禁止作为独立音效包转售分发**）。均为 3.6.x～3.8.8 适配，需核对与现有 48px 像素鸭的风格一致性。
+- 官方开源工程：[模块展示集合](https://github.com/cocos/cocos-test-projects)、[UI 展示 Demo](https://github.com/cocos/cocos-example-ui)、[实用解决方案](https://github.com/cocos/cocos-awesome-tech-solutions)、[官方示例与教程索引](https://docs.cocos.com/creator/3.8/manual/zh/cases-and-tutorials/)（含「3D 俯视角 RPG 割草游戏」教程）。工程内素材来源各异，不可直接当可商用素材复制。
+- **Store 里没有**与 0x72 DungeonTileset II 规格一致的 16×16 地牢 tileset；更对口的 CC0 资源在 OpenGameArt（`16x16 Puny Dungeon Tileset` / `Ever Rogue Tileset`），但属第三方渠道，须单独核对。上一轮 `concept-art/` 自绘的「沉没地牢」仍是零授权风险、可直接切图的方案。
+- 状态：**仅登记，未登录账号、未下载任何资源、未引入素材**。完整授权边界与合规清单见 [本轮归档](archive/2026-11-14-cocos-official-assets-review.md)。
 
 ### pixel-search · 像素精灵图语义检索（用户确认「素材图对我有帮助」）
 

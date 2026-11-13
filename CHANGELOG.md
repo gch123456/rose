@@ -1,5 +1,13 @@
 # 更新记录
 
+## 2026-11-14 · 调研 Cocos 官方资源库，登记工程优化候选（仅文档）
+
+- 用户指示「你也可以去找cocos官方的素材库，找到有没有可以优化的地方」。核查 [Cocos Store](https://store.cocos.com)、[官方示例与教程](https://docs.cocos.com/creator/3.8/manual/zh/cases-and-tutorials/)、官方 GitHub 示例仓库与性能/发布文档，并实测本项目源码与构建产物。
+- 结论：**收益最大的不是素材，而是引擎与渲染层**。微信包 5.0M 中约 **700K** 是纯 2D 项目用不到的 3D 物理 Bullet 与 Spine wasm（功能裁剪走默认全开）；微信小游戏默认禁用动态合图、项目未启用；59 张独立贴图、约 30 个未设 `cacheMode` 的 `Label`、8 处每帧 `Graphics.clear()` 是 DrawCall 主因；敌人节点已固定数组复用，`NodePool` 非首要收益点。
+- 在 [ROADMAP](docs/ROADMAP.md) 新增「工程优化候选」节（P0 功能裁剪 / 动态合图 / Label CacheMode / 图集化 / Profiler 基线，P1 四叉树碰撞、2D 光照、tween 变速、Graphics 分层、AudioSource、分包与纹理压缩），并在「素材与参考资源」节登记 4 个官方商城免费资源（Kenney / CamTatz / Kenny CC0 UI 与平台素材、20 个免版税 WAV）及其授权边界；在 [STATUS](docs/STATUS.md) 增加本轮段落。
+- **授权边界**：Cocos Store 商品由第三方上传、上传者保留所有权，「免费」不等于无限制；音效包禁止作为独立音效包转售分发；官方示例工程内素材来源各异，不可直接当可商用素材复制。Store 里未找到与 0x72 DungeonTileset II 规格一致的 16×16 地牢 tileset。
+- **本轮只登记**：未登录/下载资源、未改代码与素材、未改构建配置、未重建微信竖屏产物；纯文档变更，按协作规则不跑 `npm test`。核查证据、未验证项与下一步见 [本轮归档](docs/archive/2026-11-14-cocos-official-assets-review.md)。
+
 ## 2026-11-13 · 登记 pixel-search 像素素材来源（仅记录，未引入）
 
 - 用户指示「**pixel-search的素材图对我有帮助，请记录一下**」。核查确认指 Hugging Face Space `cfahlgren1/pixel-search`（浏览器内像素图语义检索）及其数据集 `Angais/pixel-art-atlas-1.4m`（1,409,404 张 16×16 透明底 AI 合成精灵图、6,194 主题、Parquet 约 694MB）；同名的 npm 包与安卓 App 与素材无关。

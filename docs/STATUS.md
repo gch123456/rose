@@ -1,8 +1,20 @@
 # 当前状态与接续入口
 
-更新日期：2026-11-13（北京时间）。
+更新日期：2026-11-14（北京时间）。
 
-## 本轮：取消局内选择、pixelfx 列为备选（2026-11-13，WorkBuddy 本机）— 当前状态
+## 本轮：Cocos 官方资源库调研（2026-11-14，WorkBuddy 本机）— 仅文档，玩法状态见下节
+
+用户指示：「你也可以去找cocos官方的素材库，找到有没有可以优化的地方」。按协作规则作为**调研任务**处理：**未改代码、素材、构建配置、测试与微信产物**，工作区干净。
+
+- **渠道判定**：[Cocos Store](https://store.cocos.com) 是官方运营的商城，但商品由第三方上传；官方另有开源示例工程（`cocos/cocos-test-projects`、`cocos/cocos-example-ui`、`cocos/cocos-awesome-tech-solutions`）与文档。搜索到的免费 2D 素材包基本是 Kenney / CamTatz / Kenny 的 CC0 作品经整理适配，授权以商品页声明与包内 LICENSE 为准，不能因「在官方商城」当成无条件商用。
+- **最大发现（包体）**：纯 2D 项目却把 3D 物理 Bullet（`bullet.release.wasm.wasm` 458K）与 Spine（200K）等约 **700K 未压缩体积**打进微信包（主包 5.0M 的约 14%）；`settings/v2/packages/engine.json` 与 `builder.json` 均只有 `__version__`，功能裁剪走默认全开。官方[物理选项文档](https://docs.cocos.com/creator/3.0/manual/zh/physics/physics-item.html)明确不用物理组件时可取消勾选以缩包。
+- **性能候选**：微信小游戏**默认禁用动态合图**，项目未写 `CLEANUP_IMAGE_CACHE` / `DynamicAtlasManager`；59 张独立 `Texture2D`、约 30 个未设 `cacheMode` 的 `Label`、8 处每帧 `Graphics.clear()` 重绘。`enemySprites` 已是固定数组复用（上限 190、多余 `active=false`），所以 `NodePool` **不是**首要收益点。
+- **已登记**：P0/P1 优化清单、官方免费素材清单与授权边界写入 [ROADMAP 工程优化候选](ROADMAP.md) 与 [本轮归档](archive/2026-11-14-cocos-official-assets-review.md)。
+- **验证**：按协作规则先读 `AGENTS.md`、`README.md`、`STATUS.md`、`DESIGN.md`、`ROADMAP.md` 与最新归档；`git fetch origin` 后确认 `main` = `origin/main` = `6a89508`；核查官方文档、Store 商品页、官方 GitHub 仓库，实测源码与构建产物体积。纯文档变更，按规则不跑 `npm test`、不重建微信包。
+- **未验证**：未登录/下载任何 Store 资源；未实际执行功能裁剪、未确认命令行构建对应的裁剪配置字段；无真机 Profiler 基线；动态合图、`Label.CacheMode`、图集化均未实施；官方技术方案 demo 多为 3.6.x，未验证在 3.8.8 + 微信小游戏可直接运行。
+- **下一步建议**：先做「功能裁剪」与「真机 Profiler 基线」（互不依赖、可量化），再按数据决定合图 / 图集 / Label 顺序；美术侧维持现状，除非明确要换皮到「沉没地牢」。
+
+## 玩法状态：取消局内选择、pixelfx 列为备选（2026-11-13，WorkBuddy 本机）— 当前状态
 
 用户问「你特效用的什么，pixelfx 你听过吗」，随后明确两点：**把 pixelfx 放入备选方案**、**不要打一半停下让玩家选效果**。
 
