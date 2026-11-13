@@ -1,5 +1,12 @@
 # 更新记录
 
+## 2026-11-13 · 登记 pixel-search 像素素材来源（仅记录，未引入）
+
+- 用户指示「**pixel-search的素材图对我有帮助，请记录一下**」。核查确认指 Hugging Face Space `cfahlgren1/pixel-search`（浏览器内像素图语义检索）及其数据集 `Angais/pixel-art-atlas-1.4m`（1,409,404 张 16×16 透明底 AI 合成精灵图、6,194 主题、Parquet 约 694MB）；同名的 npm 包与安卓 App 与素材无关。
+- 在 [ROADMAP](docs/ROADMAP.md) 新增「素材与参考资源」节：记录来源、检索能力（文本语义、无下载/以图搜图）、对本项目可补的美术缺口、**授权边界**（元数据 `cc0-1.0`，但仅限发布者可放弃的权利，不覆盖 Krea 2 Community License §2.3 商用条款与 AUP）、触发条件与接入前清单；并列出 pixelfx / animista / pixel-search 三者分工。
+- **本轮只登记**：未下载素材、未引入图片、未改渲染层、未增加包体、未动玩法与测试；无代码变更，故 `npm test` 与微信竖屏产物均无需重建。
+- 核查证据与合规清单见 [pixel-search 资源核查归档](docs/archive/2026-11-13-pixel-search-resource.md)。
+
 ## 2026-11-13 · 取消局内升级选择 + pixelfx 列入备选
 
 - 用户问「你特效用的什么，pixelfx 你听过吗」，随后指示「**把 pixelfx 放入备选方案，然后不要打一半停下让玩家选效果**」。

@@ -13,6 +13,20 @@
 - 若未来启用，推荐顺序：① 先把 `act` 的 hit-stop / windup 时序作为纯数据搬进 `SurvivorGame`（零素材、零包体）；② 用 `node tools/render.mjs <id> --sheet` 把十几个关键特效离线烘焙成透明 PNG + Aseprite JSON，放进 `assets/resources` 由 `Sprite` 播帧动画。不推荐把 `composite` 输出每帧上传 `Texture2D`（微信小游戏纹理上传开销大，190 敌人同屏时帧率风险高）。
 - 触发条件：真机帧率达标后、且用户明确要求提升打击感或替换手绘特效时再评审；**本轮只记录，不引入依赖、不改动渲染层**。
 
+## 素材与参考资源（2026-11-13 登记）
+
+### pixel-search · 像素精灵图语义检索（用户确认「素材图对我有帮助」）
+
+- 用户指示原话：「pixel-search的素材图对我有帮助，请记录一下」。核查后对应 Hugging Face Space [`cfahlgren1/pixel-search`](https://huggingface.co/spaces/cfahlgren1/pixel-search)（Pixel Search，作者 `cfahlgren1`，运行中）及其底层数据集 [`Angais/pixel-art-atlas-1.4m`](https://huggingface.co/datasets/Angais/pixel-art-atlas-1.4m)。同名的 npm 包（图像匹配 CLI）与安卓 App（搜索工具）与素材无关，不是本条所指。
+- 数据集：`Pixel Art Atlas · 1.4M Synthetic Sprites`，**1,409,404 张 16×16 RGBA 透明底独立精灵图**（不是 sprite sheet）、6,194 个 subject、每条含 `image / caption / subject / row_id`，Parquet 共约 694MB；由 Krea 2 Turbo ＋ pixel art LoRA 文本生成，全部是 AI 合成输出。
+- 检索能力：浏览器内**文本语义检索**，每敲一个字符实时重排；离线用五个开源 encoder 把约 35k 词与 6,194 主题压成 96 维 int8 向量，浏览器 Web Worker 做点积打分并按 caption 属性重排，WebGL2 / OffscreenCanvas 绘制。README **未说明支持以图搜图，也未提供结果下载或导出入口** —— 它是浏览/找参考图的工具，不是一键素材包。
+- 对本项目可能补的缺口：现有素材仅 59 张（56 张八方向鸭＋3 张敌人）；割草模式只有 3 种敌人贴图复用，待救小鸭、魂珠、特效均为手绘；网页试玩页完全无贴图、与微信端观感分叉。可用于找新敌人/精英/Boss 造型、道具与魂珠图标、UI 像素元件、场景 tile，以及「找回像素感」的参考图。16×16 需整数倍放大并沿用 `NEAREST` 滤镜，才能和现有 48px 精灵匹配。
+- **授权边界（接入前必查）**：数据集元数据 `license: cc0-1.0`，但权利声明限定在「Angais 可放弃的权利范围内」，不授予第三方材料、商标或 Krea 模型权利，且明确**不覆盖 Krea 2 Community License §2.3 商用条款与 Krea Acceptable Use Policy**；Krea 依 §5.3 不对生成输出主张所有权；该数据集非 Krea 官方发布；无强制署名（捐赠为可选）。因此不能把 CC0 字段读作无条件商用保证 —— 打进微信小游戏包前须逐项核对 Krea 条款/AUP 并留存来源记录。caption 只是生成提示的近似标签、图文一致性未系统审核，必须目视挑图。
+- 状态：**本轮只登记**：未下载素材、未引入图片、未改渲染层、未增加包体、未动玩法与测试。
+- 触发条件：用户明确要求补充或替换美术时，先挑 10–20 张小样做尺寸/配色/许可比对再决定；接入仍走现有 `assets/resources` ＋ `duck/manifest` ＋ `Texture2D`/`SpriteFrame` 流程。
+- 与同类工具的分工：`pixelfx`（像素特效与 hit-stop 时序，见上文备选）、`animista`（CSS UI 动效与缓动曲线，2026-11-13 已评估、未正式登记）、`pixel-search`（静态像素素材与参考图）。三者都不改变当前「特效由程序化绘制」的模型。
+- 核查证据与合规清单见 [本轮归档](archive/2026-11-13-pixel-search-resource.md)。
+
 ## 割草模式后续（2026-11-13）
 
 - [x] 澄清并评审设计：强化割草机制、保留救鸭主题、亮色 Q 版像素、经典模式可切换。
