@@ -1,5 +1,6 @@
 import { _decorator, Component, Node, Graphics, Color, UITransform, Label, input, Input, EventKeyboard, KeyCode, EventTouch, view, ResolutionPolicy, profiler, game, Game as CocosGame, Canvas, resources, Sprite, SpriteFrame, JsonAsset, Texture2D, isValid, sys } from 'cc';
 import { EscapeGame, Character } from './EscapeGame';
+import { SurvivorGame } from './SurvivorGame';
 import { SaveState, loadSave, persist, recordResult, recordStart, nextUnlockTarget, regenAttempts, spendAttempt, grantAdBonus, MAX_ATTEMPTS, REGEN_MS, AD_BONUS, SAVE_KEY } from './SaveData';
 const { ccclass } = _decorator;
 const CHARACTER_NAMES: Record<Character, string> = { shooter: '射手鸭', warrior: '战士鸭', mage: '法师鸭' };
@@ -27,7 +28,44 @@ const PAL = {
     floorLine: '#7186A8',
     danger: '#FF6F80',
 };
+// ── 视觉系统「晴日牧场」：割草模式的亮色 Q 版像素风 ──────────────
+// 与上面的暖夜加工厂（经典模式）完全隔离；以奶油/薄荷草地为底，
+// 用高饱和金、青、珊瑚红把剑气、魂珠、伤害数字从浅色背景里拉出来。
+const Q = {
+    skyTop: '#DFF4F7',
+    skyMid: '#F2FBE9',
+    skyBottom: '#FFF3D6',
+    grassA: '#CDEDC4',
+    grassB: '#BFE4B4',
+    grassLine: '#9FCE9B',
+    hill: '#8FCFA8',
+    hillShade: '#77BE95',
+    cloud: '#FFFFFF',
+    sun: '#FFE9A3',
+    ink: '#33445C',
+    inkSoft: '#6B7E93',
+    panel: '#FFFBF0',
+    panelEdge: '#E7C88A',
+    panelShade: '#F3E6C8',
+    gold: '#FFC94A',
+    goldDeep: '#E99A2E',
+    sword: '#FFF3AF',
+    swordEdge: '#FFB238',
+    mint: '#4BD3A5',
+    mintLight: '#A9F2D2',
+    coral: '#FF6F79',
+    lilac: '#B79CFF',
+    damage: '#E4504C',
+    crit: '#FF8A24',
+    heart: '#FF6272',
+    gem: '#42CF9C',
+    gemLight: '#A5F5CE',
+    enemyInk: '#3B4B63',
+    danger: '#FF5D6B',
+    white: '#FFFFFF',
+};
 const PORTAL_INTRO = 1.35; // 开局传送阵演出时长（秒）
+const MOW_PORTAL_INTRO = 1.1;
 const rgbOf = (h: string) => ({
     r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16),
 });
@@ -43,7 +81,14 @@ const noise = (x: number, y: number) => {
 
 @ccclass('GoDuck')
 export class GoDuck extends Component {
-    game = new EscapeGame();
+    // 默认进入割草模式；经典模式保留完整旧玩法，菜单里一键切换。
+    mode: 'mow' | 'classic' = 'mow';
+    mow = new SurvivorGame();
+    classic = new EscapeGame();
+    // 经典模式的既有代码继续用 this.game 读写；两种状态对象结构不同，故用 any 兼容。
+    private get game(): any {
+        return this.mode === 'mow' ? this.mow : this.classic;
+    }
     private save: SaveState = loadSave(sys.localStorage.getItem(SAVE_KEY));
     private selected: Character = 'shooter';
     private newUnlocks: Character[] = [];
@@ -57,6 +102,18 @@ export class GoDuck extends Component {
     private toastY = 0;
     private lastRescued = 0;
     private toastLabel: Label;
+    // 割草模式专用：伤害数字复用固定池，升级三选一与底部技能栏各一组标签。
+    private floatLabels: Label[] = [];
+    private cardIcon: Label[] = [];
+    private cardTitle: Label[] = [];
+    private cardDesc: Label[] = [];
+    private cardLevel: Label[] = [];
+    private cardHint: Label;
+    private skillLabels: Label[] = [];
+    private mowIntro = 0;
+    private mowToast = 0;
+    private mowToastCount = 0;
+    private lastMowRescued = 0;
     private pen: Graphics;
     // 渲染分层：静态氛围 / 世界地面 / 动态对象 / 精灵 / HUD 与菜单 / 文字 / 按钮。
     private bgPen: Graphics;
@@ -120,6 +177,20 @@ export class GoDuck extends Component {
         this.gearLabels = [0, 1].map(() => this.label(this.node, '', 19, 0, 0, 190, { color: PAL.text, bold: true }));
         this.toastLabel = this.label(this.node, '', 22, 0, 140, 340, { color: PAL.mint, bold: true });
         this.toastLabel.node.active = false;
+        // 割草模式标签池：全部预创建，运行时只改 string / position / active，避免每帧建节点。
+        this.floatLabels = Array.from({ length: 14 }, () => {
+            const l = this.label(this.node, '', 20, 0, 0, 200, { color: Q.damage, bold: true });
+            l.node.active = false;
+            return l;
+        });
+        this.cardIcon = Array.from({ length: 3 }, () => this.label(this.node, '', 40, 0, 0, 90, { color: Q.ink, bold: true }));
+        this.cardTitle = Array.from({ length: 3 }, () => this.label(this.node, '', 24, 0, 0, 440, { color: Q.ink, bold: true }));
+        this.cardDesc = Array.from({ length: 3 }, () => this.label(this.node, '', 18, 0, 0, 460, { color: Q.inkSoft }));
+        this.cardLevel = Array.from({ length: 3 }, () => this.label(this.node, '', 17, 0, 0, 120, { color: Q.goldDeep, bold: true }));
+        this.cardHint = this.label(this.node, '', 19, 0, 0, 520, { color: Q.inkSoft, bold: true });
+        this.skillLabels = Array.from({ length: 6 }, () => this.label(this.node, '', 17, 0, 0, 100, { color: Q.ink, bold: true }));
+        for (const l of [...this.cardIcon, ...this.cardTitle, ...this.cardDesc, ...this.cardLevel, this.cardHint, ...this.skillLabels])
+            l.node.active = false;
         this.panel = new Node('Menus');
         this.panel.layer = this.node.layer;
         this.node.addChild(this.panel);
@@ -174,13 +245,21 @@ export class GoDuck extends Component {
         const fit = (l: Label, base: number) => { l.fontSize = Math.round(base * s); l.lineHeight = Math.round(base * 1.4 * s); };
         fit(this.hud, 24); fit(this.note, 18); fit(this.banner, 25); fit(this.progress, 18); fit(this.toastLabel, 22);
         this.gearLabels.forEach(l => fit(l, 19));
+        this.floatLabels.forEach(l => fit(l, 20));
+        this.cardIcon.forEach(l => fit(l, 40));
+        this.cardTitle.forEach(l => fit(l, 24));
+        this.cardDesc.forEach(l => fit(l, 18));
+        this.cardLevel.forEach(l => fit(l, 17));
+        fit(this.cardHint, 19);
+        this.skillLabels.forEach(l => fit(l, 17));
         for (const b of [this.pauseButton, this.audioButton]) {
             const l = b.getComponentInChildren(Label);
             if (l) l.fontSize = Math.round(20 * s);
         }
         this.menuDuck.node.setPosition(0, 430 * s);
         this.menuDuck.node.getComponent(UITransform).setContentSize(120 * s, 120 * s);
-        this.drawBackdrop();
+        if (this.mode === 'mow') this.drawBackdropMow();
+        else this.drawBackdrop();
         this.state = '';
     }
     private loadEnemies() {
@@ -278,6 +357,11 @@ export class GoDuck extends Component {
             this.settleFor = 2;
             return;
         }
+        // 键盘 1/2/3 也能选升级卡，方便开发者工具里试玩。
+        if (this.mode === 'mow' && this.mow.pendingChoice && e.keyCode >= 49 && e.keyCode <= 51) {
+            this.mow.chooseUpgrade(e.keyCode - 49);
+            return;
+        }
         if (e.keyCode === KeyCode.ESCAPE)
             this.pause();
     }
@@ -287,6 +371,16 @@ export class GoDuck extends Component {
     private touchStart(e: EventTouch) {
         if ((this.game.phase === 'won' || this.game.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2) {
             this.settleFor = 2;
+            return;
+        }
+        // 升级三选一：点卡片直接选，期间不启动摇杆。
+        if (this.mode === 'mow' && this.mow.pendingChoice) {
+            const p = e.getUILocation();
+            const idx = this.mowCardAt(p.x - this.w / 2, p.y - this.h / 2);
+            if (idx >= 0) {
+                this.mow.chooseUpgrade(idx);
+                this.clearInput();
+            }
             return;
         }
         if (this.game.phase !== 'playing' || this.finger !== -1)
@@ -412,13 +506,13 @@ export class GoDuck extends Component {
         const now = this.audio.currentTime;
         if (now < this.soundAt)
             return;
-        const event = ['hurt', 'evolve', 'gear', 'level', 'heal', 'end', 'warning', 'bubble', 'boss', 'rescue', 'kill', 'pickup', 'hit', 'shot'].find(e => events.includes(e));
+        const event = ['hurt', 'evolve', 'gear', 'upgrade', 'wave', 'thunder', 'level', 'heal', 'end', 'warning', 'bubble', 'boss', 'rescue', 'kill', 'pickup', 'hit', 'shot'].find(e => events.includes(e));
         if (!event)
             return;
         this.soundAt = now + .045;
         const o = this.audio.createOscillator(), gain = this.audio.createGain();
         o.type = event === 'hurt' ? 'sawtooth' : 'sine';
-        o.frequency.setValueAtTime(({ hurt: 110, evolve: 1100, gear: 820, level: 980, heal: 780, end: 220, warning: 390, bubble: 550, boss: 140, rescue: 720, kill: 650, pickup: 950, hit: 480, shot: 300 } as any)[event], now);
+        o.frequency.setValueAtTime(({ hurt: 110, evolve: 1100, gear: 820, upgrade: 900, wave: 260, thunder: 170, level: 980, heal: 780, end: 220, warning: 390, bubble: 550, boss: 140, rescue: 720, kill: 650, pickup: 950, hit: 480, shot: 300 } as any)[event], now);
         o.frequency.exponentialRampToValueAtTime(event === 'hurt' ? 60 : 180, now + .07);
         gain.gain.setValueAtTime(.025, now);
         gain.gain.exponentialRampToValueAtTime(.001, now + .09);
@@ -473,6 +567,7 @@ export class GoDuck extends Component {
                 : g.phase === 'won' ? (unlockText || '冲出了出口——继续用本职业挑战或换新角色')
                     : `包装出品 · 死因：${g.deathCause}`;
         const s = this.s, W = this.w, isMenu = g.phase === 'menu';
+        this.button(this.panel, '切换：割草模式', 0, 390 * s, 220 * s, () => this.switchMode('mow'), { variant: 'chip', h: 50 * s });
         this.label(this.panel, title, Math.round(50 * s), 0, 300 * s, W - 30, { color: isMenu ? PAL.gold : PAL.text, bold: true });
         this.label(this.panel, subtitle, Math.round(21 * s), 0, 248 * s, W - 48, { color: PAL.textDim });
         if (isMenu) {
@@ -543,6 +638,10 @@ export class GoDuck extends Component {
         this.label(this.panel, tip, Math.round(18 * s), 0, isMenu ? -215 * s : -180 * s, W - 60, { color: PAL.textFaint });
     }
     update(dt: number) {
+        if (this.mode === 'mow') {
+            this.updateMow(dt);
+            return;
+        }
         this.clock += dt;
         const camera = this.node.parent.getComponent(Canvas)?.cameraComponent;
         if (camera) {
@@ -1209,5 +1308,797 @@ export class GoDuck extends Component {
                 }
             }
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // 割草模式「万剑救鸭」：亮色 Q 版像素风表现层
+    // 分层：Backdrop（静态晴空）→ Ground（滚动草地＋传送阵）→ World（魂珠/小鸭/影子）
+    //      → 像素精灵 → HudFrame（剑气/粒子/血条/HUD/升级卡/结算）
+    // ══════════════════════════════════════════════════════════════
+    private switchMode(mode: 'mow' | 'classic') {
+        if (this.mode === mode)
+            return;
+        this.mode = mode;
+        this.classic.phase = 'menu';
+        this.mow.phase = 'menu';
+        this.mow.pendingChoice = null;
+        this.settleFor = -1;
+        this.portalIntro = 0;
+        this.mowIntro = 0;
+        this.mowToast = 0;
+        this.newUnlocks = [];
+        this.clearInput();
+        this.state = '';
+        this.menuSig = undefined;
+        this.enemyRoot.active = false;
+        for (const s of this.enemySprites)
+            s.node.active = false;
+        this.duckSprite.node.active = false;
+        this.menuDuck.node.active = false;
+        this.toastLabel.node.active = false;
+        for (const l of [...this.floatLabels, ...this.cardIcon, ...this.cardTitle, ...this.cardDesc, ...this.cardLevel, this.cardHint, ...this.skillLabels])
+            l.node.active = false;
+        for (const pen of [this.bgPen, this.groundPen, this.pen, this.framePen])
+            pen.clear();
+        for (const n of [this.pen.node, this.groundPen.node, this.enemyRoot])
+            n.setPosition(0, 0, 0);
+        if (mode === 'mow') {
+            this.toastLabel.color = this.c(Q.mint);
+        }
+        else {
+            this.toastLabel.color = this.c(PAL.mint);
+            this.hud.color = this.c(PAL.text);
+            this.note.color = this.c(PAL.textDim);
+            this.banner.color = this.c(PAL.gold);
+            this.progress.color = this.c(PAL.text);
+        }
+        this.resize();
+    }
+    private mowCardY(i: number) {
+        return (175 - i * 158) * this.s;
+    }
+    private mowCardAt(x: number, y: number) {
+        if (Math.abs(x) > (this.w - 80 * this.s) / 2)
+            return -1;
+        for (let i = 0; i < 3; i++)
+            if (Math.abs(y - this.mowCardY(i)) <= 66 * this.s)
+                return i;
+        return -1;
+    }
+    private updateMowEnemies() {
+        const g = this.mow;
+        this.enemyRoot.active = g.phase === 'playing' || g.phase === 'paused';
+        if (!this.enemyRoot.active) {
+            for (const s of this.enemySprites) s.node.active = false;
+            return;
+        }
+        let count = 0;
+        for (const e of g.enemies) {
+            if (e.dead) continue;
+            const x = e.x - g.x, y = e.y - g.y;
+            if (Math.abs(x) > this.w / 2 + 60 || Math.abs(y) > this.h / 2 + 60) continue;
+            const key = e.kind === 'brute' ? 'lid' : e.kind === 'runner' ? 'clip' : 'glove';
+            const frame = this.enemyFrames.get(key);
+            if (!frame) continue;
+            let sprite = this.enemySprites[count];
+            if (!sprite) {
+                if (count >= 190) break;
+                const n = new Node('Enemy'); n.layer = this.node.layer; this.enemyRoot.addChild(n);
+                sprite = n.addComponent(Sprite); sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+                this.enemySprites.push(sprite);
+            }
+            sprite.node.active = true;
+            sprite.spriteFrame = frame;
+            sprite.node.getComponent(UITransform).setContentSize(e.kind === 'brute' ? 54 : e.kind === 'runner' ? 32 : 36,
+                e.kind === 'brute' ? 54 : e.kind === 'runner' ? 32 : 36);
+            sprite.node.setPosition(x, y);
+            sprite.node.angle = e.kind === 'runner' ? Math.atan2(g.y - e.y, g.x - e.x) * 180 / Math.PI + 135 : 0;
+            sprite.color = e.flash > 0 ? this.c(Q.white) : e.kind === 'brute' ? this.c('#DED6FA') : this.c(Q.white);
+            count++;
+        }
+        for (let i = count; i < this.enemySprites.length; i++)
+            this.enemySprites[i].node.active = false;
+    }
+    private updateMow(dt: number) {
+        this.clock += dt;
+        const camera = this.node.parent.getComponent(Canvas)?.cameraComponent;
+        if (camera) {
+            const pos = camera.node.worldPosition;
+            this.node.setWorldPosition(pos.x, pos.y, 0);
+        }
+        const g = this.mow, s = this.s;
+        const mx = this.stick.x + Number(this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) - Number(this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT));
+        const my = this.stick.y + Number(this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) - Number(this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN));
+        if (g.phase === 'playing' && this.mowIntro > 0)
+            this.mowIntro = Math.max(0, this.mowIntro - dt);
+        else
+            g.tick(dt, mx, my);
+        // 屏震只作用于世界层，HUD 保持稳定。
+        const sh = g.shake * 9 * s;
+        const ox = Math.sin(this.clock * 61) * sh, oy = Math.cos(this.clock * 47) * sh;
+        this.pen.node.setPosition(ox, oy, 0);
+        this.groundPen.node.setPosition(ox, oy, 0);
+        this.enemyRoot.setPosition(ox, oy, 0);
+        this.updateDuck(dt);
+        this.updateMowEnemies();
+        this.sound(g.events);
+        g.events = [];
+        if (g.totalRescued !== this.lastMowRescued) {
+            this.mowToastCount = g.totalRescued - this.lastMowRescued;
+            this.lastMowRescued = g.totalRescued;
+            this.mowToast = 1.1;
+        }
+        this.mowToast = Math.max(0, this.mowToast - dt);
+        if (g.phase === 'won' || g.phase === 'lost') {
+            if (this.settleFor < 0) this.settleFor = 0;
+            else if (this.settleFor < 2) this.settleFor += dt;
+        }
+        else
+            this.settleFor = -1;
+        const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
+        if (g.phase !== 'playing' && g.phase !== 'paused') {
+            const atk = regenAttempts(this.save, Date.now());
+            const sig = atk.attempts >= MAX_ATTEMPTS ? 'full' : String(atk.attempts);
+            if (this.menuSig !== undefined && this.menuSig !== sig) this.state = '';
+            this.menuSig = sig;
+        }
+        this.menusMow();
+        // 先算文案，HUD 胶囊宽度才能按当前帧的文字长度自适应。
+        this.updateMowLabels(settling);
+        this.drawGroundMow();
+        this.drawWorldMow();
+        this.drawFrameMow();
+        const idlePath = this.duckManifest?.idle?.south;
+        const idleFrame = idlePath ? this.duckFrames.get(idlePath) : undefined;
+        if (idleFrame) this.menuDuck.spriteFrame = idleFrame;
+        this.menuDuck.node.active = g.phase === 'menu' && !!this.menuDuck.spriteFrame;
+    }
+    private updateMowLabels(settling: boolean) {
+        const g = this.mow, s = this.s, playing = g.phase === 'playing' || g.phase === 'paused';
+        this.hud.color = this.c(Q.ink);
+        this.note.color = this.c(Q.inkSoft);
+        this.banner.color = this.c(Q.goldDeep);
+        this.progress.color = this.c(Q.ink);
+        this.toastLabel.color = this.c(Q.mint);
+        this.hud.node.active = playing;
+        this.note.node.active = playing;
+        this.banner.node.active = playing || settling;
+        this.progress.node.active = true;
+        this.gearLabels.forEach(l => l.node.active = false);
+        this.pauseButton.active = playing;
+        this.audioButton.active = playing;
+        const pl = this.pauseButton.getComponentInChildren(Label), al = this.audioButton.getComponentInChildren(Label);
+        if (pl) pl.string = g.phase === 'paused' ? '继续' : '暂停';
+        if (al) al.string = this.muted ? '静音' : '声音';
+        const left = Math.max(0, Math.ceil((g.boss ? g.limit : g.duration) - g.time));
+        const mm = String(Math.floor(left / 60)).padStart(2, '0'), ss = String(left % 60).padStart(2, '0');
+        this.hud.node.setPosition(0, this.h / 2 - 74 * s);
+        this.note.node.setPosition(0, this.h / 2 - 126 * s);
+        this.banner.node.setPosition(0, this.h / 2 - 292 * s);
+        this.progress.node.setPosition(0, -this.h / 2 + 138 * s);
+        this.hud.string = `${mm}:${ss}   第 ${g.wave} 波   Lv.${g.level}\n击退 ${g.kills}   救出 ${g.totalRescued} 只   连斩 ${g.combo}`;
+        this.note.string = `万剑 ×${g.bladeCount} · 剑阵 ${g.orbitCount} · 雷劫 ${g.thunderCount} · 领域 ${Math.round(g.auraRadius)}${this.muted ? ' · 静音' : ''}`;
+        this.banner.string = settling
+            ? (g.phase === 'won' ? `${g.totalRescued} 只鸭免于上餐桌！` : `仍救出 ${g.totalRescued} 只鸭`)
+            : this.mowIntro > 0 ? '传送阵启动 · 鸭子入场！'
+                : g.pendingChoice ? '境界突破 · 三选一'
+                    : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
+        this.progress.string = settling ? '点按任意处跳过'
+            : g.phase !== 'playing' ? this.attemptLine()
+                : g.pendingChoice ? `点按卡片 / 按 1 2 3 选择 · ${Math.max(0, Math.ceil(15 - g.pendingChoice.timer))} 秒后自动选第一张`
+                    : g.boss ? `击败巨型捕鸭夹！剩余 ${Math.max(0, Math.ceil(g.limit - g.time))} 秒`
+                        : `捡绿色魂珠升级 · 每 ${g.killsPerDuck} 次击退多救 1 只鸭`;
+        const c = g.pendingChoice;
+        for (let i = 0; i < 3; i++) {
+            const on = !!c && g.phase === 'playing';
+            this.cardIcon[i].node.active = on;
+            this.cardTitle[i].node.active = on;
+            this.cardDesc[i].node.active = on;
+            this.cardLevel[i].node.active = on;
+            if (!on || !c) continue;
+            const o = c.options[i], y = this.mowCardY(i);
+            this.cardIcon[i].string = o.icon;
+            this.cardIcon[i].node.setPosition(-(this.w - 80 * s) / 2 + 62 * s, y);
+            this.cardTitle[i].string = o.name;
+            this.cardTitle[i].node.setPosition(52 * s, y + 22 * s);
+            this.cardDesc[i].string = o.desc;
+            this.cardDesc[i].node.setPosition(46 * s, y - 20 * s);
+            this.cardLevel[i].string = `Lv.${o.level} → ${o.level + 1}`;
+            this.cardLevel[i].node.setPosition(this.w / 2 - 96 * s, y - 20 * s);
+        }
+        this.cardHint.node.active = !!c && g.phase === 'playing';
+        if (c) {
+            this.cardHint.node.setPosition(0, -292 * s);
+            this.cardHint.string = `当前 Lv.${g.level} · 生命 ${g.hp}/${g.maxHp} · 已击退 ${g.kills}`;
+        }
+        for (let i = 0; i < 6; i++) {
+            const l = this.skillLabels[i];
+            l.node.active = playing && !c;
+            if (l.node.active) {
+                const sk = g.skillLevels[i];
+                l.string = `${sk.icon} ${sk.level}`;
+                l.color = this.c(sk.hot ? Q.goldDeep : Q.inkSoft);
+                l.node.setPosition((i - 2.5) * ((this.w - 44 * s) / 6), -this.h / 2 + 62 * s);
+            }
+        }
+        // 伤害数字：固定 14 个标签复用，取最近的一批。
+        const floats = g.floats.slice(-this.floatLabels.length);
+        this.floatLabels.forEach((l, i) => {
+            const f = floats[i];
+            l.node.active = !!f && playing && g.phase === 'playing';
+            if (!f || !l.node.active) return;
+            const hex = f.kind === 'crit' ? Q.crit : f.kind === 'rescue' ? '#1E9E72' : f.kind === 'heal' ? '#3CB37A' : Q.damage;
+            const a = Math.round(255 * Math.min(1, f.life / .28));
+            l.color = this.c(hex, a);
+            l.string = f.text;
+            l.node.setPosition(f.x - g.x, f.y - g.y + (1 - f.life / f.duration) * 42 * s);
+            l.fontSize = Math.round((f.kind === 'crit' ? 26 : 20) * s);
+        });
+        this.toastLabel.node.active = this.mowToast > 0 && playing;
+        if (this.toastLabel.node.active) {
+            this.toastLabel.node.setPosition(0, (150 + (1 - this.mowToast) * 50) * s);
+            this.toastLabel.string = `+${this.mowToastCount} 只鸭免于上餐桌`;
+        }
+    }
+    // 静态晴空：只在视口变化时重画。方块云、阶梯远山、像素花瓣。
+    private drawBackdropMow() {
+        const p = this.bgPen, w = this.w, h = this.h, s = this.s;
+        p.clear();
+        const bands = 24;
+        for (let i = 0; i < bands; i++) {
+            const t = i / (bands - 1);
+            const hex = t < .5 ? mixHex(Q.skyTop, Q.skyMid, t * 2) : mixHex(Q.skyMid, Q.skyBottom, (t - .5) * 2);
+            p.fillColor = this.c(hex);
+            p.rect(-w / 2, h / 2 - (i + 1) * (h / bands), w, h / bands + 1);
+            p.fill();
+        }
+        // 太阳与柔光
+        this.glow(p, -w * .29, h * .31, w * .62, Q.sun, 40, 6);
+        p.fillColor = this.c(Q.sun, 235);
+        p.circle(-w * .29, h * .31, 58 * s); p.fill();
+        p.fillColor = this.c(Q.white, 150);
+        p.circle(-w * .29 - 14 * s, h * .31 + 16 * s, 40 * s); p.fill();
+        // 方块云：硬边，像素感
+        for (let i = 0; i < 7; i++) {
+            const seed = noise(i, 3);
+            const cx = (seed - .5) * (w + 200 * s), cy = h * (.36 - (i % 3) * .16) + (noise(i, 9) - .5) * 90 * s;
+            const cw = (110 + noise(i, 11) * 90) * s, ch = 26 * s;
+            p.fillColor = this.c(Q.cloud, 205);
+            p.rect(cx - cw / 2, cy, cw, ch); p.fill();
+            p.rect(cx - cw / 2 + 18 * s, cy + ch, cw * .62, ch * .8); p.fill();
+            p.rect(cx - cw / 2 + 40 * s, cy - ch * .55, cw * .38, ch * .7); p.fill();
+        }
+        // 阶梯远山：两层，每层用等宽方块拼出轮廓
+        for (let layer = 0; layer < 2; layer++) {
+            const base = -h / 2 + (layer === 0 ? 250 : 170) * s;
+            const step = 34 * s;
+            p.fillColor = this.c(layer === 0 ? Q.hill : Q.hillShade, layer === 0 ? 180 : 205);
+            for (let k = -Math.ceil(w / step / 2) - 1; k <= Math.ceil(w / step / 2) + 1; k++) {
+                const x = k * step;
+                const peak = (Math.sin(k * .55 + layer * 2) * .5 + .5) * (layer === 0 ? 90 : 62) * s;
+                const hh = 90 * s + peak;
+                p.rect(x, base - hh, step + 1, hh + h / 2); p.fill();
+            }
+        }
+        // 边缘柔和暗角，保证浅色背景上的文字可读
+        for (let i = 0; i < 7; i++) {
+            p.fillColor = this.c(Q.ink, Math.round(16 * (1 - i / 7)));
+            p.rect(-w / 2, -h / 2 + i * h / 14, w, h / 14 + 1); p.fill();
+            p.rect(-w / 2, h / 2 - (i + 1) * h / 14, w, h / 14 + 1); p.fill();
+        }
+    }
+    // 滚动草地：棋盘格、像素小花、常驻传送阵与场地边界。
+    private drawGroundMow() {
+        const p = this.groundPen, g = this.mow, s = this.s;
+        p.clear();
+        if (g.phase !== 'playing' && g.phase !== 'paused') return;
+        const sx = (x: number) => x - g.x, sy = (y: number) => y - g.y, step = 80;
+        const x0 = Math.floor((g.x - this.w / 2 - step) / step) * step, x1 = g.x + this.w / 2 + step;
+        const y0 = Math.floor((g.y - this.h / 2 - step) / step) * step, y1 = g.y + this.h / 2 + step;
+        for (let x = x0; x <= x1; x += step) {
+            for (let y = y0; y <= y1; y += step) {
+                const gx = Math.floor(x / step), gy = Math.floor(y / step), r = noise(gx, gy);
+                const px = sx(x), py = sy(y);
+                p.fillColor = this.c((gx + gy) % 2 === 0 ? Q.grassA : Q.grassB, 235);
+                p.rect(px, py, step, step); p.fill();
+                p.strokeColor = this.c(Q.grassLine, 60);
+                p.lineWidth = 2;
+                p.moveTo(px, py); p.lineTo(px + step, py);
+                p.moveTo(px, py); p.lineTo(px, py + step);
+                p.stroke();
+                if (r > .82) {
+                    // 像素小花：四瓣方块＋黄花芯
+                    const fx = px + 20 + r * 30, fy = py + 24 + noise(gy, gx) * 32;
+                    p.fillColor = this.c(r > .92 ? Q.coral : Q.white, 220);
+                    for (const [dx, dy] of [[-6, 0], [6, 0], [0, -6], [0, 6]]) {
+                        p.rect(fx + dx * s - 4 * s, fy + dy * s - 4 * s, 8 * s, 8 * s); p.fill();
+                    }
+                    p.fillColor = this.c(Q.gold, 240);
+                    p.rect(fx - 3 * s, fy - 3 * s, 6 * s, 6 * s); p.fill();
+                }
+                else if (r < .09) {
+                    p.fillColor = this.c(Q.hillShade, 110);
+                    p.rect(px + 30, py + 34, 20 * s, 8 * s); p.fill();
+                }
+            }
+        }
+        // 出生点传送阵：待救小鸭从这里撤离，也是每局的视觉锚点
+        const px = sx(0), py = sy(0), R = 66 * s;
+        if (Math.abs(px) < this.w / 2 + R * 2 && Math.abs(py) < this.h / 2 + R * 2) {
+            const spin = this.clock * 1.2, pulse = .55 + .45 * Math.sin(this.clock * 3);
+            this.glow(p, px, py, R * 2.4, Q.mint, Math.round(38 * pulse), 5);
+            p.fillColor = this.c(Q.panel, 210);
+            p.circle(px, py, R); p.fill();
+            p.strokeColor = this.c(Q.mint, 235); p.lineWidth = 5 * s;
+            p.circle(px, py, R); p.stroke();
+            p.strokeColor = this.c(Q.gold, 190); p.lineWidth = 3 * s;
+            p.circle(px, py, R * .74); p.stroke();
+            p.strokeColor = this.c(Q.lilac, 200); p.lineWidth = 3 * s;
+            for (let i = 0; i < 12; i++) {
+                const a = spin + i * Math.PI / 6, r0 = i % 3 === 0 ? R * .5 : R * .78;
+                p.moveTo(px + Math.cos(a) * r0, py + Math.sin(a) * r0);
+                p.lineTo(px + Math.cos(a) * R * .95, py + Math.sin(a) * R * .95);
+            }
+            p.stroke();
+            p.fillColor = this.c(Q.mintLight, Math.round(120 + 70 * pulse));
+            p.circle(px, py, R * .3); p.fill();
+        }
+        // 场地边界：金色虚线警戒带
+        const limit = 850;
+        p.strokeColor = this.c(Q.goldDeep, 150); p.lineWidth = 5 * s;
+        for (const e of [[-limit, -limit, limit, -limit], [-limit, limit, limit, limit], [-limit, -limit, -limit, limit], [limit, -limit, limit, limit]]) {
+            p.moveTo(sx(e[0]), sy(e[1])); p.lineTo(sx(e[2]), sy(e[3]));
+        }
+        p.stroke();
+        p.strokeColor = this.c(Q.white, 170); p.lineWidth = 6 * s;
+        for (let x = -limit; x <= limit; x += 70) {
+            const vx = sx(x);
+            if (vx < -this.w / 2 - 30 || vx > this.w / 2 + 30) continue;
+            for (const y of [-limit, limit]) {
+                const vy = sy(y);
+                if (vy < -this.h / 2 - 40 || vy > this.h / 2 + 40) continue;
+                p.moveTo(vx, vy + (y > 0 ? -18 * s : 18 * s));
+                p.lineTo(vx + 16 * s, vy + (y > 0 ? -18 * s - 14 * s : 18 * s + 14 * s));
+            }
+        }
+        p.stroke();
+    }
+    // 精灵之下的世界层：魂珠、待救小鸭、影子、玩家脚下光环。
+    private drawWorldMow() {
+        const g = this.mow, p = this.pen, s = this.s;
+        p.clear();
+        if (g.phase !== 'playing' && g.phase !== 'paused') return;
+        const sx = (x: number) => x - g.x, sy = (y: number) => y - g.y;
+        // 玩家脚下金光领域
+        this.glow(p, 0, 0, g.auraRadius * 1.7, Q.gold, 22, 5);
+        p.strokeColor = this.c(Q.gold, 130); p.lineWidth = 3 * s;
+        p.circle(0, 0, g.auraRadius); p.stroke();
+        p.strokeColor = this.c(Q.white, 150); p.lineWidth = 2 * s;
+        for (let i = 0; i < 12; i++) {
+            const a = this.clock * .8 + i * Math.PI / 6;
+            p.moveTo(Math.cos(a) * (g.auraRadius - 8 * s), Math.sin(a) * (g.auraRadius - 8 * s));
+            p.lineTo(Math.cos(a) * g.auraRadius, Math.sin(a) * g.auraRadius);
+        }
+        p.stroke();
+        // 敌人影子
+        for (const e of g.enemies) {
+            if (e.dead) continue;
+            const x = sx(e.x), y = sy(e.y);
+            if (Math.abs(x) > this.w / 2 + 50 || Math.abs(y) > this.h / 2 + 50) continue;
+            p.fillColor = this.c(Q.ink, 32);
+            p.circle(x, y - 12 * s, (e.kind === 'brute' ? 24 : 15) * s); p.fill();
+        }
+        // 绿色魂珠：菱形＋光晕＋跳动
+        for (const d of g.gems) {
+            const x = sx(d.x), y = sy(d.y);
+            if (Math.abs(x) > this.w / 2 + 30 || Math.abs(y) > this.h / 2 + 30) continue;
+            const bob = Math.sin(this.clock * 4 + d.bob) * 3 * s, r = (d.value > 2 ? 9 : 6) * s;
+            this.glow(p, x, y + bob, r * 3.2, Q.gem, 34, 4);
+            p.fillColor = this.c(Q.gemLight);
+            p.moveTo(x, y + bob + r); p.lineTo(x + r, y + bob); p.lineTo(x, y + bob - r); p.lineTo(x - r, y + bob);
+            p.close(); p.fill();
+            p.fillColor = this.c(Q.white, 210);
+            p.rect(x - r * .28, y + bob + r * .15, r * .5, r * .5); p.fill();
+        }
+        // 待救小鸭：亮黄 Q 版像素鸭＋薄荷撤离圈
+        for (const d of g.ducks) {
+            const x = sx(d.x), y = sy(d.y);
+            if (Math.abs(x) > this.w / 2 + 50 || Math.abs(y) > this.h / 2 + 50) continue;
+            const bob = Math.sin(this.clock * 3.4 + d.bob) * 5 * s;
+            this.glow(p, x, y + bob, 46 * s, Q.mint, 40, 4);
+            p.strokeColor = this.c(Q.mint, 210); p.lineWidth = 3 * s;
+            p.circle(x, y + bob - 4 * s, 26 * s); p.stroke();
+            this.pixelDuck(p, x, y + bob, 1.05 * s);
+        }
+    }
+    // 统一的 Q 版像素鸭画法，供拾取物与结算演出复用。
+    private pixelDuck(p: Graphics, x: number, y: number, k: number) {
+        p.fillColor = this.c(Q.gold);
+        p.circle(x, y - 4 * k, 13 * k); p.fill();
+        p.fillColor = this.c('#FFE48A');
+        p.circle(x - 2 * k, y - 20 * k, 10 * k); p.fill();
+        p.fillColor = this.c(Q.goldDeep);
+        p.moveTo(x + 7 * k, y - 20 * k); p.lineTo(x + 20 * k, y - 24 * k); p.lineTo(x + 7 * k, y - 27 * k);
+        p.close(); p.fill();
+        p.fillColor = this.c(Q.ink);
+        p.circle(x + 3 * k, y - 23 * k, 2.2 * k); p.fill();
+        p.fillColor = this.c(Q.mint);
+        p.roundRect(x - 8 * k, y + 2 * k, 16 * k, 10 * k, 4 * k); p.fill();
+        p.fillColor = this.c(Q.white, 190);
+        p.circle(x - 6 * k, y - 8 * k, 3 * k); p.fill();
+    }
+    // 最高层：剑气 / 粒子 / 血条 / Boss / HUD / 升级卡 / 结算。
+    private drawFrameMow() {
+        const p = this.framePen, g = this.mow, w = this.w, h = this.h, s = this.s;
+        p.clear();
+        const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
+        const inGame = g.phase === 'playing' || g.phase === 'paused';
+        if (inGame) {
+            const sx = (x: number) => x - g.x, sy = (y: number) => y - g.y;
+            const useSprites = this.enemyFrames.has('glove') && this.enemyFrames.has('clip') && this.enemyFrames.has('lid');
+            // 素材尚未加载时用程序像素块顶上；加载完成后只画血条与命中闪。
+            for (const e of g.enemies) {
+                if (e.dead) continue;
+                const x = sx(e.x), y = sy(e.y);
+                if (Math.abs(x) > w / 2 + 60 || Math.abs(y) > h / 2 + 60) continue;
+                if (!useSprites) {
+                    const r = (e.kind === 'brute' ? 22 : 14) * s;
+                    p.fillColor = this.c(e.kind === 'brute' ? '#7C63A8' : Q.enemyInk);
+                    p.rect(x - r, y - r, r * 2, r * 2); p.fill();
+                    p.fillColor = this.c(Q.danger);
+                    p.rect(x - r * .55, y + r * .1, r * .35, r * .35); p.fill();
+                    p.rect(x + r * .2, y + r * .1, r * .35, r * .35); p.fill();
+                }
+                if (e.flash > 0) {
+                    p.strokeColor = this.c(Q.white, Math.round(220 * e.flash / .14)); p.lineWidth = 3 * s;
+                    p.circle(x, y, (e.kind === 'brute' ? 28 : 19) * s); p.stroke();
+                }
+                if (e.kind === 'brute') {
+                    this.card(p, x - 26 * s, y + 30 * s, 52 * s, 7 * s, 3 * s, Q.ink, 170);
+                    this.card(p, x - 26 * s, y + 30 * s, 52 * s * Math.max(0, e.hp / e.maxHp), 7 * s, 3 * s, Q.coral);
+                }
+            }
+            // Boss：巨型捕鸭夹，冲刺前有红色预警线
+            const b = g.boss;
+            if (b) {
+                const x = sx(b.x), y = sy(b.y);
+                if (b.state === 'windup') {
+                    p.strokeColor = this.c(Q.danger, 150); p.lineWidth = 26 * s;
+                    p.moveTo(x, y); p.lineTo(x + b.dx * 260 * s, y + b.dy * 260 * s);
+                    p.stroke();
+                }
+                this.glow(p, x, y, 120 * s, Q.coral, 34, 5);
+                p.fillColor = this.c('#E2636E');
+                p.moveTo(x - 42 * s, y + 34 * s); p.lineTo(x, y - 40 * s); p.lineTo(x + 42 * s, y + 34 * s);
+                p.lineTo(x + 20 * s, y + 46 * s); p.lineTo(x, y);
+                p.lineTo(x - 20 * s, y + 46 * s); p.close(); p.fill();
+                p.fillColor = this.c(Q.gold);
+                p.circle(x, y, 20 * s); p.fill();
+                p.fillColor = this.c(Q.ink);
+                p.rect(x - 10 * s, y - 4 * s, 5 * s, 8 * s); p.fill();
+                p.rect(x + 5 * s, y - 4 * s, 5 * s, 8 * s); p.fill();
+                const bw = 150 * s;
+                this.card(p, -bw / 2, h / 2 - 168 * s, bw, 12 * s, 6 * s, Q.ink, 170);
+                this.card(p, -bw / 2, h / 2 - 168 * s, bw * Math.max(0, b.hp / b.maxHp), 12 * s, 6 * s, Q.coral);
+                p.strokeColor = this.c(Q.panelEdge); p.lineWidth = 2 * s;
+                p.roundRect(-bw / 2, h / 2 - 168 * s, bw, 12 * s, 6 * s); p.stroke();
+            }
+            // 万剑：外发光 → 金边 → 白芯 → 菱形剑尖，暴击改冷白紫。
+            for (const sw of g.swords) {
+                const x = sx(sw.x), y = sy(sw.y);
+                if (Math.abs(x) > w / 2 + 60 || Math.abs(y) > h / 2 + 60) continue;
+                const len = (sw.crit ? 46 : 36) * s;
+                const tx = x - sw.dx * len, ty = y - sw.dy * len;
+                const edge = sw.crit ? Q.lilac : Q.swordEdge;
+                p.strokeColor = this.c(edge, 55); p.lineWidth = (sw.crit ? 14 : 10) * s;
+                p.moveTo(tx, ty); p.lineTo(x, y); p.stroke();
+                p.strokeColor = this.c(edge, 235); p.lineWidth = (sw.crit ? 7 : 5) * s;
+                p.moveTo(tx, ty); p.lineTo(x, y); p.stroke();
+                p.strokeColor = this.c(Q.white, 240); p.lineWidth = 2.2 * s;
+                p.moveTo(tx + sw.dx * 5 * s, ty + sw.dy * 5 * s); p.lineTo(x, y); p.stroke();
+                p.fillColor = this.c(sw.crit ? Q.white : Q.sword);
+                const r = (sw.crit ? 6 : 4.5) * s;
+                p.moveTo(x + sw.dx * r, y + sw.dy * r);
+                p.lineTo(x - sw.dy * r * .6, y + sw.dx * r * .6);
+                p.lineTo(x - sw.dx * r, y - sw.dy * r);
+                p.lineTo(x + sw.dy * r * .6, y - sw.dx * r * .6);
+                p.close(); p.fill();
+            }
+            // 护身剑阵
+            const spin = g.time * 3.4;
+            for (let i = 0; i < g.orbitCount; i++) {
+                const a = spin + i * Math.PI * 2 / g.orbitCount;
+                const x = Math.cos(a) * g.orbitRadius, y = Math.sin(a) * g.orbitRadius;
+                this.glow(p, x, y, 18 * s, Q.gold, 30, 3);
+                p.fillColor = this.c(Q.sword);
+                p.moveTo(x, y + 9 * s); p.lineTo(x + 6 * s, y); p.lineTo(x, y - 9 * s); p.lineTo(x - 6 * s, y);
+                p.close(); p.fill();
+                p.strokeColor = this.c(Q.goldDeep, 200); p.lineWidth = 1.6 * s;
+                p.moveTo(x, y + 9 * s); p.lineTo(x + 6 * s, y); p.lineTo(x, y - 9 * s); p.lineTo(x - 6 * s, y);
+                p.close(); p.stroke();
+            }
+            // 主角鸭描边：像素精灵之上再压一圈高光，浅色背景里更醒目。
+            this.glow(p, 0, 0, 44 * s, Q.gold, 26, 4);
+            p.strokeColor = this.c(Q.white, 225); p.lineWidth = 3 * s;
+            p.circle(0, 0, 27 * s); p.stroke();
+            // 特效：雷劫、升级、救鸭、Boss 登场
+            for (const f of g.effects) {
+                const x = sx(f.x), y = sy(f.y), t = 1 - f.life / f.duration;
+                const r = f.radius * (.35 + .65 * t);
+                if (f.kind === 'thunder') {
+                    p.strokeColor = this.c(Q.gold, Math.round(230 * (1 - t))); p.lineWidth = 5 * s;
+                    p.circle(x, y, r); p.stroke();
+                    p.strokeColor = this.c(Q.white, Math.round(235 * (1 - t))); p.lineWidth = 3 * s;
+                    p.moveTo(x - 8 * s, y + 150 * s); p.lineTo(x + 6 * s, y + 40 * s);
+                    p.lineTo(x - 5 * s, y + 12 * s); p.lineTo(x + 9 * s, y - 40 * s);
+                    p.stroke();
+                    continue;
+                }
+                const hex = f.kind === 'level' ? Q.mint : f.kind === 'upgrade' ? Q.gold
+                    : f.kind === 'rescue' ? Q.mint : f.kind === 'boss' ? Q.danger : Q.lilac;
+                p.strokeColor = this.c(hex, Math.round(220 * (1 - t))); p.lineWidth = (f.kind === 'level' ? 6 : 4) * s;
+                p.circle(x, y, r); p.stroke();
+            }
+            // 像素碎片
+            for (const q of g.particles) {
+                const x = sx(q.x), y = sy(q.y);
+                if (Math.abs(x) > w / 2 + 20 || Math.abs(y) > h / 2 + 20) continue;
+                p.fillColor = this.c(q.color, Math.round(230 * Math.max(0, q.life / q.duration)));
+                const sz = q.size * s;
+                p.rect(x - sz / 2, y - sz / 2, sz, sz); p.fill();
+            }
+            // ── HUD：顶部玉牌 + 底部六格技能栏 ──────────────────
+            this.card(p, -w / 2 + 14 * s, h / 2 - 148 * s, w - 28 * s, 132 * s, 24 * s, Q.panel, 238, Q.panelEdge, 235, 3 * s);
+            p.fillColor = this.c(Q.gold, 200);
+            p.roundRect(-w / 2 + 26 * s, h / 2 - 30 * s, w - 52 * s, 6 * s, 3 * s); p.fill();
+            for (let i = 0; i < g.maxHp; i++)
+                this.heart(p, -w / 2 + (36 + i * 26) * s, h / 2 - 52 * s, 9 * s, i < g.hp, Q.heart);
+            const barW = w - 60 * s, barY = h / 2 - 142 * s;
+            this.card(p, -barW / 2, barY, barW, 9 * s, 5 * s, Q.panelShade, 255);
+            this.card(p, -barW / 2, barY, Math.max(9 * s, barW * g.progress), 9 * s, 5 * s, Q.mint);
+            this.card(p, -w / 2 + 14 * s, -h / 2 + 16 * s, w - 28 * s, 96 * s, 24 * s, Q.panel, 238, Q.panelEdge, 235, 3 * s);
+            const slotW = (w - 44 * s) / 6;
+            const slotColors = [Q.gold, Q.mintLight, Q.lilac, Q.sun, Q.grassB, Q.coral];
+            for (let i = 0; i < 6; i++) {
+                const cx = (i - 2.5) * slotW;
+                const sk = g.skillLevels[i];
+                this.card(p, cx - slotW / 2 + 5 * s, -h / 2 + 26 * s, slotW - 10 * s, 76 * s, 14 * s,
+                    sk.hot ? slotColors[i] : Q.panelShade, sk.hot ? 235 : 175,
+                    sk.hot ? Q.goldDeep : Q.panelEdge, sk.hot ? 220 : 120, 2 * s);
+            }
+            if (this.banner.string && g.phase === 'playing' && !g.pendingChoice) {
+                const bw = Math.min(w - 56 * s, Math.max(260 * s, this.banner.string.length * 27 * s));
+                this.card(p, -bw / 2, h / 2 - 322 * s, bw, 58 * s, 29 * s, Q.panel, 235, Q.gold, 200, 2 * s);
+            }
+            if (this.progress.string && g.phase === 'playing') {
+                const pw = Math.min(w - 48 * s, Math.max(250 * s, this.progress.string.length * 16 * s));
+                this.card(p, -pw / 2, -h / 2 + 116 * s, pw, 38 * s, 19 * s, Q.panel, 220, Q.panelEdge, 160, 1.8 * s);
+            }
+            if (this.mowToast > 0)
+                this.card(p, -170 * s, (150 + (1 - this.mowToast) * 50) * s - 24 * s, 340 * s, 48 * s, 24 * s, Q.panel, 240, Q.mint, 220, 2 * s);
+            if (this.finger !== -1 && !g.pendingChoice) {
+                const ox = this.origin.x, oy = this.origin.y;
+                p.fillColor = this.c(Q.panel, 95);
+                p.circle(ox, oy, 68 * s); p.fill();
+                p.strokeColor = this.c(Q.ink, 70); p.lineWidth = 3 * s;
+                p.circle(ox, oy, 68 * s); p.stroke();
+                p.fillColor = this.c(Q.mint, 210);
+                p.circle(ox + this.stick.x * 50 * s, oy + this.stick.y * 50 * s, 21 * s); p.fill();
+                p.strokeColor = this.c(Q.white, 220); p.lineWidth = 2 * s;
+                p.circle(ox + this.stick.x * 50 * s, oy + this.stick.y * 50 * s, 21 * s); p.stroke();
+            }
+            if (this.mowIntro > 0)
+                this.drawMowPortalIntro();
+            if (g.pendingChoice)
+                this.drawMowChoiceCards();
+        }
+        else if (settling) {
+            p.fillColor = this.c(Q.panel, 225);
+            p.rect(-w / 2, -h / 2, w, h); p.fill();
+            this.glow(p, 0, 60 * s, w * 1.05, g.phase === 'won' ? Q.gold : Q.mint, 44, 7);
+            this.drawMowSettlement();
+        }
+        else {
+            // 菜单 / 暂停：浅色遮罩 + 漂浮像素鸭与花瓣
+            p.fillColor = this.c(Q.panel, 175);
+            p.rect(-w / 2, -h / 2, w, h); p.fill();
+            this.glow(p, 0, 210 * s, 380 * s, Q.gold, 40, 7);
+            for (let i = 0; i < 18; i++) {
+                const seed = noise(i, 17);
+                const x = (seed - .5) * (w - 60 * s);
+                const y = -h / 2 + ((this.clock * (14 + seed * 22) + seed * h) % h);
+                p.fillColor = this.c(i % 3 === 0 ? Q.coral : i % 3 === 1 ? Q.gold : Q.mint, 130);
+                p.rect(x, y, (5 + seed * 6) * s, (5 + seed * 6) * s); p.fill();
+            }
+            const cy = 430 * s;
+            p.strokeColor = this.c(Q.gold, 210); p.lineWidth = 5 * s;
+            p.circle(0, cy, 82 * s); p.stroke();
+            p.strokeColor = this.c(Q.white, 190); p.lineWidth = 2.5 * s;
+            p.circle(0, cy, 98 * s); p.stroke();
+            if (!this.menuDuck.node.active)
+                this.pixelDuck(p, 0, cy + 6 * s, 2.2 * s);
+            // 菜单卡片底板
+            this.card(p, -w / 2 + 20 * s, -280 * s, w - 40 * s, 480 * s, 32 * s, Q.panel, 232, Q.panelEdge, 235, 3 * s);
+            p.fillColor = this.c(Q.gold, 180);
+            p.roundRect(-w / 2 + 38 * s, 188 * s, w - 76 * s, 6 * s, 3 * s); p.fill();
+            p.strokeColor = this.c(Q.panelEdge, 190); p.lineWidth = 2 * s;
+            p.moveTo(-w / 2 + 48 * s, -45 * s); p.lineTo(w / 2 - 48 * s, -45 * s); p.stroke();
+        }
+    }
+    private drawMowPortalIntro() {
+        const p = this.framePen, s = this.s, w = this.w, h = this.h;
+        const t = 1 - this.mowIntro / MOW_PORTAL_INTRO;
+        const fade = Math.min(1, t * 5) * Math.min(1, (1 - t) * 5);
+        const R = (80 + 170 * Math.min(1, t * 1.6)) * s, spin = this.clock * 3.2;
+        p.fillColor = this.c(Q.panel, Math.round(215 * fade));
+        p.rect(-w / 2, -h / 2, w, h); p.fill();
+        this.glow(p, 0, 0, R * 2.4, Q.mint, Math.round(50 * fade), 6);
+        this.glow(p, 0, 0, R * 1.3, Q.gold, Math.round(44 * fade), 5);
+        for (let ring = 0; ring < 3; ring++) {
+            p.strokeColor = this.c([Q.gold, Q.mint, Q.lilac][ring], Math.round((230 - ring * 55) * fade));
+            p.lineWidth = (5 - ring) * s;
+            p.circle(0, 0, R * (1 - ring * .24)); p.stroke();
+        }
+        p.strokeColor = this.c(Q.white, Math.round(200 * fade)); p.lineWidth = 3 * s;
+        for (let i = 0; i < 16; i++) {
+            const a = spin + i * Math.PI / 8;
+            p.moveTo(Math.cos(a) * R * .82, Math.sin(a) * R * .82);
+            p.lineTo(Math.cos(a) * R * .97, Math.sin(a) * R * .97);
+        }
+        p.stroke();
+        this.pixelDuck(p, 0, -6 * s, Math.max(.05, Math.min(1, t * 2.2) * 1.6) * s * 2.6);
+        for (let i = 0; i < 14; i++) {
+            const a = i * Math.PI / 7 + spin * .6, r = R * (1.05 + .14 * Math.sin(this.clock * 4 + i));
+            p.fillColor = this.c(i % 2 ? Q.gold : Q.mint, Math.round(220 * fade));
+            p.rect(Math.cos(a) * r - 4 * s, Math.sin(a) * r - 4 * s, 8 * s, 8 * s); p.fill();
+        }
+    }
+    private drawMowChoiceCards() {
+        const p = this.framePen, g = this.mow, w = this.w, h = this.h, s = this.s, c = g.pendingChoice!;
+        p.fillColor = this.c(Q.panel, 232);
+        p.rect(-w / 2, -h / 2, w, h); p.fill();
+        this.glow(p, 0, 0, w * .9, Q.gold, 34, 6);
+        const halfW = (w - 80 * s) / 2;
+        const accents = [Q.gold, Q.mintLight, Q.lilac];
+        for (let i = 0; i < 3; i++) {
+            const o = c.options[i], y = this.mowCardY(i);
+            p.fillColor = this.c(Q.ink, 22);
+            p.roundRect(-halfW + 6 * s, y - 66 * s - 6 * s, halfW * 2, 132 * s, 26 * s); p.fill();
+            this.card(p, -halfW, y - 66 * s, halfW * 2, 132 * s, 24 * s, Q.panel, 255, Q.panelEdge, 245, 3 * s);
+            this.card(p, -halfW + 14 * s, y - 48 * s, 96 * s, 96 * s, 20 * s, accents[i], 245, Q.goldDeep, 150, 2 * s);
+            // 卡面图标用中文字符由标签绘制，这里补一个像素角标
+            p.fillColor = this.c(Q.white, 190);
+            p.rect(-halfW + 26 * s, y + 34 * s, 20 * s, 6 * s); p.fill();
+            p.strokeColor = this.c(Q.goldDeep, 190); p.lineWidth = 2 * s;
+            p.moveTo(-halfW + halfW * 2 - 150 * s, y - 46 * s);
+            p.lineTo(-halfW + halfW * 2 - 150 * s, y + 46 * s);
+            p.stroke();
+            if (o.level >= o.max - 1 && o.max < 90) {
+                p.fillColor = this.c(Q.coral, 200);
+                p.circle(halfW - 24 * s, y + 44 * s, 6 * s); p.fill();
+            }
+        }
+        // 标题条
+        this.card(p, -170 * s, h / 2 - 340 * s, 340 * s, 62 * s, 31 * s, Q.panel, 245, Q.gold, 220, 3 * s);
+        this.card(p, -200 * s, -330 * s, 400 * s, 46 * s, 23 * s, Q.panel, 230, Q.panelEdge, 180, 2 * s);
+    }
+    private drawMowSettlement() {
+        const g = this.mow, p = this.framePen, s = this.s;
+        const t = Math.max(0, Math.min(1, this.settleFor / 2));
+        const ease = (x: number) => x * x * (3 - 2 * x);
+        const R = (70 + 60 * ease(Math.min(1, t * 1.5))) * s;
+        this.glow(p, 0, 40 * s, R * 2.6, Q.mint, 46, 6);
+        p.strokeColor = this.c(Q.gold, 230); p.lineWidth = 6 * s;
+        p.circle(0, 40 * s, R); p.stroke();
+        p.strokeColor = this.c(Q.white, 220); p.lineWidth = 3 * s;
+        p.circle(0, 40 * s, R * .74); p.stroke();
+        const n = Math.min(12, Math.max(1, Math.floor(g.totalRescued / 4)));
+        for (let i = 0; i < n; i++) {
+            const a = i * 2.399 + this.clock * .6;
+            const rise = ease(Math.min(1, t * 1.3 + i * .03));
+            const rr = (20 + (i % 4) * 16) * s * (1 - rise * .7);
+            const x = Math.cos(a) * rr, y = 40 * s + Math.sin(a) * rr * .6 + rise * 90 * s;
+            this.pixelDuck(p, x, y, (1 - rise * .45) * s);
+        }
+        for (let i = 0; i < 14; i++) {
+            const a = i * Math.PI / 7 + this.clock * 1.4;
+            const r = (70 + (i * 29) % 130) * s * (1 + t * .5);
+            p.fillColor = this.c([Q.gold, Q.mint, Q.coral, Q.white][i % 4], Math.round(220 * (1 - t * .45)));
+            p.rect(Math.cos(a) * r, 40 * s + Math.sin(a) * r, 8 * s, 8 * s); p.fill();
+        }
+    }
+    private menusMow() {
+        const g = this.mow;
+        const settling = (g.phase === 'won' || g.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2;
+        if (settling) {
+            if (this.state !== g.phase) {
+                this.state = g.phase;
+                for (const n of this.panel.children.slice()) n.destroy();
+            }
+            return;
+        }
+        if (this.state === g.phase)
+            return;
+        this.state = g.phase;
+        for (const n of this.panel.children.slice()) n.destroy();
+        if (g.phase === 'playing')
+            return;
+        if (g.phase === 'won') {
+            const result = recordResult(this.save, g.character, true);
+            if (result.unlocked.length) {
+                this.save = result.save;
+                this.newUnlocks = result.unlocked;
+                this.writeSave();
+            }
+        }
+        const unlockText = this.newUnlocks.length ? `新解锁：${this.newUnlocks.map(c => CHARACTER_NAMES[c]).join('、')}！` : '';
+        const s = this.s, W = this.w, isMenu = g.phase === 'menu';
+        this.button(this.panel, '切换：经典模式', 0, 390 * s, 220 * s, () => this.switchMode('classic'), { variant: 'chip', h: 50 * s });
+        const title = isMenu ? '鸭命要紧' : g.phase === 'paused' ? '暂停一下' : g.phase === 'won' ? '突围成功！' : '被做成鸭货了…';
+        const subtitle = isMenu ? '万剑自动清场 · 捡魂珠升境界 · 救鸭免于上餐桌'
+            : g.phase === 'paused' ? '手动继续后恢复战斗'
+                : g.phase === 'won' ? (unlockText || '巨型捕鸭夹碎了，鸭子们自由了')
+                    : `死因：${g.deathCause} · 但鸭子们记得你`;
+        this.label(this.panel, title, Math.round(50 * s), 0, 300 * s, W - 30, { color: Q.goldDeep, bold: true });
+        this.label(this.panel, subtitle, Math.round(20 * s), 0, 248 * s, W - 48, { color: Q.inkSoft });
+        if (isMenu) {
+            this.label(this.panel, '选择职业鸭', Math.round(19 * s), 0, 150 * s, W - 40, { color: Q.inkSoft });
+            (['shooter', 'warrior', 'mage'] as Character[]).forEach((c, i) => {
+                const x = (i - 1) * 140 * s, unlocked = this.save.unlocked.includes(c);
+                const names: Record<Character, string> = { shooter: '御剑鸭', warrior: '剑阵鸭', mage: '引雷鸭' };
+                this.button(this.panel, `${names[c]}\n${unlocked ? (this.selected === c ? '✓ 已选择' : '点击选择') : '尚未解锁'}`,
+                    x, 70 * s, 128 * s, () => {
+                        if (!unlocked) return;
+                        this.selected = c;
+                        this.save = recordStart(this.save, c);
+                        this.writeSave();
+                        this.state = '';
+                    }, { variant: 'career', h: 88 * s, selected: unlocked && this.selected === c, disabled: !unlocked });
+            });
+        }
+        else if (g.phase === 'paused') {
+            this.label(this.panel, '本局进度', Math.round(20 * s), 0, 130 * s, W - 60, { color: Q.inkSoft });
+            this.label(this.panel, `Lv.${g.level} · 击退 ${g.kills} · 救出 ${g.totalRescued} 只\n万剑 ×${g.bladeCount} · 剑阵 ${g.orbitCount} · 雷劫 ${g.thunderCount}`,
+                Math.round(20 * s), 0, 70 * s, W - 60, { color: Q.ink });
+        }
+        else {
+            this.label(this.panel, `${g.totalRescued} 只鸭`, Math.round(58 * s), 0, 165 * s, W - 60, { color: Q.goldDeep, bold: true });
+            this.label(this.panel, '免于上餐桌', Math.round(24 * s), 0, 122 * s, W - 48, { color: Q.ink, bold: true });
+            this.label(this.panel, `传送阵撤离 ${g.rescued} 只 · 斩妖放生 ${g.freed} 只${g.rescueBonus ? ` · 突围加成 ${g.rescueBonus} 只` : ''}`,
+                Math.round(17 * s), 0, 88 * s, W - 50, { color: Q.inkSoft });
+            this.label(this.panel, `第 ${g.wave} 波 · Lv.${g.level} · 击退 ${g.kills} · 连斩峰值 ${g.combo}\n通关用时 ${Math.floor(g.time)} 秒 · 最高构筑 万剑 ×${g.bladeCount}`,
+                Math.round(17 * s), 0, 44 * s, W - 60, { color: Q.inkSoft });
+        }
+        const atk = regenAttempts(this.save, Date.now());
+        const canStart = atk.attempts > 0;
+        const startLabel = g.phase === 'paused' ? '继续割草' : isMenu ? `开始割草（余 ${atk.attempts} 次）` : `再来一局（余 ${atk.attempts} 次）`;
+        const mainY = isMenu ? -110 * s : -60 * s;
+        if (g.phase !== 'paused' && !canStart) {
+            this.label(this.panel, `开局次数不足（0/${MAX_ATTEMPTS}）· 恢复中`, Math.round(23 * s), 0, -8 * s, 380, { color: Q.coral, bold: true });
+            this.button(this.panel, `看广告补 ${AD_BONUS} 次（占位）`, 0, mainY, 400 * s, () => {
+                this.save = grantAdBonus(this.save, Date.now());
+                this.writeSave();
+                this.state = '';
+            }, { variant: 'primary', h: 76 * s });
+        }
+        else
+            this.button(this.panel, startLabel, 0, mainY, 400 * s, () => {
+                this.enableAudio();
+                if (g.phase === 'paused')
+                    g.phase = 'playing';
+                else {
+                    const spent = spendAttempt(this.save, Date.now());
+                    if (!spent.ok) { this.state = ''; return; }
+                    this.save = spent.save;
+                    this.writeSave();
+                    g.start(this.selected);
+                    this.mowIntro = MOW_PORTAL_INTRO;
+                    this.lastMowRescued = 0;
+                    this.mowToast = 0;
+                }
+            }, { variant: 'primary', h: 76 * s });
+        const tip = isMenu ? '单指拖动 / WASD 移动 · 武器全自动\n升级三选一 · 每 8 次击退多救 1 只鸭\n首胜解锁剑阵鸭 · 再胜解锁引雷鸭'
+            : '结算演出可点按任意处跳过';
+        this.label(this.panel, tip, Math.round(18 * s), 0, isMenu ? -215 * s : -180 * s, W - 60, { color: Q.inkSoft });
     }
 }

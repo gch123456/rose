@@ -1,0 +1,795 @@
+// ── 割草模式：万剑救鸭 ─────────────────────────────────────────
+// 纯规则层，不依赖 Cocos。表现层（GoDuck 的割草渲染 / 网页试玩页）只读取状态。
+// 与经典模式 EscapeGame 完全平行：默认入口是这里，经典模式仍可在菜单切换。
+// 设计目标：高密度怪潮、多路自动输出、升级三选一的肉鸽构筑、每斩一批怪就多救几只鸭。
+
+export type MowCharacter = 'shooter' | 'warrior' | 'mage';
+export type MowPhase = 'menu' | 'playing' | 'paused' | 'won' | 'lost';
+export type MowEnemyKind = 'grunt' | 'runner' | 'brute' | 'boss';
+
+export interface MowEnemy {
+    id: number;
+    kind: MowEnemyKind;
+    x: number;
+    y: number;
+    hp: number;
+    maxHp: number;
+    radius: number;
+    speed: number;
+    flash: number;
+    wobble: number;
+    dead: boolean;
+}
+export interface MowSword {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    left: number;
+    speed: number;
+    damage: number;
+    pierce: number;
+    hit: number[];
+    crit: boolean;
+}
+export interface MowGem {
+    x: number;
+    y: number;
+    value: number;
+    bob: number;
+}
+export interface MowDuck {
+    x: number;
+    y: number;
+    bob: number;
+}
+export interface MowFloat {
+    x: number;
+    y: number;
+    text: string;
+    life: number;
+    duration: number;
+    kind: 'damage' | 'crit' | 'heal' | 'rescue';
+}
+export interface MowParticle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    life: number;
+    duration: number;
+    size: number;
+    color: string;
+}
+export interface MowEffect {
+    x: number;
+    y: number;
+    radius: number;
+    life: number;
+    duration: number;
+    kind: string;
+}
+export interface MowBoss {
+    id: number;
+    kind: 'boss';
+    x: number;
+    y: number;
+    hp: number;
+    maxHp: number;
+    radius: number;
+    flash: number;
+    state: 'arrive' | 'windup' | 'dash' | 'recover' | 'roar';
+    timer: number;
+    dx: number;
+    dy: number;
+}
+export interface MowUpgrade {
+    id: string;
+    name: string;
+    desc: string;
+    icon: string;
+    level: number;
+    max: number;
+}
+export interface MowChoice {
+    options: MowUpgrade[];
+    timer: number;
+}
+
+export const MOW_DURATION = 90;
+export const MOW_BOSS_AT = 72;
+export const MOW_LIMIT = 100;
+export const MOW_WAVE_STEP = 15;
+export const MOW_ENEMY_CAP = 190;
+export const MOW_DUCK_CAP = 10;
+export const MOW_DUCK_RADIUS = 58;
+export const MOW_WIN_BONUS = 12;
+export const MOW_GEM_CAP = 260;
+
+// 升级池：前 12 项是构筑，后 2 项是可重复的保底选项，保证任何时候都能凑满三张卡。
+export const MOW_UPGRADES: { id: string; name: string; desc: string; icon: string; max: number }[] = [
+    { id: 'blades', name: '万剑诀', desc: '每轮多 2 把飞剑', icon: '剑', max: 6 },
+    { id: 'haste', name: '御风诀', desc: '飞剑出手更快', icon: '风', max: 5 },
+    { id: 'edge', name: '锋芒', desc: '飞剑伤害 +25%', icon: '锋', max: 6 },
+    { id: 'pierce', name: '破甲', desc: '飞剑多穿透 2 只', icon: '穿', max: 4 },
+    { id: 'orbit', name: '护身剑阵', desc: '+1 把环绕飞剑', icon: '环', max: 5 },
+    { id: 'thunder', name: '引雷符', desc: '雷劫更密、范围更大', icon: '雷', max: 5 },
+    { id: 'aura', name: '金光领域', desc: '领域范围与伤害提升', icon: '光', max: 5 },
+    { id: 'boots', name: '踏云步', desc: '移动速度 +12%', icon: '云', max: 4 },
+    { id: 'magnet', name: '聚灵', desc: '魂珠拾取范围 +30', icon: '灵', max: 4 },
+    { id: 'vigor', name: '鸭身铁布衫', desc: '生命上限 +1 并回 1 点', icon: '盾', max: 3 },
+    { id: 'crit', name: '会心一击', desc: '暴击率 +8%', icon: '暴', max: 4 },
+    { id: 'mercy', name: '救鸭令', desc: '每多救 1 只鸭所需击退数 -1', icon: '救', max: 4 },
+    { id: 'snack', name: '烤谷粒', desc: '立刻回 1 点生命', icon: '谷', max: 99 },
+    { id: 'spirit', name: '聚魂珠', desc: '立刻获得 25 点经验', icon: '魂', max: 99 },
+];
+
+export class SurvivorGame {
+    readonly duration = MOW_DURATION;
+    readonly bossAt = MOW_BOSS_AT;
+    readonly limit = MOW_LIMIT;
+    phase: MowPhase = 'menu';
+    time = 0;
+    character: MowCharacter = 'shooter';
+    hp = 6;
+    maxHp = 6;
+    level = 1;
+    xp = 0;
+    kills = 0;
+    score = 0;
+    wave = 1;
+    rescued = 0;
+    freed = 0;
+    rescueBonus = 0;
+    deathCause = '';
+    x = 0;
+    y = 0;
+    viewWidth = 640;
+    viewHeight = 1120;
+    facing = { x: 0, y: 1 };
+    enemies: MowEnemy[] = [];
+    swords: MowSword[] = [];
+    gems: MowGem[] = [];
+    ducks: MowDuck[] = [];
+    floats: MowFloat[] = [];
+    particles: MowParticle[] = [];
+    effects: MowEffect[] = [];
+    boss: MowBoss | null = null;
+    events: string[] = [];
+    notice = '';
+    noticeFor = 0;
+    shake = 0;
+    combo = 0;
+    comboFor = 0;
+    pendingChoice: MowChoice | null = null;
+    upgrades: Record<string, number> = {};
+    random: () => number;
+
+    private levelQueue = 0;
+    private bladeAt = 0;
+    private thunderAt = 1.8;
+    private auraAt = 0;
+    private spawnAcc = 0;
+    private waveAt = MOW_WAVE_STEP;
+    private duckAt = 6;
+    private immunity = 0;
+    private serial = 0;
+    private orbitCd = new Map<number, number>();
+
+    constructor(random: () => number = Math.random) {
+        this.random = random;
+    }
+
+    get totalRescued() {
+        return this.rescued + this.freed + this.rescueBonus;
+    }
+    get nextXp() {
+        return 8 + 6 * (this.level - 1);
+    }
+    get progress() {
+        return Math.min(1, this.level >= 30 ? 1 : this.xp / this.nextXp);
+    }
+    private lv(id: string) {
+        return this.upgrades[id] || 0;
+    }
+    get bladeCount() {
+        return 6 + (this.character === 'shooter' ? 4 : 0) + 2 * this.lv('blades');
+    }
+    get bladeInterval() {
+        return (this.character === 'shooter' ? .26 : .34) / (1 + .15 * this.lv('haste'));
+    }
+    get bladeDamage() {
+        return (11 + 3.2 * (this.level - 1)) * (1 + .25 * this.lv('edge'));
+    }
+    get bladePierce() {
+        return 2 + 2 * this.lv('pierce');
+    }
+    get orbitCount() {
+        return (this.character === 'warrior' ? 3 : 1) + this.lv('orbit');
+    }
+    get orbitRadius() {
+        return 74 + 6 * this.lv('orbit');
+    }
+    get thunderInterval() {
+        return (this.character === 'mage' ? 1.5 : 2.3) / (1 + .2 * this.lv('thunder'));
+    }
+    get thunderRadius() {
+        return 66 + 14 * this.lv('thunder');
+    }
+    get thunderCount() {
+        return 1 + Math.floor(this.lv('thunder') / 2) + (this.character === 'mage' ? 1 : 0);
+    }
+    get thunderDamage() {
+        return (26 + 5 * (this.level - 1)) * (1 + .3 * this.lv('thunder'));
+    }
+    get auraRadius() {
+        return (this.character === 'warrior' ? 82 : 62) + 16 * this.lv('aura');
+    }
+    get auraDamage() {
+        return (5 + 1.4 * (this.level - 1)) * (1 + .35 * this.lv('aura'));
+    }
+    get moveSpeed() {
+        return 205 * (1 + .12 * this.lv('boots'));
+    }
+    get magnet() {
+        return 62 + 30 * this.lv('magnet');
+    }
+    get critChance() {
+        return .08 + .08 * this.lv('crit');
+    }
+    get killsPerDuck() {
+        return Math.max(3, 8 - this.lv('mercy'));
+    }
+    get skillLevels(): { icon: string; level: number; hot: boolean }[] {
+        return [
+            { icon: '剑', level: 1 + this.lv('blades') + this.lv('haste'), hot: true },
+            { icon: '环', level: this.orbitCount, hot: this.orbitCount > 1 },
+            { icon: '雷', level: 1 + this.lv('thunder'), hot: this.lv('thunder') > 0 },
+            { icon: '光', level: 1 + this.lv('aura'), hot: this.lv('aura') > 0 },
+            { icon: '云', level: 1 + this.lv('boots') + this.lv('magnet'), hot: this.lv('boots') > 0 },
+            { icon: '救', level: 1 + this.lv('mercy') + this.lv('vigor'), hot: this.lv('mercy') > 0 },
+        ];
+    }
+
+    setViewport(w: number, h: number) {
+        this.viewWidth = w;
+        this.viewHeight = h;
+    }
+    start(character: MowCharacter = this.character) {
+        this.character = character;
+        this.phase = 'playing';
+        this.time = 0;
+        this.hp = this.maxHp = 6;
+        this.level = 1;
+        this.xp = 0;
+        this.kills = 0;
+        this.score = 0;
+        this.wave = 1;
+        this.rescued = 0;
+        this.freed = 0;
+        this.rescueBonus = 0;
+        this.deathCause = '';
+        this.x = 0;
+        this.y = 0;
+        this.enemies = [];
+        this.swords = [];
+        this.gems = [];
+        this.ducks = [];
+        this.floats = [];
+        this.particles = [];
+        this.effects = [];
+        this.boss = null;
+        this.events = [];
+        this.notice = '传送阵开启 · 厨妖潮涌来了！';
+        this.noticeFor = 2.6;
+        this.shake = 0;
+        this.combo = 0;
+        this.comboFor = 0;
+        this.pendingChoice = null;
+        this.upgrades = {};
+        this.facing = { x: 0, y: 1 };
+        this.levelQueue = 0;
+        this.bladeAt = 0;
+        this.thunderAt = 1.6;
+        this.auraAt = 0;
+        this.spawnAcc = 0;
+        this.waveAt = MOW_WAVE_STEP;
+        this.duckAt = 6;
+        this.immunity = 0;
+        this.serial = 0;
+        this.orbitCd.clear();
+        this.spawnDucks(3, true);
+    }
+
+    // ── 状态写入 helpers ────────────────────────────────────────
+    private announce(message: string, event: string) {
+        this.notice = message;
+        this.noticeFor = 2.4;
+        this.events.push(event);
+    }
+    private effect(x: number, y: number, radius: number, kind: string, life = .4) {
+        this.effects.push({ x, y, radius, kind, life, duration: life });
+        if (this.effects.length > 70)
+            this.effects.shift();
+    }
+    private float(x: number, y: number, text: string, kind: MowFloat['kind']) {
+        if (this.floats.length >= 60)
+            return;
+        this.floats.push({ x, y, text, kind, life: .72, duration: .72 });
+    }
+    private burst(x: number, y: number, color: string, count = 6, power = 130) {
+        for (let i = 0; i < count && this.particles.length < 240; i++) {
+            const a = this.random() * Math.PI * 2, v = power * (.4 + this.random() * .8);
+            this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+                life: .35 + this.random() * .35, duration: .7, size: 3 + this.random() * 4, color });
+        }
+    }
+    private spawnDucks(count: number, nearPortal = false) {
+        const cx = nearPortal ? 0 : this.x, cy = nearPortal ? 0 : this.y;
+        for (let i = 0; i < count && this.ducks.length < MOW_DUCK_CAP; i++) {
+            const a = this.random() * Math.PI * 2;
+            const r = nearPortal ? 110 + this.random() * 90 : 180 + this.random() * 220;
+            this.ducks.push({
+                x: Math.max(-820, Math.min(820, cx + Math.cos(a) * r)),
+                y: Math.max(-820, Math.min(820, cy + Math.sin(a) * r)),
+                bob: this.random() * Math.PI * 2,
+            });
+        }
+    }
+
+    // ── 升级三选一 ──────────────────────────────────────────────
+    private openChoice() {
+        const pool = MOW_UPGRADES.filter(u => this.lv(u.id) < u.max);
+        const options: MowUpgrade[] = [];
+        while (options.length < 3 && pool.length) {
+            const i = Math.floor(this.random() * pool.length) % pool.length;
+            const u = pool.splice(i, 1)[0];
+            options.push({ ...u, level: this.lv(u.id) });
+        }
+        // 保底：所有构筑都满级时，用可重复选项补齐。
+        for (const u of MOW_UPGRADES.slice(-2)) {
+            while (options.length < 3)
+                options.push({ ...u, level: this.lv(u.id) });
+        }
+        this.pendingChoice = { options, timer: 0 };
+        this.announce('境界突破 · 三选一', 'level');
+        this.effect(this.x, this.y, 150, 'level', .7);
+        this.shake = Math.max(this.shake, .35);
+    }
+    chooseUpgrade(index: number): boolean {
+        const c = this.pendingChoice;
+        if (!c || !c.options[index])
+            return false;
+        const o = c.options[index];
+        this.pendingChoice = null;
+        this.levelQueue = Math.max(0, this.levelQueue - 1);
+        this.upgrades[o.id] = this.lv(o.id) + 1;
+        if (o.id === 'vigor') {
+            this.maxHp++;
+            this.hp = Math.min(this.maxHp, this.hp + 1);
+        }
+        if (o.id === 'snack')
+            this.hp = Math.min(this.maxHp, this.hp + 1);
+        if (o.id === 'spirit')
+            this.experience(25);
+        this.immunity = Math.max(this.immunity, .5);
+        this.announce(`${o.icon} ${o.name} · Lv.${this.upgrades[o.id]}`, 'upgrade');
+        this.effect(this.x, this.y, 120, 'upgrade', .6);
+        this.burst(this.x, this.y, '#FFC94A', 16, 190);
+        // 一次拾取跨过多级时，连续发牌而不是把升级吞掉。
+        if (this.levelQueue > 0)
+            this.openChoice();
+        return true;
+    }
+    private experience(value: number) {
+        this.score += value;
+        if (this.level >= 30)
+            return;
+        this.xp += value;
+        while (this.level < 30 && this.xp >= this.nextXp) {
+            this.xp -= this.nextXp;
+            this.level++;
+            this.levelQueue++;
+            this.effect(this.x, this.y, 110, 'level', .6);
+            this.burst(this.x, this.y, '#8FF3C8', 12, 160);
+        }
+        if (this.level >= 30)
+            this.xp = 0;
+        if (this.levelQueue > 0 && !this.pendingChoice)
+            this.openChoice();
+    }
+
+    // ── 怪潮 ───────────────────────────────────────────────────
+    private spawnEnemy(forceKind?: MowEnemyKind, angle?: number, distScale = 1) {
+        if (this.enemies.length >= MOW_ENEMY_CAP)
+            return null;
+        const r = this.random();
+        let kind: MowEnemyKind = 'grunt';
+        if (!forceKind) {
+            if (this.time >= 35 && r < .09)
+                kind = 'brute';
+            else if (this.time >= 18 && r < .32)
+                kind = 'runner';
+        }
+        else
+            kind = forceKind;
+        const a = angle ?? this.random() * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
+        const d = Math.min((this.viewWidth / 2 + 46) / Math.max(.001, Math.abs(dx)),
+            (this.viewHeight / 2 + 46) / Math.max(.001, Math.abs(dy))) * distScale;
+        const hp = kind === 'brute' ? 72 + this.time * 2.2 : kind === 'runner' ? 8 + this.time * .18 : 12 + this.time * .28;
+        const e: MowEnemy = {
+            id: ++this.serial, kind,
+            x: Math.max(-850, Math.min(850, this.x + dx * d)),
+            y: Math.max(-850, Math.min(850, this.y + dy * d)),
+            hp, maxHp: hp, radius: kind === 'brute' ? 25 : 15,
+            speed: kind === 'brute' ? 52 : kind === 'runner' ? 125 : 78,
+            flash: 0, wobble: this.random() * Math.PI * 2, dead: false,
+        };
+        this.enemies.push(e);
+        return e;
+    }
+    // 怪潮以小队成团涌入，而不是均匀散点——割草的视觉密度来自成团的黑影。
+    private spawnPack() {
+        const a = this.random() * Math.PI * 2;
+        const n = 2 + Math.floor(this.random() * 3);
+        for (let i = 0; i < n; i++)
+            this.spawnEnemy(undefined, a + (this.random() - .5) * .5, .78 + this.random() * .28);
+    }
+    private spawnRate() {
+        return 6 + Math.min(16, this.time * .3) + (this.wave - 1) * 1.1;
+    }
+    private callWave() {
+        this.wave++;
+        this.announce(`第 ${this.wave} 波 · 厨妖潮涌来！`, 'wave');
+        this.shake = Math.max(this.shake, .5);
+        for (let i = 0; i < 6 + this.wave * 2; i++)
+            this.spawnEnemy();
+        this.waveAt += MOW_WAVE_STEP;
+    }
+
+    // ── 伤害与击退 ─────────────────────────────────────────────
+    private damage(e: MowEnemy | MowBoss, amount: number, crit = false, show = true) {
+        if ('dead' in e && e.dead)
+            return;
+        if ('state' in e && e.state === 'arrive')
+            return;
+        e.hp -= amount;
+        e.flash = .14;
+        if (show || crit)
+            this.float(e.x, e.y + 18, (crit ? '✦' : '') + String(Math.round(amount)), crit ? 'crit' : 'damage');
+        this.events.push('hit');
+        if (e.hp > 0)
+            return;
+        if ('dead' in e) {
+            if (e.dead)
+                return;
+            e.dead = true;
+            this.kill(e);
+        }
+        else if (e.kind === 'boss') {
+            // 胜负统一在 tick 末尾判定，避免同一帧里伤害与接触互相抢结论。
+            this.shake = 1;
+            this.burst(e.x, e.y, '#FFC94A', 30, 280);
+        }
+    }
+    private kill(e: MowEnemy) {
+        this.kills++;
+        this.combo++;
+        this.comboFor = 2.2;
+        this.score += e.kind === 'brute' ? 8 : 2;
+        this.events.push('kill');
+        this.burst(e.x, e.y, e.kind === 'brute' ? '#FF8A5B' : '#6ED7B0',
+            e.kind === 'brute' ? 14 : 5, e.kind === 'brute' ? 220 : 140);
+        this.gems.push({ x: e.x, y: e.y, value: e.kind === 'brute' ? 5 : 1, bob: this.random() * 6 });
+        if (this.gems.length > MOW_GEM_CAP)
+            this.gems[0].value += this.gems.pop()!.value;
+        if (e.kind === 'brute') {
+            this.rescued += 2;
+            this.events.push('rescue');
+            this.announce('砸开大锅盖 · 2 只鸭撤离！', 'rescue');
+            this.effect(e.x, e.y, 90, 'rescue', .6);
+            this.shake = Math.max(this.shake, .55);
+        }
+        this.freed = Math.floor(this.kills / this.killsPerDuck);
+    }
+    private hurt(cause: string, hearts = 1) {
+        if (this.phase !== 'playing' || this.immunity > 0 || this.hp <= 0)
+            return;
+        this.hp -= hearts;
+        this.immunity = .95;
+        this.deathCause = cause;
+        this.shake = Math.max(this.shake, .8);
+        this.float(this.x, this.y + 24, '-' + hearts, 'damage');
+        this.events.push('hurt');
+    }
+
+    // ── 四路自动输出 ────────────────────────────────────────────
+    private nearest(range: number) {
+        let best: MowEnemy | null = null, d = range;
+        for (const e of this.enemies) {
+            if (e.dead)
+                continue;
+            const dist = Math.hypot(e.x - this.x, e.y - this.y);
+            if (dist < d) { d = dist; best = e; }
+        }
+        return best;
+    }
+    private fireBlades() {
+        const target = this.nearest(480);
+        const angle = target ? Math.atan2(target.y - this.y, target.x - this.x)
+            : Math.atan2(this.facing.y, this.facing.x);
+        this.facing = { x: Math.cos(angle), y: Math.sin(angle) };
+        const n = this.bladeCount, spread = Math.min(1.05, .18 + n * .05);
+        for (let i = 0; i < n && this.swords.length < 240; i++) {
+            const a = angle + (n === 1 ? 0 : (i / (n - 1) - .5) * 2 * spread) + (this.random() - .5) * .07;
+            const crit = this.random() < this.critChance;
+            this.swords.push({
+                x: this.x, y: this.y, dx: Math.cos(a), dy: Math.sin(a),
+                left: 360 + 22 * this.lv('pierce'), speed: 480 + this.random() * 90,
+                damage: this.bladeDamage * (crit ? 1.9 : 1), pierce: this.bladePierce,
+                hit: [], crit,
+            });
+        }
+        this.events.push('shot');
+    }
+    private updateSwords(dt: number) {
+        const hittable: (MowEnemy | MowBoss)[] = this.enemies.filter(e => !e.dead);
+        if (this.boss && this.boss.hp > 0 && this.boss.state !== 'arrive')
+            hittable.push(this.boss);
+        for (const s of this.swords) {
+            const travel = Math.min(s.left, s.speed * dt), ax = s.x, ay = s.y;
+            s.x += s.dx * travel;
+            s.y += s.dy * travel;
+            s.left -= travel;
+            const hits = hittable.filter(e => !s.hit.includes(e.id)).map(e => {
+                const t = Math.max(0, Math.min(travel, (e.x - ax) * s.dx + (e.y - ay) * s.dy));
+                return { e, t, d: Math.hypot(e.x - ax - s.dx * t, e.y - ay - s.dy * t) };
+            }).filter(h => h.d <= (h.e.kind === 'boss' ? 46 : h.e.radius + 8)).sort((a, b) => a.t - b.t);
+            for (const { e } of hits) {
+                s.hit.push(e.id);
+                this.damage(e, s.damage, s.crit);
+                if (--s.pierce <= 0) { s.left = 0; break; }
+            }
+        }
+        this.swords = this.swords.filter(s => s.left > 0);
+    }
+    private updateOrbit(dt: number) {
+        for (const [id, cd] of this.orbitCd) {
+            const next = cd - dt;
+            if (next <= 0) this.orbitCd.delete(id);
+            else this.orbitCd.set(id, next);
+        }
+        const n = this.orbitCount, R = this.orbitRadius, spin = this.time * 3.4;
+        const dmg = this.bladeDamage * .7;
+        for (let i = 0; i < n; i++) {
+            const a = spin + i * Math.PI * 2 / n;
+            const px = this.x + Math.cos(a) * R, py = this.y + Math.sin(a) * R;
+            for (const e of this.enemies) {
+                if (e.dead || Math.hypot(e.x - px, e.y - py) > e.radius + 13)
+                    continue;
+                if (this.orbitCd.has(e.id))
+                    continue;
+                this.orbitCd.set(e.id, .3);
+                this.damage(e, dmg, false, false);
+            }
+        }
+    }
+    private updateThunder(dt: number) {
+        this.thunderAt -= dt;
+        if (this.thunderAt > 0)
+            return;
+        this.thunderAt = this.thunderInterval;
+        const candidates = this.enemies.filter(e => !e.dead && Math.hypot(e.x - this.x, e.y - this.y) < 420);
+        const targets: { x: number; y: number }[] = [];
+        for (let i = 0; i < this.thunderCount; i++) {
+            if (candidates.length)
+                targets.push(candidates[Math.floor(this.random() * candidates.length) % candidates.length]);
+            else {
+                const a = this.random() * Math.PI * 2, r = 80 + this.random() * 220;
+                targets.push({ x: this.x + Math.cos(a) * r, y: this.y + Math.sin(a) * r });
+            }
+        }
+        const R = this.thunderRadius, dmg = this.thunderDamage;
+        for (const t of targets) {
+            this.effect(t.x, t.y, R, 'thunder', .45);
+            this.burst(t.x, t.y, '#FFE07A', 8, 170);
+            for (const e of this.enemies)
+                if (!e.dead && Math.hypot(e.x - t.x, e.y - t.y) <= R)
+                    this.damage(e, dmg, false, false);
+            if (this.boss && this.boss.hp > 0 && this.boss.state !== 'arrive'
+                && Math.hypot(this.boss.x - t.x, this.boss.y - t.y) <= R + 40)
+                this.damage(this.boss, dmg, false, false);
+        }
+        this.shake = Math.max(this.shake, .3);
+        this.events.push('thunder');
+    }
+    private updateAura(dt: number) {
+        this.auraAt -= dt;
+        if (this.auraAt > 0)
+            return;
+        this.auraAt = .35;
+        for (const e of this.enemies)
+            if (!e.dead && Math.hypot(e.x - this.x, e.y - this.y) <= this.auraRadius)
+                this.damage(e, this.auraDamage, false, false);
+    }
+
+    // ── Boss ────────────────────────────────────────────────────
+    private spawnBoss() {
+        const a = -Math.PI / 2 + (this.random() - .5) * .8;
+        const bx = Math.max(-760, Math.min(760, this.x + Math.cos(a) * 260));
+        const by = Math.max(-760, Math.min(760, this.y + Math.sin(a) * 260));
+        this.boss = { id: -1, kind: 'boss', x: bx, y: by, hp: 4200, maxHp: 4200, radius: 46, flash: 0,
+            state: 'arrive', timer: 1.1, dx: 0, dy: -1 };
+        this.announce('巨型捕鸭夹现身！', 'boss');
+        this.shake = 1;
+        this.effect(bx, by, 160, 'boss', .9);
+    }
+    private updateBoss(dt: number) {
+        const b = this.boss!;
+        b.timer -= dt;
+        b.flash = Math.max(0, b.flash - dt);
+        if (b.state === 'arrive') {
+            if (b.timer <= 0) {
+                b.state = 'windup';
+                b.timer = .85;
+                const a = Math.atan2(this.y - b.y, this.x - b.x);
+                b.dx = Math.cos(a); b.dy = Math.sin(a);
+                this.events.push('warning');
+            }
+            return;
+        }
+        if (b.state === 'windup') {
+            if (b.timer <= 0) { b.state = 'dash'; b.timer = .5; }
+            return;
+        }
+        if (b.state === 'dash') {
+            b.x = Math.max(-820, Math.min(820, b.x + b.dx * 360 * dt));
+            b.y = Math.max(-820, Math.min(820, b.y + b.dy * 360 * dt));
+            if (Math.hypot(b.x - this.x, b.y - this.y) < b.radius + 14)
+                this.hurt('巨型捕鸭夹冲撞', 2);
+            if (b.timer <= 0) { b.state = 'recover'; b.timer = 1.1; }
+            return;
+        }
+        if (b.state === 'recover' && b.timer <= 0) {
+            b.state = 'roar';
+            b.timer = .6;
+            for (let i = 0; i < 12; i++)
+                this.spawnEnemy('grunt');
+            this.events.push('warning');
+            return;
+        }
+        if (b.state === 'roar' && b.timer <= 0) {
+            b.state = 'windup';
+            b.timer = .85;
+            const a = Math.atan2(this.y - b.y, this.x - b.x);
+            b.dx = Math.cos(a); b.dy = Math.sin(a);
+        }
+    }
+
+    // ── 主循环 ──────────────────────────────────────────────────
+    tick(dt: number, mx: number, my: number) {
+        if (this.phase !== 'playing')
+            return;
+        // 升级三选一期间世界完全冻结；15 秒不选自动拿第一张，避免卡死。
+        if (this.pendingChoice) {
+            this.pendingChoice.timer += dt;
+            if (this.pendingChoice.timer >= 15)
+                this.chooseUpgrade(0);
+            return;
+        }
+        dt = Math.max(0, Math.min(dt, .05));
+        this.time += dt;
+        this.immunity -= dt;
+        this.noticeFor -= dt;
+        this.comboFor -= dt;
+        if (this.comboFor <= 0) this.combo = 0;
+        this.shake = Math.max(0, this.shake - dt * 2.4);
+        const m = Math.hypot(mx, my);
+        if (m > 0) {
+            this.x = Math.max(-850, Math.min(850, this.x + mx / m * this.moveSpeed * dt));
+            this.y = Math.max(-850, Math.min(850, this.y + my / m * this.moveSpeed * dt));
+        }
+        // 波次与刷怪
+        if (this.time >= this.waveAt && this.time < this.bossAt)
+            this.callWave();
+        if (this.time < this.bossAt) {
+            this.spawnAcc += dt * this.spawnRate();
+            while (this.spawnAcc >= 1) {
+                this.spawnAcc--;
+                this.spawnPack();
+            }
+        }
+        if (this.time >= this.duckAt && this.time < this.bossAt) {
+            this.spawnDucks(2);
+            this.duckAt += 7;
+        }
+        // 自动输出
+        this.bladeAt -= dt;
+        if (this.bladeAt <= 0) {
+            this.bladeAt = this.bladeInterval;
+            this.fireBlades();
+        }
+        this.updateSwords(dt);
+        this.updateOrbit(dt);
+        this.updateThunder(dt);
+        this.updateAura(dt);
+        // 敌人追击与接触伤害
+        for (const e of this.enemies) {
+            if (e.dead)
+                continue;
+            e.flash = Math.max(0, e.flash - dt);
+            e.wobble += dt * 3;
+            const dx = this.x - e.x, dy = this.y - e.y, d = Math.hypot(dx, dy) || 1;
+            const wob = Math.sin(e.wobble) * .16;
+            const vx = dx / d * Math.cos(wob) - dy / d * Math.sin(wob);
+            const vy = dx / d * Math.sin(wob) + dy / d * Math.cos(wob);
+            e.x += vx * e.speed * dt;
+            e.y += vy * e.speed * dt;
+            if (d < e.radius + 14)
+                this.hurt(e.kind === 'brute' ? '锅盖怪压顶' : e.kind === 'runner' ? '夹子怪冲撞' : '手套怪围攻');
+        }
+        this.enemies = this.enemies.filter(e => !e.dead);
+        // Boss 阶段
+        if (!this.boss && this.time >= this.bossAt)
+            this.spawnBoss();
+        if (this.boss)
+            this.updateBoss(dt);
+        // 魂珠吸附与拾取
+        this.gems = this.gems.filter(gem => {
+            const d = Math.hypot(gem.x - this.x, gem.y - this.y);
+            if (d <= 20) {
+                this.experience(gem.value);
+                this.events.push('pickup');
+                return false;
+            }
+            if (d < this.magnet) {
+                const pull = Math.min(d, (this.magnet - d) * 3.4 * dt + 55 * dt);
+                gem.x += (this.x - gem.x) / d * pull;
+                gem.y += (this.y - gem.y) / d * pull;
+            }
+            return true;
+        });
+        // 待救小鸭：走近即经传送阵撤离
+        this.ducks = this.ducks.filter(d => {
+            if (Math.hypot(d.x - this.x, d.y - this.y) >= MOW_DUCK_RADIUS)
+                return true;
+            this.rescued++;
+            this.events.push('rescue');
+            this.float(d.x, d.y, '+1 只鸭', 'rescue');
+            this.effect(d.x, d.y, 70, 'rescue', .55);
+            this.burst(d.x, d.y, '#8FF3C8', 10, 160);
+            this.notice = '又一只鸭经传送阵撤离！';
+            this.noticeFor = 1.4;
+            return false;
+        });
+        // 表现层数据衰减
+        this.floats = this.floats.filter(f => (f.life -= dt) > 0);
+        this.particles = this.particles.filter(p => {
+            p.life -= dt;
+            p.x += p.vx * dt; p.y += p.vy * dt;
+            p.vx *= .92; p.vy *= .92;
+            return p.life > 0;
+        });
+        this.effects = this.effects.filter(e => (e.life -= dt) > 0);
+        // 判定：先判阵亡，再判通关，最后判超时
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.phase = 'lost';
+            this.events.push('end');
+        }
+        else if (this.boss && this.boss.hp <= 0) {
+            this.phase = 'won';
+            this.rescueBonus = MOW_WIN_BONUS;
+            this.announce('巨型捕鸭夹碎了！鸭子们自由了', 'end');
+            this.events.push('end');
+        }
+        else if (this.time >= this.limit) {
+            this.time = this.limit;
+            this.deathCause = '出口被封锁';
+            this.phase = 'lost';
+            this.events.push('end');
+        }
+        if (this.events.length > 64)
+            this.events = this.events.slice(-64);
+    }
+}
