@@ -1,5 +1,15 @@
 # 更新记录
 
+## 2026-11-13 · 取消局内升级选择 + pixelfx 列入备选
+
+- 用户问「你特效用的什么，pixelfx 你听过吗」，随后指示「**把 pixelfx 放入备选方案，然后不要打一半停下让玩家选效果**」。
+- 核查并如实说明当前特效实现：`SurvivorGame.ts` 四个数组 + `GoDuck.ts` 每帧 `Graphics` 重画 + Canvas 2D 预览，零贴图、零第三方库、零粒子系统。
+- **pixelfx 仅在 [ROADMAP](docs/ROADMAP.md) 备选方案节登记**（`patch-gg/pixelfx`，MIT、244 个代码绘制像素特效、双缓冲、palette、`act` hit-stop 时序），写明 Cocos 微信小游戏无 DOM `ImageData` 的接入约束与「先抄时序、后烘焙 sprite sheet」的推荐路径；本轮不引入依赖、不改渲染模型。
+- **割草模式去掉局内三选一**：删 `MowChoice` / `pendingChoice` / `chooseUpgrade` / 卡片绘制与点击/1-2-3 按键 / `tick` 冻结分支；`experience()` 只累加 `levelQueue`，`tick` 每 0.42 秒按未满级加权自动 `applyUpgrade()`，新增 `MowUpgradeToast` 与右上角三条滑入飘条；升级不再占用中央播报条，只发音效。
+- `GoDuck.ts` 与 `preview/renderer.js` 同步移除遮罩/卡片/输入拦截；网页试玩加 `?upgrade=1` 调试参数用于飘条验收。
+- `tests/mow.test.mjs` 重写为 19 项（新增「不冻结世界」「不吞多级」「不超 max」「spirit 不递归」「飘条过期」等），`npm test` **95/95**；`tsc --strict` 两层 0 错误；无头 Chrome 目视确认无弹窗、战斗持续、飘条完整；Cocos 3.8.8 微信竖屏产物重建（真实 AppID / portrait / 61 张素材）。
+- 归档见 [本轮会话](docs/archive/2026-11-13-auto-upgrade-and-pixelfx-deferred.md)。
+
 ## 2026-11-13 · 割草机制重制（默认入口）
 
 - 用户反馈整体「太差太差」，以抖音《仙侠风肉鸽割草小游戏》封面为参考提出改设计/玩法；按协作规则先澄清，确认**强化割草机制、主题仍是拯救鸭子、亮色 Q 版像素风、旧玩法保留为经典模式**。视频本体需 App 观看，只依据封面与用户口述方向。

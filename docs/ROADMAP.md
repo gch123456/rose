@@ -2,9 +2,21 @@
 
 已确认路线和待实现事项分开记录；未确认的新增功能仍属于建议。
 
+## 备选方案（未采纳 · 待触发评估）
+
+### pixelfx · 代码绘制的像素特效库（2026-11-13 记录，本轮明确不实施）
+
+- 来源：`patch-gg/pixelfx`，2026-10-30 开源，MIT（代码与特效可商用；`gallery/fonts` 的 Patch Pixel 字体不在授权内，部分代码改编自 Hugo Duprez / Hollow Crown 的 MIT 项目，须保留 NOTICE）。
+- 内容：244 个用 JavaScript 写出来的像素特效，21 类（fire / explosions / lightning / melee / impacts / projectiles / ui / pickups …）。渲染模型为 `color` + 加法 `light` 双缓冲、全种子化随机、局部坐标系、传 `palette` 换色；核心 API `createFrame / createFx / composite`，无第三方依赖。
+- 额外价值：61 个带角色特效与 12 套招式带 `act` 时序数据（`hits: [{ t, stop, shake, push }]`，命中冻结 0.14 秒、起手/后仰/收招），是「打击重量感」的关键，而非更多粒子。
+- 接入约束：Cocos Creator 3.8.8 的微信小游戏运行时**没有 DOM `ImageData` / `putImageData`**，pixelfx 的 JS 运行时不能 import 后直接跑；网页预览页（Canvas 2D）可以，但会与微信产物分叉，不作为主方案。
+- 若未来启用，推荐顺序：① 先把 `act` 的 hit-stop / windup 时序作为纯数据搬进 `SurvivorGame`（零素材、零包体）；② 用 `node tools/render.mjs <id> --sheet` 把十几个关键特效离线烘焙成透明 PNG + Aseprite JSON，放进 `assets/resources` 由 `Sprite` 播帧动画。不推荐把 `composite` 输出每帧上传 `Texture2D`（微信小游戏纹理上传开销大，190 敌人同屏时帧率风险高）。
+- 触发条件：真机帧率达标后、且用户明确要求提升打击感或替换手绘特效时再评审；**本轮只记录，不引入依赖、不改动渲染层**。
+
 ## 割草模式后续（2026-11-13）
 
 - [x] 澄清并评审设计：强化割草机制、保留救鸭主题、亮色 Q 版像素、经典模式可切换。
+- [x] 用户要求「不要打一半停下让玩家选效果」：移除局内升级三选一与冻结，改为不打断战斗的加权自动成长 + 右上角获得飘条（呼应 [STATUS](STATUS.md) 中早已记录的「减少停顿、追求不停顿割草」体验偏好）。
 - [x] 新增 `SurvivorGame.ts` 规则层、`GoDuck.ts` 双模式与亮色视觉、`tests/mow.test.mjs`、`preview/mow.html` 试玩页。
 - [x] 93/93 测试、严格类型检查、Cocos 3.8.8 微信竖屏构建、无头浏览器画面验收。
 - [ ] iPhone 真机跑完整 90 秒，确认 190 只敌人 + 190 个 Sprite 的帧率与发热。

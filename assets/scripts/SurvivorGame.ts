@@ -1,7 +1,7 @@
 // ── 割草模式：万剑救鸭 ─────────────────────────────────────────
 // 纯规则层，不依赖 Cocos。表现层（GoDuck 的割草渲染 / 网页试玩页）只读取状态。
 // 与经典模式 EscapeGame 完全平行：默认入口是这里，经典模式仍可在菜单切换。
-// 设计目标：高密度怪潮、多路自动输出、升级三选一的肉鸽构筑、每斩一批怪就多救几只鸭。
+// 设计目标：高密度怪潮、多路自动输出、不打断战斗的自动成长、每斩一批怪就多救几只鸭。
 
 export type MowCharacter = 'shooter' | 'warrior' | 'mage';
 export type MowPhase = 'menu' | 'playing' | 'paused' | 'won' | 'lost';
@@ -91,9 +91,13 @@ export interface MowUpgrade {
     level: number;
     max: number;
 }
-export interface MowChoice {
-    options: MowUpgrade[];
-    timer: number;
+export interface MowUpgradeToast {
+    id: string;
+    icon: string;
+    name: string;
+    level: number;
+    life: number;
+    duration: number;
 }
 
 export const MOW_DURATION = 90;
@@ -106,7 +110,7 @@ export const MOW_DUCK_RADIUS = 58;
 export const MOW_WIN_BONUS = 12;
 export const MOW_GEM_CAP = 260;
 
-// 升级池：前 12 项是构筑，后 2 项是可重复的保底选项，保证任何时候都能凑满三张卡。
+// 升级池：前 12 项是构筑，后 2 项是可重复的保底选项，保证任何时候都有可选项。
 export const MOW_UPGRADES: { id: string; name: string; desc: string; icon: string; max: number }[] = [
     { id: 'blades', name: '万剑诀', desc: '每轮多 2 把飞剑', icon: '剑', max: 6 },
     { id: 'haste', name: '御风诀', desc: '飞剑出手更快', icon: '风', max: 5 },
@@ -161,11 +165,12 @@ export class SurvivorGame {
     shake = 0;
     combo = 0;
     comboFor = 0;
-    pendingChoice: MowChoice | null = null;
+    upgradeToasts: MowUpgradeToast[] = [];
     upgrades: Record<string, number> = {};
     random: () => number;
 
     private levelQueue = 0;
+    private upgradeReadyAt = 0;
     private bladeAt = 0;
     private thunderAt = 1.8;
     private auraAt = 0;
@@ -285,10 +290,11 @@ export class SurvivorGame {
         this.shake = 0;
         this.combo = 0;
         this.comboFor = 0;
-        this.pendingChoice = null;
+        this.upgradeToasts = [];
         this.upgrades = {};
         this.facing = { x: 0, y: 1 };
         this.levelQueue = 0;
+        this.upgradeReadyAt = 0;
         this.bladeAt = 0;
         this.thunderAt = 1.6;
         this.auraAt = 0;
@@ -337,48 +343,50 @@ export class SurvivorGame {
         }
     }
 
-    // ── 升级三选一 ──────────────────────────────────────────────
-    private openChoice() {
+    // ── 升级：不弹窗、不冻结，战斗全程继续推进 ────────────────────
+    /**
+     * 按「当前等级越低越容易被选中」加权随机，让六格技能栏均匀成长，
+     * 也不会把同一项一口气点满。只从未满级的项里挑。
+     */
+    private autoUpgrade(): boolean {
         const pool = MOW_UPGRADES.filter(u => this.lv(u.id) < u.max);
-        const options: MowUpgrade[] = [];
-        while (options.length < 3 && pool.length) {
-            const i = Math.floor(this.random() * pool.length) % pool.length;
-            const u = pool.splice(i, 1)[0];
-            options.push({ ...u, level: this.lv(u.id) });
-        }
-        // 保底：所有构筑都满级时，用可重复选项补齐。
-        for (const u of MOW_UPGRADES.slice(-2)) {
-            while (options.length < 3)
-                options.push({ ...u, level: this.lv(u.id) });
-        }
-        this.pendingChoice = { options, timer: 0 };
-        this.announce('境界突破 · 三选一', 'level');
-        this.effect(this.x, this.y, 150, 'level', .7);
-        this.shake = Math.max(this.shake, .35);
-    }
-    chooseUpgrade(index: number): boolean {
-        const c = this.pendingChoice;
-        if (!c || !c.options[index])
+        if (!pool.length)
             return false;
-        const o = c.options[index];
-        this.pendingChoice = null;
-        this.levelQueue = Math.max(0, this.levelQueue - 1);
-        this.upgrades[o.id] = this.lv(o.id) + 1;
-        if (o.id === 'vigor') {
+        const weights = pool.map(u => 1 / (1 + this.lv(u.id) * .9));
+        let roll = this.random() * weights.reduce((a, b) => a + b, 0);
+        let picked = pool[pool.length - 1];
+        for (let i = 0; i < pool.length; i++) {
+            roll -= weights[i];
+            if (roll <= 0) {
+                picked = pool[i];
+                break;
+            }
+        }
+        return this.applyUpgrade(picked.id);
+    }
+    /** 立即生效一项升级。公开给局前配置、调试与测试复用。 */
+    applyUpgrade(id: string): boolean {
+        const u = MOW_UPGRADES.find(x => x.id === id);
+        if (!u || this.lv(id) >= u.max)
+            return false;
+        const level = this.lv(id) + 1;
+        this.upgrades[id] = level;
+        if (id === 'vigor') {
             this.maxHp++;
             this.hp = Math.min(this.maxHp, this.hp + 1);
         }
-        if (o.id === 'snack')
+        if (id === 'snack')
             this.hp = Math.min(this.maxHp, this.hp + 1);
-        if (o.id === 'spirit')
-            this.experience(25);
-        this.immunity = Math.max(this.immunity, .5);
-        this.announce(`${o.icon} ${o.name} · Lv.${this.upgrades[o.id]}`, 'upgrade');
+        if (id === 'spirit')
+            this.experience(25); // 只累加 levelQueue，下几次 tick 再消费，不会递归
+        this.immunity = Math.max(this.immunity, .18);
+        this.upgradeToasts.push({ id, icon: u.icon, name: u.name, level, life: 2.2, duration: 2.2 });
+        if (this.upgradeToasts.length > 3)
+            this.upgradeToasts.shift();
+        // 只发升级音效，不占用中央播报条：获得信息由右上角飘条独自承担。
+        this.events.push('upgrade');
         this.effect(this.x, this.y, 120, 'upgrade', .6);
         this.burst(this.x, this.y, '#FFC94A', 16, 190);
-        // 一次拾取跨过多级时，连续发牌而不是把升级吞掉。
-        if (this.levelQueue > 0)
-            this.openChoice();
         return true;
     }
     private experience(value: number) {
@@ -395,8 +403,6 @@ export class SurvivorGame {
         }
         if (this.level >= 30)
             this.xp = 0;
-        if (this.levelQueue > 0 && !this.pendingChoice)
-            this.openChoice();
     }
 
     // ── 怪潮 ───────────────────────────────────────────────────
@@ -670,15 +676,16 @@ export class SurvivorGame {
     tick(dt: number, mx: number, my: number) {
         if (this.phase !== 'playing')
             return;
-        // 升级三选一期间世界完全冻结；15 秒不选自动拿第一张，避免卡死。
-        if (this.pendingChoice) {
-            this.pendingChoice.timer += dt;
-            if (this.pendingChoice.timer >= 15)
-                this.chooseUpgrade(0);
-            return;
-        }
         dt = Math.max(0, Math.min(dt, .05));
         this.time += dt;
+        // 升级在世界推进中自动发放，绝不暂停战斗、不弹窗让玩家做选择。
+        // 一次拾取跨多级时每 0.42 秒发一项，飘条错开、音效不叠爆。
+        if (this.levelQueue > 0 && this.time >= this.upgradeReadyAt) {
+            this.levelQueue--;
+            if (this.autoUpgrade())
+                this.upgradeReadyAt = this.time + .42;
+        }
+        this.upgradeToasts = this.upgradeToasts.filter(t => (t.life -= dt) > 0);
         this.immunity -= dt;
         this.noticeFor -= dt;
         this.comboFor -= dt;

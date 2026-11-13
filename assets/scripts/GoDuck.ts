@@ -102,13 +102,9 @@ export class GoDuck extends Component {
     private toastY = 0;
     private lastRescued = 0;
     private toastLabel: Label;
-    // 割草模式专用：伤害数字复用固定池，升级三选一与底部技能栏各一组标签。
+    // 割草模式专用：伤害数字复用固定池，自动升级飘条与底部技能栏各一组标签。
     private floatLabels: Label[] = [];
-    private cardIcon: Label[] = [];
-    private cardTitle: Label[] = [];
-    private cardDesc: Label[] = [];
-    private cardLevel: Label[] = [];
-    private cardHint: Label;
+    private upgradeLabels: Label[] = [];
     private skillLabels: Label[] = [];
     private mowIntro = 0;
     private mowToast = 0;
@@ -183,13 +179,9 @@ export class GoDuck extends Component {
             l.node.active = false;
             return l;
         });
-        this.cardIcon = Array.from({ length: 3 }, () => this.label(this.node, '', 40, 0, 0, 90, { color: Q.ink, bold: true }));
-        this.cardTitle = Array.from({ length: 3 }, () => this.label(this.node, '', 24, 0, 0, 440, { color: Q.ink, bold: true }));
-        this.cardDesc = Array.from({ length: 3 }, () => this.label(this.node, '', 18, 0, 0, 460, { color: Q.inkSoft }));
-        this.cardLevel = Array.from({ length: 3 }, () => this.label(this.node, '', 17, 0, 0, 120, { color: Q.goldDeep, bold: true }));
-        this.cardHint = this.label(this.node, '', 19, 0, 0, 520, { color: Q.inkSoft, bold: true });
+        this.upgradeLabels = Array.from({ length: 3 }, () => this.label(this.node, '', 20, 0, 0, 300, { color: Q.ink, bold: true }));
         this.skillLabels = Array.from({ length: 6 }, () => this.label(this.node, '', 17, 0, 0, 100, { color: Q.ink, bold: true }));
-        for (const l of [...this.cardIcon, ...this.cardTitle, ...this.cardDesc, ...this.cardLevel, this.cardHint, ...this.skillLabels])
+        for (const l of [...this.upgradeLabels, ...this.skillLabels])
             l.node.active = false;
         this.panel = new Node('Menus');
         this.panel.layer = this.node.layer;
@@ -246,11 +238,7 @@ export class GoDuck extends Component {
         fit(this.hud, 24); fit(this.note, 18); fit(this.banner, 25); fit(this.progress, 18); fit(this.toastLabel, 22);
         this.gearLabels.forEach(l => fit(l, 19));
         this.floatLabels.forEach(l => fit(l, 20));
-        this.cardIcon.forEach(l => fit(l, 40));
-        this.cardTitle.forEach(l => fit(l, 24));
-        this.cardDesc.forEach(l => fit(l, 18));
-        this.cardLevel.forEach(l => fit(l, 17));
-        fit(this.cardHint, 19);
+        this.upgradeLabels.forEach(l => fit(l, 20));
         this.skillLabels.forEach(l => fit(l, 17));
         for (const b of [this.pauseButton, this.audioButton]) {
             const l = b.getComponentInChildren(Label);
@@ -357,11 +345,6 @@ export class GoDuck extends Component {
             this.settleFor = 2;
             return;
         }
-        // 键盘 1/2/3 也能选升级卡，方便开发者工具里试玩。
-        if (this.mode === 'mow' && this.mow.pendingChoice && e.keyCode >= 49 && e.keyCode <= 51) {
-            this.mow.chooseUpgrade(e.keyCode - 49);
-            return;
-        }
         if (e.keyCode === KeyCode.ESCAPE)
             this.pause();
     }
@@ -371,16 +354,6 @@ export class GoDuck extends Component {
     private touchStart(e: EventTouch) {
         if ((this.game.phase === 'won' || this.game.phase === 'lost') && this.settleFor >= 0 && this.settleFor < 2) {
             this.settleFor = 2;
-            return;
-        }
-        // 升级三选一：点卡片直接选，期间不启动摇杆。
-        if (this.mode === 'mow' && this.mow.pendingChoice) {
-            const p = e.getUILocation();
-            const idx = this.mowCardAt(p.x - this.w / 2, p.y - this.h / 2);
-            if (idx >= 0) {
-                this.mow.chooseUpgrade(idx);
-                this.clearInput();
-            }
             return;
         }
         if (this.game.phase !== 'playing' || this.finger !== -1)
@@ -1313,7 +1286,7 @@ export class GoDuck extends Component {
     // ══════════════════════════════════════════════════════════════
     // 割草模式「万剑救鸭」：亮色 Q 版像素风表现层
     // 分层：Backdrop（静态晴空）→ Ground（滚动草地＋传送阵）→ World（魂珠/小鸭/影子）
-    //      → 像素精灵 → HudFrame（剑气/粒子/血条/HUD/升级卡/结算）
+    //      → 像素精灵 → HudFrame（剑气/粒子/血条/HUD/升级飘条/结算）
     // ══════════════════════════════════════════════════════════════
     private switchMode(mode: 'mow' | 'classic') {
         if (this.mode === mode)
@@ -1321,7 +1294,7 @@ export class GoDuck extends Component {
         this.mode = mode;
         this.classic.phase = 'menu';
         this.mow.phase = 'menu';
-        this.mow.pendingChoice = null;
+        this.mow.upgradeToasts = [];
         this.settleFor = -1;
         this.portalIntro = 0;
         this.mowIntro = 0;
@@ -1336,7 +1309,7 @@ export class GoDuck extends Component {
         this.duckSprite.node.active = false;
         this.menuDuck.node.active = false;
         this.toastLabel.node.active = false;
-        for (const l of [...this.floatLabels, ...this.cardIcon, ...this.cardTitle, ...this.cardDesc, ...this.cardLevel, this.cardHint, ...this.skillLabels])
+        for (const l of [...this.floatLabels, ...this.upgradeLabels, ...this.skillLabels])
             l.node.active = false;
         for (const pen of [this.bgPen, this.groundPen, this.pen, this.framePen])
             pen.clear();
@@ -1354,16 +1327,9 @@ export class GoDuck extends Component {
         }
         this.resize();
     }
-    private mowCardY(i: number) {
-        return (175 - i * 158) * this.s;
-    }
-    private mowCardAt(x: number, y: number) {
-        if (Math.abs(x) > (this.w - 80 * this.s) / 2)
-            return -1;
-        for (let i = 0; i < 3; i++)
-            if (Math.abs(y - this.mowCardY(i)) <= 66 * this.s)
-                return i;
-        return -1;
+    /** 自动升级飘条：右上角自上而下最多三条，不遮挡中央战斗与顶部 HUD。 */
+    private mowUpgradeY(i: number) {
+        return this.h / 2 - 218 * this.s - i * 54 * this.s;
     }
     private updateMowEnemies() {
         const g = this.mow;
@@ -1481,39 +1447,22 @@ export class GoDuck extends Component {
         this.banner.string = settling
             ? (g.phase === 'won' ? `${g.totalRescued} 只鸭免于上餐桌！` : `仍救出 ${g.totalRescued} 只鸭`)
             : this.mowIntro > 0 ? '传送阵启动 · 鸭子入场！'
-                : g.pendingChoice ? '境界突破 · 三选一'
-                    : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
+                : g.phase === 'playing' && g.noticeFor > 0 ? g.notice : '';
         this.progress.string = settling ? '点按任意处跳过'
             : g.phase !== 'playing' ? this.attemptLine()
-                : g.pendingChoice ? `点按卡片 / 按 1 2 3 选择 · ${Math.max(0, Math.ceil(15 - g.pendingChoice.timer))} 秒后自动选第一张`
-                    : g.boss ? `击败巨型捕鸭夹！剩余 ${Math.max(0, Math.ceil(g.limit - g.time))} 秒`
-                        : `捡绿色魂珠升级 · 每 ${g.killsPerDuck} 次击退多救 1 只鸭`;
-        const c = g.pendingChoice;
-        for (let i = 0; i < 3; i++) {
-            const on = !!c && g.phase === 'playing';
-            this.cardIcon[i].node.active = on;
-            this.cardTitle[i].node.active = on;
-            this.cardDesc[i].node.active = on;
-            this.cardLevel[i].node.active = on;
-            if (!on || !c) continue;
-            const o = c.options[i], y = this.mowCardY(i);
-            this.cardIcon[i].string = o.icon;
-            this.cardIcon[i].node.setPosition(-(this.w - 80 * s) / 2 + 62 * s, y);
-            this.cardTitle[i].string = o.name;
-            this.cardTitle[i].node.setPosition(52 * s, y + 22 * s);
-            this.cardDesc[i].string = o.desc;
-            this.cardDesc[i].node.setPosition(46 * s, y - 20 * s);
-            this.cardLevel[i].string = `Lv.${o.level} → ${o.level + 1}`;
-            this.cardLevel[i].node.setPosition(this.w / 2 - 96 * s, y - 20 * s);
-        }
-        this.cardHint.node.active = !!c && g.phase === 'playing';
-        if (c) {
-            this.cardHint.node.setPosition(0, -292 * s);
-            this.cardHint.string = `当前 Lv.${g.level} · 生命 ${g.hp}/${g.maxHp} · 已击退 ${g.kills}`;
-        }
+                : g.boss ? `击败巨型捕鸭夹！剩余 ${Math.max(0, Math.ceil(g.limit - g.time))} 秒`
+                    : `捡绿色魂珠自动成长 · 每 ${g.killsPerDuck} 次击退多救 1 只鸭`;
+        // 升级飘条只作展示，不需要玩家做任何选择或停顿。
+        this.upgradeLabels.forEach((l, i) => {
+            const t = g.upgradeToasts[i];
+            l.node.active = !!t && g.phase === 'playing';
+            if (!t || !l.node.active) return;
+            l.string = `${t.icon} ${t.name} Lv.${t.level}`;
+            l.node.setPosition(this.w / 2 - 166 * s, this.mowUpgradeY(i));
+        });
         for (let i = 0; i < 6; i++) {
             const l = this.skillLabels[i];
-            l.node.active = playing && !c;
+            l.node.active = playing;
             if (l.node.active) {
                 const sk = g.skillLevels[i];
                 l.string = `${sk.icon} ${sk.level}`;
@@ -1866,7 +1815,7 @@ export class GoDuck extends Component {
                     sk.hot ? slotColors[i] : Q.panelShade, sk.hot ? 235 : 175,
                     sk.hot ? Q.goldDeep : Q.panelEdge, sk.hot ? 220 : 120, 2 * s);
             }
-            if (this.banner.string && g.phase === 'playing' && !g.pendingChoice) {
+            if (this.banner.string && g.phase === 'playing') {
                 const bw = Math.min(w - 56 * s, Math.max(260 * s, this.banner.string.length * 27 * s));
                 this.card(p, -bw / 2, h / 2 - 322 * s, bw, 58 * s, 29 * s, Q.panel, 235, Q.gold, 200, 2 * s);
             }
@@ -1876,7 +1825,7 @@ export class GoDuck extends Component {
             }
             if (this.mowToast > 0)
                 this.card(p, -170 * s, (150 + (1 - this.mowToast) * 50) * s - 24 * s, 340 * s, 48 * s, 24 * s, Q.panel, 240, Q.mint, 220, 2 * s);
-            if (this.finger !== -1 && !g.pendingChoice) {
+            if (this.finger !== -1) {
                 const ox = this.origin.x, oy = this.origin.y;
                 p.fillColor = this.c(Q.panel, 95);
                 p.circle(ox, oy, 68 * s); p.fill();
@@ -1889,8 +1838,7 @@ export class GoDuck extends Component {
             }
             if (this.mowIntro > 0)
                 this.drawMowPortalIntro();
-            if (g.pendingChoice)
-                this.drawMowChoiceCards();
+            this.drawMowUpgradeToasts();
         }
         else if (settling) {
             p.fillColor = this.c(Q.panel, 225);
@@ -1953,34 +1901,20 @@ export class GoDuck extends Component {
             p.rect(Math.cos(a) * r - 4 * s, Math.sin(a) * r - 4 * s, 8 * s, 8 * s); p.fill();
         }
     }
-    private drawMowChoiceCards() {
-        const p = this.framePen, g = this.mow, w = this.w, h = this.h, s = this.s, c = g.pendingChoice!;
-        p.fillColor = this.c(Q.panel, 232);
-        p.rect(-w / 2, -h / 2, w, h); p.fill();
-        this.glow(p, 0, 0, w * .9, Q.gold, 34, 6);
-        const halfW = (w - 80 * s) / 2;
-        const accents = [Q.gold, Q.mintLight, Q.lilac];
-        for (let i = 0; i < 3; i++) {
-            const o = c.options[i], y = this.mowCardY(i);
-            p.fillColor = this.c(Q.ink, 22);
-            p.roundRect(-halfW + 6 * s, y - 66 * s - 6 * s, halfW * 2, 132 * s, 26 * s); p.fill();
-            this.card(p, -halfW, y - 66 * s, halfW * 2, 132 * s, 24 * s, Q.panel, 255, Q.panelEdge, 245, 3 * s);
-            this.card(p, -halfW + 14 * s, y - 48 * s, 96 * s, 96 * s, 20 * s, accents[i], 245, Q.goldDeep, 150, 2 * s);
-            // 卡面图标用中文字符由标签绘制，这里补一个像素角标
-            p.fillColor = this.c(Q.white, 190);
-            p.rect(-halfW + 26 * s, y + 34 * s, 20 * s, 6 * s); p.fill();
-            p.strokeColor = this.c(Q.goldDeep, 190); p.lineWidth = 2 * s;
-            p.moveTo(-halfW + halfW * 2 - 150 * s, y - 46 * s);
-            p.lineTo(-halfW + halfW * 2 - 150 * s, y + 46 * s);
-            p.stroke();
-            if (o.level >= o.max - 1 && o.max < 90) {
-                p.fillColor = this.c(Q.coral, 200);
-                p.circle(halfW - 24 * s, y + 44 * s, 6 * s); p.fill();
-            }
-        }
-        // 标题条
-        this.card(p, -170 * s, h / 2 - 340 * s, 340 * s, 62 * s, 31 * s, Q.panel, 245, Q.gold, 220, 3 * s);
-        this.card(p, -200 * s, -330 * s, 400 * s, 46 * s, 23 * s, Q.panel, 230, Q.panelEdge, 180, 2 * s);
+    /** 右上角滑出的获得提示：纯展示，不铺遮罩、不冻结世界、不拦截输入。 */
+    private drawMowUpgradeToasts() {
+        const p = this.framePen, g = this.mow, w = this.w, s = this.s;
+        g.upgradeToasts.forEach((t, i) => {
+            const fade = Math.min(1, t.life / .45);
+            const x = w / 2 - 311 * s, y = this.mowUpgradeY(i) - 23 * s;
+            const slide = (1 - Math.max(0, Math.min(1, (t.duration - t.life) / .18))) * 60 * s;
+            p.fillColor = this.c(Q.ink, Math.round(26 * fade));
+            p.roundRect(x + 5 * s + slide, y - 5 * s, 290 * s, 46 * s, 23 * s); p.fill();
+            this.card(p, x + slide, y, 290 * s, 46 * s, 23 * s,
+                Q.panel, Math.round(238 * fade), Q.gold, Math.round(210 * fade), 2 * s);
+            p.fillColor = this.c(Q.gold, Math.round(230 * fade));
+            p.circle(x + 26 * s + slide, y + 23 * s, 7 * s); p.fill();
+        });
     }
     private drawMowSettlement() {
         const g = this.mow, p = this.framePen, s = this.s;

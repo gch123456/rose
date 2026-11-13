@@ -106,7 +106,6 @@
     }
     window.addEventListener('keydown', e => {
         keys.add(e.key);
-        if (['1', '2', '3'].includes(e.key) && g.pendingChoice) { g.chooseUpgrade(+e.key - 1); return; }
         if ((e.key === 'Enter' || e.key === ' ') && g.phase !== 'playing') {
             if (g.phase === 'paused') g.phase = 'playing'; else startRun();
             return;
@@ -132,11 +131,6 @@
         }
         if (g.phase === 'paused') {
             if (hit(p.x, p.y, 0, -120, 400, 76)) g.phase = 'playing';
-            return;
-        }
-        if (g.pendingChoice) {
-            for (let i = 0; i < 3; i++)
-                if (hit(p.x, p.y, 0, 175 - i * 158, W - 80, 132)) { g.chooseUpgrade(i); beep(900); return; }
             return;
         }
         if (p.y > H / 2 - 180) return;
@@ -369,12 +363,11 @@
             fillCard(cx - slotW / 2 + 5, H - 102, slotW - 10, 76, 14, sk.hot ? slotColors[i] : C.shade, sk.hot ? .92 : .7, sk.hot ? C.goldDeep : C.edge, .75, 2);
             text(sk.icon + ' ' + sk.level, cx, H - 64, 18, sk.hot ? C.goldDeep : C.inkSoft, true);
         });
-        const tip = g.pendingChoice ? '点按卡片 / 按 1 2 3 选择'
-            : g.boss ? '击败巨型捕鸭夹！剩余 ' + Math.max(0, Math.ceil(g.limit - g.time)) + ' 秒'
-                : '捡绿色魂珠升级 · 每 ' + g.killsPerDuck + ' 次击退多救 1 只鸭';
+        const tip = g.boss ? '击败巨型捕鸭夹！剩余 ' + Math.max(0, Math.ceil(g.limit - g.time)) + ' 秒'
+            : '捡绿色魂珠自动成长 · 每 ' + g.killsPerDuck + ' 次击退多救 1 只鸭';
         fillCard(W / 2 - Math.min(W - 48, Math.max(250, tip.length * 16)) / 2, H - 154, Math.min(W - 48, Math.max(250, tip.length * 16)), 38, 19, C.panel, .86, C.edge, .62, 2);
         text(tip, W / 2, H - 135, 18, C.ink, true);
-        if (g.noticeFor > 0 && !g.pendingChoice) {
+        if (g.noticeFor > 0) {
             const bw = Math.min(W - 56, Math.max(260, g.notice.length * 27));
             fillCard(W / 2 - bw / 2, 322, bw, 58, 29, C.panel, .92, C.gold, .8, 2);
             text(g.notice, W / 2, 351, 23, C.goldDeep, true);
@@ -383,30 +376,23 @@
             fillCard(W / 2 - 170, H - 300 - (1 - toast) * 50, 340, 48, 24, C.panel, .94, C.mint, .86, 2);
             text('+' + toastCount + ' 只鸭免于上餐桌', W / 2, H - 276 - (1 - toast) * 50, 21, C.mint, true);
         }
-        if (finger !== -1 && !g.pendingChoice) {
+        if (finger !== -1) {
             const ox = W / 2 + origin.x, oy = H / 2 - origin.y;
             circle(ox, oy, 68, C.panel, .37); ring(ox, oy, 68, C.ink, .28, 3);
             circle(ox + stick.x * 50, oy - stick.y * 50, 21, C.mint, .82);
         }
     }
-    function choiceCards() {
-        ctx.fillStyle = col(C.panel, .91); ctx.fillRect(0, 0, W, H);
-        glow(W / 2, H / 2, W * .9, C.gold, .13, 6);
-        fillCard(W / 2 - 170, 200, 340, 62, 31, C.panel, .96, C.gold, .86, 3);
-        text('境界突破 · 三选一', W / 2, 231, 27, C.goldDeep, true);
-        const halfW = (W - 80) / 2, accents = [C.gold, C.mintLight, C.lilac];
-        g.pendingChoice.options.forEach((o, i) => {
-            const y = H / 2 - (175 - i * 158);
-            fillCard(W / 2 - halfW, y - 66, halfW * 2, 132, 24, C.panel, 1, C.edge, .96, 3);
-            fillCard(W / 2 - halfW + 14, y - 48, 96, 96, 20, accents[i], .96, C.goldDeep, .6, 2);
-            text(o.icon, W / 2 - halfW + 62, y, 42, C.ink, true);
-            text(o.name, W / 2 + 52, y - 22, 25, C.ink, true);
-            text(o.desc, W / 2 + 52, y + 20, 18, C.inkSoft);
-            text('Lv.' + o.level + ' → ' + (o.level + 1), W / 2 + halfW - 96, y + 20, 17, C.goldDeep, true);
+    /** 自动升级飘条：右上角依次滑入，纯展示，不铺遮罩、不拦输入、不暂停世界。 */
+    function upgradeToasts() {
+        g.upgradeToasts.forEach((t, i) => {
+            const fade = Math.min(1, t.life / .45);
+            const x = W - 311, y = 218 + i * 54;
+            const inT = Math.max(0, Math.min(1, (t.duration - t.life) / .18));
+            const slide = (1 - inT) * 60;
+            fillCard(x + slide, y, 290, 46, 23, C.panel, .94 * fade, C.gold, .82 * fade, 2);
+            circle(x + 26 + slide, y + 23, 7, C.gold, fade);
+            text(t.icon + ' ' + t.name + ' Lv.' + t.level, x + 158 + slide, y + 23, 20, col(C.ink, fade), true);
         });
-        fillCard(W / 2 - 200, H - 320, 400, 46, 23, C.panel, .9, C.edge, .7, 2);
-        text('Lv.' + g.level + ' · 生命 ' + g.hp + '/' + g.maxHp + ' · 已击退 ' + g.kills
-            + ' · ' + Math.max(0, Math.ceil(15 - g.pendingChoice.timer)) + ' 秒后自动选', W / 2, H - 297, 17, C.inkSoft, true);
     }
     function introFx() {
         const t = 1 - intro / 1.1, fade = Math.min(1, t * 5) * Math.min(1, (1 - t) * 5);
@@ -521,7 +507,7 @@
             ctx.translate(-ox, -oy);
             hud();
             if (intro > 0) introFx();
-            if (g.pendingChoice) choiceCards();
+            upgradeToasts();
             if (g.phase === 'paused') pausePanel();
         } else if ((g.phase === 'won' || g.phase === 'lost') && settleFor >= 0 && settleFor < 2) {
             settlement();
@@ -538,11 +524,17 @@
         intro = 0;
         const secs = Math.min(90, Number(params.get('fast') || 0));
         for (let i = 0; i < secs * 60; i++) {
-            if (g.pendingChoice) g.chooseUpgrade(0);
             g.tick(1 / 60, Math.sin(i / 40) * .6, Math.cos(i / 33) * .6);
             if (g.phase !== 'playing') break;
         }
-        if (params.has('choice')) g.experience(8);
+        // ?upgrade=1 强制显示一组飘条用于画面验收（仅调试参数）。
+        if (params.has('upgrade')) {
+            g.experience(g.nextXp + 1);
+            for (let i = 0; i < 60 && !g.upgradeToasts.length; i++)
+                g.tick(.05, 0, 0);
+            // duration 略大于 life，保持「已入场」状态，避免调试飘条停在滑入途中被裁切。
+            g.upgradeToasts.forEach(t => { t.life = 99; t.duration = 100; });
+        }
     }
     requestAnimationFrame(frame);
 })();
