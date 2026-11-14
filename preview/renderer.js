@@ -435,7 +435,7 @@
         fillCard(20, 320, W - 40, 480, 32, C.panel, .9, C.edge, .92, 3);
         fillCard(38, 336, W - 76, 6, 3, C.gold, .7);
         text('鸭命要紧', W / 2, 380, 52, C.goldDeep, true);
-        text('万剑自动清场 · 捡魂珠升境界 · 救鸭免于上餐桌', W / 2, 430, 19, C.inkSoft);
+        text('万剑自动清场 · 捡魂珠自动成长 · 救鸭免于上餐桌', W / 2, 430, 19, C.inkSoft);
         text('选择职业鸭', W / 2, 480, 19, C.inkSoft);
         const names = ['御剑鸭', '剑阵鸭', '引雷鸭'];
         names.forEach((n, i) => {
@@ -447,7 +447,7 @@
         });
         button(W / 2, 670, 400, 76, '开始割草', true);
         text('单指拖动 / WASD 移动 · 武器全自动', W / 2, 745, 18, C.inkSoft);
-        text('升级三选一 · 每 8 次击退多救 1 只鸭', W / 2, 772, 18, C.inkSoft);
+        text('成长自动发放、不打断战斗 · 每 ' + g.killsPerDuck + ' 次击退多救 1 只鸭', W / 2, 772, 18, C.inkSoft);
         text('经典模式请在微信体验版中切换', W / 2, 799, 17, C.inkSoft);
         text('按 Enter / 空格 也可开局', W / 2, 860, 17, C.inkSoft);
     }

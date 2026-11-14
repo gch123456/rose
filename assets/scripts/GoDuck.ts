@@ -2005,7 +2005,7 @@ export class GoDuck extends Component {
         const s = this.s, W = this.w, isMenu = g.phase === 'menu';
         this.button(this.panel, '切换：经典模式', 0, 390 * s, 220 * s, () => this.switchMode('classic'), { variant: 'chip', h: 50 * s });
         const title = isMenu ? '鸭命要紧' : g.phase === 'paused' ? '暂停一下' : g.phase === 'won' ? '突围成功！' : '被做成鸭货了…';
-        const subtitle = isMenu ? '万剑自动清场 · 捡魂珠升境界 · 救鸭免于上餐桌'
+        const subtitle = isMenu ? '万剑自动清场 · 捡魂珠自动成长 · 救鸭免于上餐桌'
             : g.phase === 'paused' ? '手动继续后恢复战斗'
                 : g.phase === 'won' ? (unlockText || '巨型捕鸭夹碎了，鸭子们自由了')
                     : `死因：${g.deathCause} · 但鸭子们记得你`;
@@ -2067,7 +2067,7 @@ export class GoDuck extends Component {
                     this.mowToast = 0;
                 }
             }, { variant: 'primary', h: 76 * s });
-        const tip = isMenu ? '单指拖动 / WASD 移动 · 武器全自动\n升级三选一 · 每 8 次击退多救 1 只鸭\n首胜解锁剑阵鸭 · 再胜解锁引雷鸭'
+        const tip = isMenu ? `单指拖动 / WASD 移动 · 武器全自动\n成长自动发放、不打断战斗 · 每 ${g.killsPerDuck} 次击退多救 1 只鸭\n首胜解锁剑阵鸭 · 再胜解锁引雷鸭`
             : '结算演出可点按任意处跳过';
         this.label(this.panel, tip, Math.round(18 * s), 0, isMenu ? -215 * s : -180 * s, W - 60, { color: Q.inkSoft });
     }
