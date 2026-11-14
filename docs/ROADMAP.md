@@ -2,18 +2,18 @@
 
 已确认路线和待实现事项分开记录；未确认的新增功能仍属于建议。
 
-## 工程优化候选（2026-11-14 调研，未实施）
+## 工程优化候选（2026-11-14 调研；P0-1 与 P0-5 本地部分已落地）
 
-用户指示「找 cocos 官方的素材库，找到有没有可以优化的地方」。核查结论：**收益最大的不是素材，而是引擎/渲染层**。以下均为候选，本轮只登记、未改代码、未重建产物；完整证据、授权边界与未验证项见 [本轮归档](archive/2026-11-14-cocos-official-assets-review.md)。
+用户指示「找 cocos 官方的素材库，找到有没有可以优化的地方」。核查结论：**收益最大的不是素材，而是引擎/渲染层**。2026-11-14 后续会话已实施 **P0-1 功能裁剪** 与 **P0-5 的本地可复现基线**；P0-2 / P0-3 / P0-4 仍等真机数字再定顺序。完整证据与授权边界见 [调研归档](archive/2026-11-14-cocos-official-assets-review.md)，实施与数字见 [实施归档](archive/2026-11-14-feature-crop-and-profiler-baseline.md)。
 
-- [ ] **P0-1 功能裁剪**：纯 2D 项目却把 3D 物理 Bullet（458K wasm）与 Spine（200K wasm）等约 **700K 未压缩体积**打进微信包（主包 5.0M 的约 14%）。官方[物理选项文档](https://docs.cocos.com/creator/3.0/manual/zh/physics/physics-item.html)说明不用物理时可取消勾选以缩包；`settings/v2/packages/engine.json` 目前只有 `__version__`，即走默认全开。改法：编辑器「项目 → 项目设置 → 功能裁剪」取消 3D 物理 / 3D / Spine，重建后对比体积并双模式回归。
+- [x] **P0-1 功能裁剪（已完成）**：从 Creator 3.8.8 官方模板与 `cc.config.json` 查证字段后，`settings/v2/packages/engine.json` 显式列出 15 个模块（构建时编辑器自动补 `ui-skew`），关掉 3D 物理 / 3D / 2D 物理 / Spine / DragonBones 等。结果：主包 **4.56 MB → 2.03 MB（-55.6%）**、gzip **1.24 MB → 620 KB**、wasm **706.9 KB → 0**、61 张素材不变；`npm test 102/102`、微信竖屏产物重建成功、引擎必需 API 全部保留。回归测试： `tests/baseline.test.mjs`。
 - [ ] **P0-2 动态合图**：官方[动态合图文档](https://docs.cocos.com/creator/3.8/manual/zh/advanced-topics/dynamic-atlas.html)注明小游戏与原生平台**默认禁用**；项目未写 `macro.CLEANUP_IMAGE_CACHE` / `DynamicAtlasManager`，59 张独立 `Texture2D` 是 DrawCall 主因。官方代码须写在脚本**最外层**（不能放 `onLoad`/`start`），贴图 < 512 才参与（现有 48px 精灵全满足）。代价是额外内存，须真机验证。
 - [ ] **P0-3 Label CacheMode**：约 30 个 `Label` 均未设置 `cacheMode`（默认 NONE，一个 Label 一个 DrawCall）。固定文本用 `BITMAP`、频繁变动的 HUD / 伤害数字用 `CHAR`；按 3.8.8 API 实测。
 - [ ] **P0-4 图集化**：`duck/manifest` 逐张 `resources.load` 56 帧 → 改 `SpriteAtlas` / Auto Atlas，一次加载一张纹理；另按官方建议把不需动态加载的图移出 `resources/` 以免撑大 settings 映射。
-- [ ] **P0-5 先量基线**：`GoDuck.ts` 已 `import { profiler }`，先在真机/微信开发者工具采 190 敌人时的 DrawCall 与帧率，再决定上面几项的取舍。
+- [x] **P0-5 本地可复现基线（已完成）／真机实采（待用户）**：新增 `tools/profile-baseline.mjs` + `docs/baselines/`（包体 / 引擎模块 / 源码静态渲染计数 / 190 敌稳态规则层 CPU 分位数，支持两份 JSON 逐项对比）；`GoDuck.ts` 加 `goduck.profiler` 开关，开启后输出 `goduck.profile` JSON。**真机 DrawCall / 帧率未采**，采集步骤、三场景记录表与合图 / 图集的决策规则见 [baselines/README.md](baselines/README.md)；没有真机数字前不启动 P0-2 / P0-3 / P0-4。
 - [ ] **P1 候选**：官方技术方案里的 `Creator3.6.0_2D_QuadtreeCollision`（190 敌人 × 弹幕的碰撞空间划分，需移植到纯规则层）、`Creator3.6.0_2D_Light`（若采纳沉没地牢的发光水母/水下光柱）、`Creator3.6.0_GameTimeScale`（tween 变速，与已登记的 pixelfx `act` / animista 缓动同一议题）；`Graphics` 无法合批且会打断合批，8 处每帧 `clear()` 重绘可改成分层按需重绘；音频从 `AudioContext` 换 `AudioSource` ＋预加载；微信[初始场景分包 / 分离引擎 / 纹理压缩](https://docs.cocos.com/creator/3.7/manual/zh/editor/publish/publish-wechatgame.html)（像素风慎用有损压缩）。
 - [ ] **不建议现阶段做**：Store 付费「98K 多纹理合批 3.x」（第三方、需改材质）、Spine / DragonBones、3D 光照与后处理、VideoTexture（官方明确不支持微信小游戏）、Marionette、TiledMap 寻路。
-- 触发条件：用户明确要求做性能优化或真机帧率不达标时，从 P0-1 与 P0-5 开始，落地属渲染/构建层改动，需重跑 `npm test`、重建微信竖屏产物并单独归档。
+- 触发条件：P0-1 与 P0-5 的本地部分已按用户明确授权落地；**后续 P0-2 / P0-3 / P0-4 的触发条件是回填真机基线数字**，按 [baselines/README.md](baselines/README.md) 的规则（`draws`、`render` 占比、`textureMB`）决定顺序，每项落地后重跑 `npm test`、重建微信竖屏产物、再采一份 JSON 对比并单独归档。
 
 ## 备选方案（未采纳 · 待触发评估）
 

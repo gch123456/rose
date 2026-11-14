@@ -118,6 +118,9 @@ export class GoDuck extends Component {
     private menuDuck: Sprite;
     private colorCache = new Map<string, Color>();
     private clock = 0;
+    // Profiler 基线：默认关闭统计，正式包无额外开销；开启后每 2 秒输出一行可复制的采样 JSON。
+    private profiling = false;
+    private profileAcc = 0;
     private s = 1;
     private enemyRoot: Node;
     private enemyFrames = new Map<string, SpriteFrame>();
@@ -151,7 +154,15 @@ export class GoDuck extends Component {
         const preview = this.node.parent.getChildByName('EditorPreview');
         if (preview)
             preview.active = false;
-        profiler.hideStats();
+        // 真机采样入口：微信开发者工具控制台执行
+        // wx.setStorageSync('goduck.profiler', '1') 后重启小游戏即可打开统计。
+        try {
+            this.profiling = sys.localStorage.getItem('goduck.profiler') === '1';
+        } catch {
+            this.profiling = false;
+        }
+        if (this.profiling) profiler.showStats();
+        else profiler.hideStats();
         this.bgPen = this.layer('Backdrop');
         this.groundPen = this.layer('Ground');
         this.pen = this.layer('World');
@@ -610,7 +621,32 @@ export class GoDuck extends Component {
             : '单指拖动 / WASD 移动 · 自动攻击\n结算演出可点按任意处跳过';
         this.label(this.panel, tip, Math.round(18 * s), 0, isMenu ? -215 * s : -180 * s, W - 60, { color: PAL.textFaint });
     }
+    // 把 profiler.stats 里的关键计数每 2 秒打成一行 JSON，便于从微信开发者工具
+    // 控制台直接复制、贴进 docs/baselines 的采集表；关闭时完全不执行。
+    private sampleProfiler(dt: number) {
+        this.profileAcc += dt;
+        if (this.profileAcc < 2) return;
+        this.profileAcc = 0;
+        const s: any = (profiler as any).stats;
+        if (!s) return;
+        const v = (k: string) => Math.round((s[k]?.counter?.value ?? 0) * 100) / 100;
+        console.log(JSON.stringify({
+            tag: 'goduck.profile',
+            mode: this.mode,
+            phase: this.game.phase,
+            enemies: this.game.enemies?.length ?? 0,
+            fps: v('fps'),
+            frameMs: v('frame'),
+            draws: v('draws'),
+            instances: v('instances'),
+            logic: v('logic'),
+            render: v('render'),
+            textureMB: v('textureMemory'),
+            bufferMB: v('bufferMemory'),
+        }));
+    }
     update(dt: number) {
+        if (this.profiling) this.sampleProfiler(dt);
         if (this.mode === 'mow') {
             this.updateMow(dt);
             return;

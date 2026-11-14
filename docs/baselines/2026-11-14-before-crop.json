@@ -1,0 +1,150 @@
+{
+  "schema": "goduck.baseline.v1",
+  "label": "before-crop",
+  "capturedAt": "2026-11-14T04:24:37.256Z",
+  "node": "v22.22.2",
+  "platform": "darwin/arm64",
+  "git": "201251a",
+  "build": {
+    "present": true,
+    "totalBytes": 4784955,
+    "fileCount": 155,
+    "gzipBytes": 1300480,
+    "byTop": {
+      "(root files)": 161283,
+      "assets": 882714,
+      "cocos-js": 3712552,
+      "src": 28406
+    },
+    "byExt": {
+      ".js": 3346531,
+      ".json": 666115,
+      ".png": 91924,
+      ".wasm": 674630,
+      ".bin": 5755
+    },
+    "wasmBytes": 723829,
+    "wasmFiles": [
+      {
+        "file": "cocos-js/assets/bullet.release.wasm-BIzkn7bF.wasm",
+        "bytes": 469455
+      },
+      {
+        "file": "cocos-js/assets/spine-CC34fKUR.wasm",
+        "bytes": 205175
+      },
+      {
+        "file": "cocos-js/bullet.release.wasm-DRRYxUJj.js",
+        "bytes": 26899
+      },
+      {
+        "file": "cocos-js/spine.wasm-DmQjMU-3.js",
+        "bytes": 22167
+      },
+      {
+        "file": "cocos-js/bullet.release.wasm-mT4aJDLq.js",
+        "bytes": 133
+      }
+    ],
+    "pngCount": 61,
+    "pngBytes": 91924,
+    "cocosJsBytes": 3712552,
+    "cocosJsTop": [
+      {
+        "file": "cocos-js/_virtual_cc-BncijMet.js",
+        "bytes": 2977644
+      },
+      {
+        "file": "cocos-js/assets/bullet.release.wasm-BIzkn7bF.wasm",
+        "bytes": 469455
+      },
+      {
+        "file": "cocos-js/assets/spine-CC34fKUR.wasm",
+        "bytes": 205175
+      },
+      {
+        "file": "cocos-js/bullet.release.wasm-DRRYxUJj.js",
+        "bytes": 26899
+      },
+      {
+        "file": "cocos-js/spine.wasm-DmQjMU-3.js",
+        "bytes": 22167
+      },
+      {
+        "file": "cocos-js/cc.1391b.js",
+        "bytes": 10657
+      },
+      {
+        "file": "cocos-js/bullet.release.wasm-mT4aJDLq.js",
+        "bytes": 133
+      },
+      {
+        "file": "cocos-js/spine-BGFFnNyc.js",
+        "bytes": 119
+      },
+      {
+        "file": "cocos-js/bullet.release.asm-DxRECbrD.js",
+        "bytes": 105
+      },
+      {
+        "file": "cocos-js/spine.asm-DxRECbrD.js",
+        "bytes": 105
+      },
+      {
+        "file": "cocos-js/spine.js-1Pcan4ap.js",
+        "bytes": 93
+      }
+    ]
+  },
+  "engine": {
+    "schemaVersion": "1.0.12",
+    "explicit": false,
+    "defaultAll": true,
+    "globalConfigKey": null,
+    "includeModules": [],
+    "includeCount": null,
+    "enabledSwitches": [],
+    "enabledSwitchCount": 0
+  },
+  "source": {
+    "scriptFiles": 6,
+    "scriptLines": 4040,
+    "layerCalls": 4,
+    "labelCalls": 32,
+    "graphicsAdds": 3,
+    "labelAdds": 1,
+    "spriteAdds": 4,
+    "clearCalls": 12,
+    "resourcesLoads": 3,
+    "cacheModeSets": 0,
+    "dynamicAtlasRefs": 0,
+    "sourceTextures": 59,
+    "sourceTextureBytes": 65946,
+    "enemySpriteCap": 190
+  },
+  "cpu": {
+    "idle": {
+      "enemyCount": 0,
+      "swordCount": 48,
+      "gemCount": 120,
+      "frames": 480,
+      "meanMs": 0.0379,
+      "p50Ms": 0.0285,
+      "p95Ms": 0.1148,
+      "p99Ms": 0.2289,
+      "maxMs": 0.2677
+    },
+    "horde": {
+      "enemyCount": 190,
+      "swordCount": 48,
+      "gemCount": 120,
+      "frames": 480,
+      "meanMs": 0.12,
+      "p50Ms": 0.0272,
+      "p95Ms": 0.5868,
+      "p99Ms": 0.8085,
+      "maxMs": 0.8936
+    }
+  },
+  "note": "engine 字段按采集器 goduck.baseline.v1 口径修正：裁剪前 engine.json 无 modules 配置，引擎默认全量打包，不能记为 0 个模块。build/source/cpu 为裁剪前实采原值。"
+}

@@ -1,5 +1,15 @@
 # 更新记录
 
+## 2026-11-14 · 功能裁剪 + Profiler 基线（测试 / 竖屏产物 / 远程同步）
+
+- 用户指示「先做「功能裁剪 + Profiler 基线」这两件互不依赖、可量化对比的事，拿到数字再决定合图和图集的顺序……照旧把测试、竖屏产物和远程一起同步。开工」。**动态合图 / Label CacheMode / SpriteAtlas 本轮未实施**。
+- **功能裁剪**：从本机 Creator 3.8.8 官方 `empty-2d` 模板与 `resources/3d/engine/cc.config.json` 查证到确切配置字段（`modules.configs.defaultConfig.cache` / `includeModules` / `globalConfigKey`），在 `settings/v2/packages/engine.json` 显式列出 15 个模块（构建时编辑器自动补 `ui-skew`），关闭 3D、3D/2D 物理、Spine / DragonBones、骨骼动画、Marionette、TiledMap、Video / WebView 等；保留 `profiler / graphics / 2d / ui / custom-pipeline` 等运行时必需模块。
+- **量化结果**：主包 **4.56 MB → 2.03 MB（-55.6%）**、tar.gz **1.24 MB → 620 KB（-51.2%）**、cocos-js **3.54 MB → 1.50 MB（-57.6%）**、wasm **706.9 KB → 0（5 个文件全消失）**、文件数 155 → 146；**61 张 png 不变**，`deviceOrientation=portrait` 与真实 AppID 不变。原始数字与逐项对比见 [docs/baselines/2026-11-14-compare.md](docs/baselines/2026-11-14-compare.md)。
+- **Profiler 基线**：新增 `tools/profile-baseline.mjs`（零依赖，采集包体、引擎模块、源码静态渲染计数、190 敌 + 48 剑 + 120 魂珠稳态规则层 CPU 分位数；`--compare` 出 Markdown 对比）、`docs/baselines/README.md`（真机三场景采集步骤 + 合图/图集决策规则）、`docs/baselines/*.json` 前后两份原始基线。`GoDuck.ts` 增加 `goduck.profiler` 存储开关：默认 `hideStats()` 零开销，开启后 `showStats()` 并每 2 秒输出 `goduck.profile` JSON（fps / frameMs / draws / logic / render / textureMB 等），`stats` 为空时安全返回。
+- **验证**：`npm test` **102/102**（新增 `tests/baseline.test.mjs` 7 项，守住裁剪配置、必需模块、开关与采集器）；Cocos Creator 3.8.8 命令行重建微信竖屏产物成功（`Finished in 1 min 5 s`）；新引擎 `cc.309d2.js` 中 `Graphics / Label / SpriteFrame / UITransform / resources / Profiler / Canvas / showStats / hideStats` 引用全在，新采样代码已进包。规则层 CPU 两次采集的 ±10% 波动属 Node 测量噪声，不计为优化收益。
+- **未验证**：真机 DrawCall / 帧率 / textureMemory 尚未实采（需用户按 README 开启开关并回填三场景）；裁剪后双模式完整一局、iPhone 90 秒帧率未验收；`build/` 被 `.gitignore` 忽略，重建的竖屏产物仅在本地 `rose/build/wechatgame`，不随 git 同步。
+- 归档见 [本轮会话](docs/archive/2026-11-14-feature-crop-and-profiler-baseline.md)；同步更新 [STATUS](docs/STATUS.md) 与 [ROADMAP](docs/ROADMAP.md)（P0-1 / P0-5 本地部分标记完成）。
+
 ## 2026-11-14 · 调研 Cocos 官方资源库，登记工程优化候选（仅文档）
 
 - 用户指示「你也可以去找cocos官方的素材库，找到有没有可以优化的地方」。核查 [Cocos Store](https://store.cocos.com)、[官方示例与教程](https://docs.cocos.com/creator/3.8/manual/zh/cases-and-tutorials/)、官方 GitHub 示例仓库与性能/发布文档，并实测本项目源码与构建产物。

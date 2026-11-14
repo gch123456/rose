@@ -2,7 +2,18 @@
 
 更新日期：2026-11-14（北京时间）。
 
-## 本轮：Cocos 官方资源库调研（2026-11-14，WorkBuddy 本机）— 仅文档，玩法状态见下节
+## 本轮：功能裁剪 + Profiler 基线（2026-11-14，WorkBuddy 本机）— 当前状态
+
+用户指示：「下一步先做「功能裁剪 + Profiler 基线」这两件互不依赖、可量化对比的事，拿到数字再决定合图和图集的顺序……照旧把测试、竖屏产物和远程一起同步。开工」。**已实施**，动态合图 / Label CacheMode / 图集化按用户要求**未动**，顺序留待真机数字。
+
+- **功能裁剪**：从本机 Creator 3.8.8 的官方 `empty-2d` 模板与 `resources/3d/engine/cc.config.json` 查证到确切字段（`modules.configs.defaultConfig.cache` + `includeModules` + `globalConfigKey`），写入 `settings/v2/packages/engine.json` 显式 14 个模块；构建时 Creator 自动补入 `ui-skew`，最终 **15 个**。3D、3D/2D 物理、Spine / DragonBones、骨骼动画、Marionette、TiledMap、Video / WebView 等全部关闭，保留 `profiler`（代码调用 `hideStats`）与 `graphics / 2d / ui / resources` 所需模块。
+- **量化结果**：主包 **4.56 MB → 2.03 MB（-55.6%）**、tar.gz **1.24 MB → 620 KB（-51.2%）**、cocos-js **3.54 MB → 1.50 MB（-57.6%）**、wasm **706.9 KB → 0（-100%，5 个文件全消失）**；61 张 png 一张没少，`portrait` 与真实 AppID 不变。原始数据与逐项对比见 [baselines](baselines/2026-11-14-compare.md)。
+- **Profiler 基线**：新增 `tools/profile-baseline.mjs`（零依赖，采包体 / 引擎模块 / 源码静态渲染计数 / 190 敌稳态规则层 CPU 分位数，支持两份 JSON 逐项对比），`docs/baselines/README.md` 给出真机三场景采集步骤与「合图 vs 图集」的决策规则；`GoDuck.ts` 加 `goduck.profiler` 本地存储开关，默认隐藏统计、开启后每 2 秒输出一行 `goduck.profile` JSON（fps / frameMs / draws / logic / render / textureMB 等）。**真机数据尚未实采**。
+- **验证**：`npm test` **102/102**（新增 `tests/baseline.test.mjs` 7 项守住裁剪配置与采集器）；Cocos 3.8.8 命令行重建成功（`build Task Finished in 1 min 5 s`）；新引擎 `cc.309d2.js` 中 `Graphics / Label / SpriteFrame / UITransform / resources / Profiler / Canvas` 等 API 均在，新采样代码已进包；游戏逻辑与素材未改。
+- **未验证**：真机 DrawCall / 帧率、裁剪后双模式完整一局、`profiler.stats` 在微信小游戏运行时的字段可用性（有 null 保护）；`build/` 被 `.gitignore` 忽略，竖屏产物只在本地，不随 git 同步。CPU 行的 ±10% 波动是 Node 测量噪声，规则层代码一行未动。
+- 归档见 [本轮会话](archive/2026-11-14-feature-crop-and-profiler-baseline.md)。以下旧分段保留作历史，冲突时以本节与代码为准。
+
+## 上一轮：Cocos 官方资源库调研（2026-11-14，WorkBuddy 本机）— 仅文档，玩法状态见下节
 
 用户指示：「你也可以去找cocos官方的素材库，找到有没有可以优化的地方」。按协作规则作为**调研任务**处理：**未改代码、素材、构建配置、测试与微信产物**，工作区干净。
 
