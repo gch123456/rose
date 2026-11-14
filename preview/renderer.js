@@ -15,7 +15,9 @@
         gold: '#FFC94A', goldDeep: '#E99A2E', sword: '#FFF3AF', swordEdge: '#FFB238',
         mint: '#4BD3A5', mintLight: '#A9F2D2', coral: '#FF6F79', lilac: '#B79CFF',
         damage: '#E4504C', crit: '#FF8A24', heart: '#FF6272', gem: '#42CF9C',
-        gemLight: '#A5F5CE', enemy: '#3B4B63', danger: '#FF5D6B', white: '#FFFFFF'
+        gemLight: '#A5F5CE', enemy: '#3B4B63', danger: '#FF5D6B', white: '#FFFFFF',
+        // 沉没地牢浅水遗迹地面（与 Cocos 端 Q 调色板一致）
+        grassA: '#C6DADE', grassB: '#B0C2CC', grassLine: '#7A94B2', glowSpot: '#B2FAF4'
     };
     const rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
     const col = (h, a = 1) => { const [r, g, b] = rgb(h); return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')'; };
@@ -27,6 +29,13 @@
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const ease = t => t * t * (3 - 2 * t);
     const g = new SurvivorGame();
+    // 沉没地牢背景贴图（由 build-preview.mjs 以 base64 注入）
+    const bgImgs = {};
+    for (const [key, src] of Object.entries(window.__GODUCK_BG || {})) {
+        const img = new Image();
+        img.onload = () => { bgImgs[key] = img; };
+        img.src = src;
+    }
     const keys = new Set();
     let charSel = 0;
     let intro = 0, settleFor = -1, clock = 0, lastRescued = 0, toast = 0, toastCount = 0;
@@ -147,6 +156,19 @@
 
     // ── 场景 ────────────────────────────────────────────────────
     function backdrop() {
+        const img = (g.phase === 'menu' ? (bgImgs.title || bgImgs.sunken) : bgImgs.sunken);
+        if (img) {
+            // 沉没地牢贴图：cover 取中，贴图之上只叠暗角。
+            ctx.imageSmoothingEnabled = false;
+            const scale = Math.max(W / 640, H / 1120), iw = 640 * scale, ih = 1120 * scale;
+            ctx.drawImage(img, (W - iw) / 2, (H - ih) / 2, iw, ih);
+            for (let i = 0; i < 7; i++) {
+                ctx.fillStyle = col(C.ink, .06 * (1 - i / 7));
+                ctx.fillRect(0, i * H / 14, W, H / 14 + 1);
+                ctx.fillRect(0, H - (i + 1) * H / 14, W, H / 14 + 1);
+            }
+            return;
+        }
         for (let i = 0; i < 24; i++) {
             const t = i / 23;
             ctx.fillStyle = t < .5 ? mix(C.skyTop, C.skyMid, t * 2) : mix(C.skyMid, C.skyBottom, (t - .5) * 2);
@@ -187,13 +209,13 @@
             for (let y = y0; y <= y1; y += step) {
                 const gx = Math.floor(x / step), gy = Math.floor(y / step), r = noise(gx, gy);
                 const px = sx(x), py = sy(y) - step;
-                ctx.fillStyle = col((gx + gy) % 2 === 0 ? C.grassA : C.grassB, .92);
+                ctx.fillStyle = col((gx + gy) % 2 === 0 ? C.grassA : C.grassB, .88);
                 ctx.fillRect(px, py, step, step);
-                ctx.strokeStyle = col(C.grassLine, .24); ctx.lineWidth = 2;
+                ctx.strokeStyle = col(C.grassLine, .28); ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + step, py); ctx.moveTo(px, py); ctx.lineTo(px, py + step); ctx.stroke();
                 if (r > .82) {
                     const fx = px + 20 + r * 30, fy = py + 24 + noise(gy, gx) * 32;
-                    ctx.fillStyle = col(r > .92 ? C.coral : C.white, .86);
+                    ctx.fillStyle = col(r > .92 ? C.coral : C.glowSpot, .86);
                     for (const [dx, dy] of [[-6, 0], [6, 0], [0, -6], [0, 6]]) ctx.fillRect(fx + dx - 4, fy + dy - 4, 8, 8);
                     ctx.fillStyle = col(C.gold, .94); ctx.fillRect(fx - 3, fy - 3, 6, 6);
                 }

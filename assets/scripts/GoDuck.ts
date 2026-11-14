@@ -63,6 +63,12 @@ const Q = {
     enemyInk: '#3B4B63',
     danger: '#FF5D6B',
     white: '#FFFFFF',
+    // 沉没地牢浅水遗迹地面（与 concept-art 01 调色板一致）
+    floorA: '#C6DADE',
+    floorB: '#B0C2CC',
+    floorLine: '#7A94B2',
+    floorShade: '#566E8E',
+    glowSpot: '#B2FAF4',
 };
 const PORTAL_INTRO = 1.35; // 开局传送阵演出时长（秒）
 const MOW_PORTAL_INTRO = 1.1;
@@ -115,6 +121,10 @@ export class GoDuck extends Component {
     private bgPen: Graphics;
     private groundPen: Graphics;
     private framePen: Graphics;
+    // 沉没地牢像素背景：菜单用标题图，割草局内用水下遗迹图，经典模式保留程序绘制。
+    private bgSprite: Sprite | null = null;
+    private bgFrames = new Map<string, SpriteFrame>();
+    private bgKey = '';
     private menuDuck: Sprite;
     private colorCache = new Map<string, Color>();
     private clock = 0;
@@ -169,6 +179,7 @@ export class GoDuck extends Component {
         this.selected = this.save.current;
         this.loadEnemies();
         this.loadDuck();
+        this.loadBackdrops();
         this.framePen = this.layer('HudFrame');
         const duckNode = new Node('MenuDuck');
         duckNode.layer = this.node.layer;
@@ -261,6 +272,49 @@ export class GoDuck extends Component {
         else this.drawBackdrop();
         this.state = '';
     }
+    // 沉没地牢背景贴图：异步加载，加载完成前回退到程序绘制的亮色天空。
+    private loadBackdrops() {
+        const n = new Node('PixelBackdrop');
+        n.layer = this.node.layer;
+        this.node.addChild(n);
+        n.setSiblingIndex(0); // 压到最底层，位于 Backdrop 程序绘制之下
+        n.addComponent(UITransform);
+        const sprite = n.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        sprite.type = Sprite.Type.SIMPLE;
+        sprite.node.active = false;
+        this.bgSprite = sprite;
+        for (const key of ['sunken', 'title']) {
+            resources.load('bg/' + key + '/texture', Texture2D, (error, texture) => {
+                if (!isValid(this)) return;
+                if (error) { console.warn('Backdrop texture could not load: ' + key); return; }
+                texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
+                const frame = new SpriteFrame(); frame.texture = texture;
+                this.bgFrames.set(key, frame);
+                // 贴图晚于首次 resize 到达：强制重切背景，否则程序天空会一直压在贴图上。
+                this.bgKey = '';
+                if (this.mode === 'mow') this.drawBackdropMow();
+            });
+        }
+    }
+
+    // 按模式与阶段切换背景贴图；等比放大取中（cover），保证像素不变形。
+    private syncBackdrop() {
+        const sprite = this.bgSprite;
+        if (!sprite) return;
+        const want = this.mode === 'mow' ? (this.mow && this.mow.phase === 'menu' ? 'title' : 'sunken') : '';
+        if (want !== this.bgKey) {
+            this.bgKey = want;
+            sprite.node.active = !!want && this.bgFrames.has(want);
+            if (want) sprite.spriteFrame = this.bgFrames.get(want) || null;
+        }
+        if (want && this.bgFrames.has(want)) {
+            const scale = Math.max(this.w / 640, this.h / 1120);
+            sprite.node.setPosition(0, 0, 0);
+            sprite.node.getComponent(UITransform).setContentSize(640 * scale, 1120 * scale);
+        }
+    }
+
     private loadEnemies() {
         this.enemyRoot = new Node('PixelEnemies'); this.enemyRoot.layer = this.node.layer;
         this.node.addChild(this.enemyRoot);
@@ -647,6 +701,7 @@ export class GoDuck extends Component {
     }
     update(dt: number) {
         if (this.profiling) this.sampleProfiler(dt);
+        this.syncBackdrop();
         if (this.mode === 'mow') {
             this.updateMow(dt);
             return;
@@ -1529,6 +1584,11 @@ export class GoDuck extends Component {
     private drawBackdropMow() {
         const p = this.bgPen, w = this.w, h = this.h, s = this.s;
         p.clear();
+        if (this.bgFrames.has('sunken')) {
+            // 沉没地牢贴图已生效：只在图上叠边缘暗角，保证浅色遗迹上的文字可读。
+            this.vignette(p, w, h);
+            return;
+        }
         const bands = 24;
         for (let i = 0; i < bands; i++) {
             const t = i / (bands - 1);
@@ -1566,13 +1626,17 @@ export class GoDuck extends Component {
             }
         }
         // 边缘柔和暗角，保证浅色背景上的文字可读
+        this.vignette(p, w, h);
+    }
+
+    private vignette(p: Graphics, w: number, h: number) {
         for (let i = 0; i < 7; i++) {
             p.fillColor = this.c(Q.ink, Math.round(16 * (1 - i / 7)));
             p.rect(-w / 2, -h / 2 + i * h / 14, w, h / 14 + 1); p.fill();
             p.rect(-w / 2, h / 2 - (i + 1) * h / 14, w, h / 14 + 1); p.fill();
         }
     }
-    // 滚动草地：棋盘格、像素小花、常驻传送阵与场地边界。
+    // 滚动地面：沉没地牢浅水石板棋盘格、水光斑与珊瑚，常驻传送阵与场地边界。
     private drawGroundMow() {
         const p = this.groundPen, g = this.mow, s = this.s;
         p.clear();
@@ -1584,17 +1648,17 @@ export class GoDuck extends Component {
             for (let y = y0; y <= y1; y += step) {
                 const gx = Math.floor(x / step), gy = Math.floor(y / step), r = noise(gx, gy);
                 const px = sx(x), py = sy(y);
-                p.fillColor = this.c((gx + gy) % 2 === 0 ? Q.grassA : Q.grassB, 235);
+                p.fillColor = this.c((gx + gy) % 2 === 0 ? Q.floorA : Q.floorB, 225);
                 p.rect(px, py, step, step); p.fill();
-                p.strokeColor = this.c(Q.grassLine, 60);
+                p.strokeColor = this.c(Q.floorLine, 70);
                 p.lineWidth = 2;
                 p.moveTo(px, py); p.lineTo(px + step, py);
                 p.moveTo(px, py); p.lineTo(px, py + step);
                 p.stroke();
                 if (r > .82) {
-                    // 像素小花：四瓣方块＋黄花芯
+                    // 水光斑与珊瑚：青光四瓣＋黄花芯
                     const fx = px + 20 + r * 30, fy = py + 24 + noise(gy, gx) * 32;
-                    p.fillColor = this.c(r > .92 ? Q.coral : Q.white, 220);
+                    p.fillColor = this.c(r > .92 ? Q.coral : Q.glowSpot, 220);
                     for (const [dx, dy] of [[-6, 0], [6, 0], [0, -6], [0, 6]]) {
                         p.rect(fx + dx * s - 4 * s, fy + dy * s - 4 * s, 8 * s, 8 * s); p.fill();
                     }
@@ -1602,7 +1666,7 @@ export class GoDuck extends Component {
                     p.rect(fx - 3 * s, fy - 3 * s, 6 * s, 6 * s); p.fill();
                 }
                 else if (r < .09) {
-                    p.fillColor = this.c(Q.hillShade, 110);
+                    p.fillColor = this.c(Q.floorShade, 110);
                     p.rect(px + 30, py + 34, 20 * s, 8 * s); p.fill();
                 }
             }

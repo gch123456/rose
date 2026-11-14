@@ -10,6 +10,13 @@ const source = fs.readFileSync(path.join(root, 'assets/scripts/SurvivorGame.ts')
 const logic = stripTypeScriptTypes(source, { mode: 'strip' }).replace(/^export /gm, '');
 const renderer = fs.readFileSync(path.join(root, 'preview/renderer.js'), 'utf8');
 
+// 沉没地牢背景贴图以 base64 内联，保证 mow.html 单文件自包含。
+const bgData = Object.fromEntries(['sunken', 'title'].map(name => {
+    const file = path.join(root, 'assets/resources/bg/' + name + '.png');
+    return [name, 'data:image/png;base64,' + fs.readFileSync(file).toString('base64')];
+}));
+const bgJson = JSON.stringify(bgData);
+
 const shell = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -31,6 +38,7 @@ const shell = `<!DOCTYPE html>
 <body>
 <div class="wrap"><canvas id="game"></canvas></div>
 <script>
+window.__GODUCK_BG = /*__BGDATA__*/;
 /*__LOGIC__*/
 /*__RENDERER__*/
 </script>
@@ -38,7 +46,8 @@ const shell = `<!DOCTYPE html>
 </html>
 `;
 
-const html = shell.replace('/*__LOGIC__*/', () => logic).replace('/*__RENDERER__*/', () => renderer);
+const html = shell.replace('/*__BGDATA__*/', () => bgJson)
+    .replace('/*__LOGIC__*/', () => logic).replace('/*__RENDERER__*/', () => renderer);
 const out = path.join(root, 'preview/mow.html');
 fs.writeFileSync(out, html, 'utf8');
 console.log('generated: ' + out + '  (' + (html.length / 1024).toFixed(1) + ' KB)');

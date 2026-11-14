@@ -2,7 +2,17 @@
 
 更新日期：2026-11-14（北京时间）。
 
-## 本轮：功能裁剪 + Profiler 基线（2026-11-14，WorkBuddy 本机）— 当前状态
+## 本轮：沉没地牢像素背景接入（2026-11-14，WorkBuddy 本机）— 当前状态
+
+用户问「我改的像素风的背景和那些像素插件的呢？」→ 核实概念图/备选从未接入游戏后，用户确认「接入沉没地牢背景」。**已实施并重建产物**。
+
+- **贴图入包**：`concept-art/01-sunken-ruins-arena.png` → `assets/resources/bg/sunken.png`（局内），`03-title-keyart.png` → `assets/resources/bg/title.png`（菜单），均为 640×1120 手绘像素图（DungeonTileset II + 潜水员戴夫浅水风）。
+- **GoDuck.ts**：新增 `loadBackdrops()`（最底层 `PixelBackdrop` Sprite，NEAREST，异步 `resources.load`，加载完成回退程序绘制天空）与 `syncBackdrop()`（每帧按 mode/phase 切换：割草菜单→title、局内→sunken、经典→关闭；cover 缩放不变形）；`drawBackdropMow()` 在贴图就绪后只叠文字可读暗角；`drawGroundMow()` 地面换成沉没地牢浅水石板棋盘（`floorA/B/Line/Shade/glowSpot` 与概念图调色板一致），像素小花改青光/珊瑚。
+- **预览端**：`build-preview.mjs` 将两张贴图 base64 内联进自包含 `mow.html`（`window.__GODUCK_BG`）；`renderer.js` 同步贴图背景 + 沉没地面配色。无头截图验收：菜单与局内均正常，文字可读。
+- **验证**：`npm test` **102/102**；微信竖屏产物已重建（AppID `wx050b09f415a8fc43`、portrait、63 张 png）。
+- 归档见 [本轮会话](archive/2026-11-14-sunken-backdrop-integration.md)。
+
+## 上一轮：功能裁剪 + Profiler 基线（2026-11-14，WorkBuddy 本机）
 
 用户指示：「下一步先做「功能裁剪 + Profiler 基线」这两件互不依赖、可量化对比的事，拿到数字再决定合图和图集的顺序……照旧把测试、竖屏产物和远程一起同步。开工」。**已实施**，动态合图 / Label CacheMode / 图集化按用户要求**未动**，顺序留待真机数字。
 

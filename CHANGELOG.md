@@ -1,5 +1,13 @@
 # 更新记录
 
+## 2026-11-14 · 沉没地牢像素背景接入（测试 / 竖屏产物 / 远程同步）
+
+- 用户确认将此前停留在概念稿的沉没地牢像素图接入游戏：`01-sunken-ruins-arena.png` → `assets/resources/bg/sunken.png`（割草局内背景），`03-title-keyart.png` → `assets/resources/bg/title.png`（菜单背景），经典模式保持原程序绘制。
+- `GoDuck.ts`：新增 `loadBackdrops()` / `syncBackdrop()`（最底层 Sprite、NEAREST、异步加载、cover 缩放、按模式与阶段切换）；贴图就绪后 `drawBackdropMow()` 只叠暗角；`drawGroundMow()` 改为浅水石板棋盘 + 青光斑/珊瑚（调色板与概念图一致）。贴图加载失败回退程序绘制天空。
+- 预览端：`build-preview.mjs` 以 base64 内联两张贴图保持 mow.html 自包含；`renderer.js` 同步背景与地面配色。
+- 验证：`npm test` 102/102；无头 Chrome 截图验收菜单与局内（?auto=1&fast=30）；微信竖屏产物重建。
+- 归档见 [本轮会话](docs/archive/2026-11-14-sunken-backdrop-integration.md)。
+
 ## 2026-11-14 · 功能裁剪 + Profiler 基线（测试 / 竖屏产物 / 远程同步）
 
 - 用户指示「先做「功能裁剪 + Profiler 基线」这两件互不依赖、可量化对比的事，拿到数字再决定合图和图集的顺序……照旧把测试、竖屏产物和远程一起同步。开工」。**动态合图 / Label CacheMode / SpriteAtlas 本轮未实施**。
