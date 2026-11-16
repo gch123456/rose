@@ -2,6 +2,10 @@
 
 更新日期：2026-11-16（北京时间）。
 
+## A方案获认可、真实3D可行（2026-11-16）
+
+用户对当前玩法与UI其余设计无异议，询问真实3D支持。核实Cocos3.8支持3D模型及微信小游戏构建，采用真3D模型＋2D界面可行；当前旧游戏配置关闭3D，尚未修改。未实现3D或验证真机性能。详见[本次记录](archive/2026-11-16-color-clear-3d-confirmation-session.md)及[设计补充](design-drafts/2026-11-16-color-clear-gameplay-ui-draft.md)。
+
 ## A方案玩法与UI讨论（2026-11-16，待评审）
 
 用户已选择A，优先玩法与UI，允许先用Markdown草图确认。已写[讨论稿](design-drafts/2026-11-16-color-clear-gameplay-ui-draft.md)，含旋转、批次选择、连锁、失败与竖屏布局；细则尚待批准。核查著作权法及最高法游戏换皮案例，未承诺借鉴必然不侵权。未生成图或实现新游戏；详见[本次记录](archive/2026-11-16-color-clear-ui-discussion-session.md)。
