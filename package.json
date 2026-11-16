@@ -9,7 +9,8 @@
     "preview:build": "node tools/build-color-clear.mjs",
     "preview:serve": "node tools/serve-preview.mjs",
     "test:color-clear-ui": "node tools/check-color-clear-browser.mjs",
-    "check:color-clear": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions assets/scripts/color-clear/ColorClearGame.ts assets/scripts/color-clear/ColorClearLevels.ts"
+    "check:color-clear": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions assets/scripts/color-clear/ColorClearGame.ts assets/scripts/color-clear/ColorClearLevels.ts assets/scripts/color-clear/ColorClearGeometry.ts",
+    "test:color-clear-v02-ui": "node tools/check-color-clear-v02-browser.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

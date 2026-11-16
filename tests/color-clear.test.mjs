@@ -5,10 +5,11 @@ import { makeLevel, LEVEL_COUNT } from '../assets/scripts/color-clear/ColorClear
 const cell=(id,x,y,z,color,core=false)=>({id,x,y,z,color,core,alive:true});
 const cap=(id,color,ammo=1)=>({id,color,ammo});
 const level=(cells,supply)=>({id:1,name:'test',cells,supply,solution:[]});
+const advance=g=>{for(let i=0;i<10;i++)g.tick(.1);};
 test('front occlusion changes with rotation and prevents spending shots on hidden colours',()=>{
  const g=new ColorClearGame(level([cell(0,0,0,0,1),cell(1,0,0,1,0)],[[cap(0,1)],[],[],[]]));
- assert.equal(g.select(0),true);g.tick(.2);assert.equal(g.slots[0].ammo,1);assert.equal(g.remaining,2);
- g.rotate(Math.PI);g.tick(.2);assert.equal(g.remaining,1);assert.equal(g.slots[0],null);
+ assert.equal(g.select(0),true);advance(g);assert.equal(g.slots[0].ammo,1);assert.equal(g.remaining,2);
+ g.rotate(Math.PI);advance(g);assert.equal(g.remaining,1);assert.equal(g.slots[0],null);
 });
 test('four slots admit once and full slots never consume supply',()=>{
  const g=new ColorClearGame(level([cell(0,0,0,0,0)],Array.from({length:4},(_,i)=>[cap(i,0,3),cap(i+4,0,3)])));
@@ -17,24 +18,24 @@ test('four slots admit once and full slots never consume supply',()=>{
 });
 test('empty slot can be refilled while another still fires; multiple slots never double-hit',()=>{
  const g=new ColorClearGame(level([cell(0,-1,0,0,0),cell(1,1,0,0,1)],[[cap(0,0)],[cap(1,1)],[],[]]));
- g.select(0);g.select(1);g.tick(.2);assert.equal(g.remaining,0);assert.equal(g.phase,'won');
+ g.select(0);g.select(1);advance(g);assert.equal(g.remaining,0);assert.equal(g.phase,'won');
  assert.equal(g.drainEvents().filter(e=>e.type==='hit').length,2);
 });
 test('chain core removes marked neighbours once and triggers adjacent core',()=>{
  const g=new ColorClearGame(level([cell(0,0,0,0,0,true),cell(1,1,0,0,1,true),cell(2,2,0,0,2)],[[cap(0,0)],[],[],[]]));
- g.select(0);g.tick(.2);assert.equal(g.remaining,0);assert.equal(g.phase,'won');
+ g.select(0);advance(g);assert.equal(g.remaining,0);assert.equal(g.phase,'won');
  assert.equal(g.drainEvents().filter(e=>e.type==='clear').length,3);
 });
 test('full slots with a target on the back remain playable',()=>{
  const cells=[cell(0,0,0,0,1),cell(1,0,0,1,0)];
  const g=new ColorClearGame(level(cells,Array.from({length:4},(_,i)=>[cap(i,1,2)])));
- for(let i=0;i<4;i++)g.select(i);g.tick(.2);assert.equal(g.phase,'playing');
- g.rotate(Math.PI);g.tick(.2);assert.equal(g.remaining,1);
+ for(let i=0;i<4;i++)g.select(i);advance(g);assert.equal(g.phase,'playing');
+ g.rotate(Math.PI);advance(g);assert.equal(g.remaining,1);
 });
 test('all-angle enclosed colour with full slots is a genuine deadlock',()=>{
  const cells=[cell(0,0,0,0,1),cell(1,-1,0,0,0),cell(2,1,0,0,0),cell(3,0,0,-1,0),cell(4,0,0,1,0)];
  const g=new ColorClearGame(level(cells,Array.from({length:4},(_,i)=>[cap(i,1,2)])));
- for(let i=0;i<4;i++)g.select(i);g.tick(.2);assert.equal(g.phase,'lost');assert.match(g.reason,/槽/);
+ for(let i=0;i<4;i++)g.select(i);advance(g);assert.equal(g.phase,'lost');assert.match(g.reason,/槽/);
 });
 test('diagonal openings count as reachable instead of sampling only cardinal directions',()=>{
  const cells=[cell(0,0,0,0,1),cell(1,-2,0,0,0),cell(2,2,0,0,0),cell(3,0,0,-2,0),cell(4,0,0,2,0)];
@@ -44,7 +45,7 @@ test('diagonal openings count as reachable instead of sampling only cardinal dir
 test('paused game rejects input and time; resume, restart and events stay isolated',()=>{
  const l=level([cell(0,0,0,0,0)],[[cap(0,0)],[],[],[]]);const g=new ColorClearGame(l);
  g.pause();assert.equal(g.select(0),false);g.rotate(1);g.tick(100);assert.equal(g.yaw,0);assert.equal(g.remaining,1);
- g.resume();g.select(0);g.tick(.2);assert.equal(g.phase,'won');g.restart();assert.equal(g.phase,'playing');assert.equal(g.remaining,1);assert.equal(g.supply[0].length,1);assert.equal(g.slots.filter(Boolean).length,0);
+ g.resume();g.select(0);advance(g);assert.equal(g.phase,'won');g.restart();assert.equal(g.phase,'playing');assert.equal(g.remaining,1);assert.equal(g.supply[0].length,1);assert.equal(g.slots.filter(Boolean).length,0);
 });
 test('invalid and huge delta times cannot create unlimited catch-up fire',()=>{
  const g=new ColorClearGame(makeLevel(1));g.select(0);const before=g.remaining;g.tick(NaN);g.tick(-1);assert.equal(g.remaining,before);
@@ -52,7 +53,7 @@ test('invalid and huge delta times cannot create unlimited catch-up fire',()=>{
 });
 test('supply exhaustion loses with explanation and victory takes priority',()=>{
  const g=new ColorClearGame(level([cell(0,0,0,0,1)],[[cap(0,0)],[],[],[]]));
- g.select(0);g.tick(.2);assert.equal(g.phase,'lost');assert.ok(g.reason.length>0);
+ g.select(0);advance(g);assert.equal(g.phase,'lost');assert.ok(g.reason.length>0);
 });
 test('ten deterministic levels have real depth, accessible targets and a winning solution',()=>{
  assert.equal(LEVEL_COUNT,10);

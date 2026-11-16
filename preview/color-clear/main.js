@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { ColorClearGame } from '../../assets/scripts/color-clear/ColorClearGame.ts';
-import { makeLevel, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
+import {makePieceGeometries} from './shapes.js';
+import {normalizePresentation} from './presentation.js';
+import { ColorClearGame, FLIGHT_SECONDS, aimY } from '../../assets/scripts/color-clear/ColorClearGame.ts';
+import { makeLevel, makeRescueFixture, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
 
 const $=id=>document.getElementById(id);
 const COLORS=['#f28576','#efc75f','#7eb5e1','#70bba0'];
@@ -11,8 +12,11 @@ const pref=(key,fallback)=>{try{return JSON.parse(localStorage.getItem('color-cl
 const save=(key,value)=>{try{localStorage.setItem('color-clear.'+key,JSON.stringify(value));}catch{/* Private mode may disable storage; play stays available. */}};
 let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Number(pref('unlocked',1))||1));
 let muted=pref('muted',false),haptic=pref('haptic',false);
-let model=new ColorClearGame(makeLevel(1));
-let renderer,mesh,coreMarks=[],viewScale=9,frameId,drag=null,lastTime=performance.now(),uiStamp='',shownPhase='',comboUntil=0,lastTone=0,audio,rotationVelocity=0,lastDragTime=0,rangeStamp='';
+const fixtureMode=new URLSearchParams(location.search).get('fixture')==='rescue';
+const levelFor=n=>fixtureMode?makeRescueFixture():makeLevel(n);
+let settings=normalizePresentation(pref('presentation',{})),rewardSession=null,reserveOpen=false;
+let model=new ColorClearGame(levelFor(1));
+let renderer,meshes=[],pieces=[],coreMarks=[],viewScale=9,frameId,drag=null,lastTime=performance.now(),uiStamp='',shownPhase='',comboUntil=0,lastTone=0,audio,rotationVelocity=0,lastDragTime=0,rangeStamp='';
 let particles=[],bullets=[];
 const scene=new THREE.Scene();
 const root=new THREE.Group();scene.add(root);
@@ -26,27 +30,30 @@ camera.position.set(0,0,25);camera.lookAt(0,0,0);
 scene.add(new THREE.HemisphereLight(0xfffff5,0x98a58c,2.4));
 const key=new THREE.DirectionalLight(0xfff5df,3.1);key.position.set(-6,11,10);scene.add(key);
 const fill=new THREE.DirectionalLight(0xb9dfed,1.2);fill.position.set(7,0,3);scene.add(fill);
-const geometry=new RoundedBoxGeometry(.94,.94,.94,2,.07);
+const shapeGeometries=makePieceGeometries();
 const material=new THREE.MeshStandardMaterial({roughness:.46,metalness:.02});
 const particleMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.18,.18,.18),material,120);particleMesh.count=0;particleMesh.frustumCulled=false;scene.add(particleMesh);
-const bulletGeometry=new THREE.SphereGeometry(.075,6,5);
-const bulletMaterial=new THREE.MeshBasicMaterial({color:0xfffff5});
 const dummy=new THREE.Object3D();
 let domColors=COLORS.map(c=>new THREE.Color(c));
 try{renderer=new THREE.WebGLRenderer({canvas:$('world'),alpha:true,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
 catch(error){$('webgl-error').hidden=false;throw error;}
 
 function buildModel(){
- if(mesh){root.remove(mesh);mesh.dispose();}
+ for(const m of meshes){root.remove(m);m.dispose();}meshes=[];pieces=[];
  for(const m of coreMarks){root.remove(m);m.geometry.dispose();m.material.dispose();}coreMarks=[];
- mesh=new THREE.InstancedMesh(geometry,material,model.cells.length);mesh.frustumCulled=false;root.add(mesh);
+ for(const shape of new Set(model.cells.map(c=>c.shape||'box'))){const cells=model.cells.filter(c=>(c.shape||'box')===shape),m=new THREE.InstancedMesh(shapeGeometries[shape],material,cells.length);m.frustumCulled=false;root.add(m);meshes.push(m);cells.forEach((c,index)=>pieces[c.id]={mesh:m,index});}
  for(const c of model.cells){
-  mesh.setColorAt(c.id,domColors[c.color]);
+  pieces[c.id].mesh.setColorAt(pieces[c.id].index,domColors[c.color]);
   if(c.core){const mark=new THREE.Mesh(new THREE.TorusGeometry(.20,.032,5,12),new THREE.MeshBasicMaterial({color:0xfff8d7}));mark.position.set(c.x,c.y,c.z+.49);mark.userData.id=c.id;root.add(mark);coreMarks.push(mark);}
+ }
+ // Small attached eye details make the original toy-animal silhouette readable.
+ for(const c of model.cells){const duck=(model.level.id-1)%3===0;const eye=duck?c.x===2&&c.y===2&&Math.abs(c.z)===1:Math.abs(c.x)===1&&c.y===2&&c.z===1;
+  if(!eye)continue;const side=c.z>0?1:-1;
+  for(const [r,color,depth] of [[.145,0xfffff5,.43],[.075,0x263d37,.55]]){const mark=new THREE.Mesh(new THREE.SphereGeometry(r,10,8),new THREE.MeshBasicMaterial({color}));mark.position.set(c.x+.08,c.y+.15,c.z+depth*side);mark.userData.id=c.id;root.add(mark);coreMarks.push(mark);}
  }
  const maxY=Math.max(...model.cells.map(c=>Math.abs(c.y))),maxX=Math.max(...model.cells.map(c=>Math.hypot(c.x,c.z)));
  viewScale=Math.max(maxY*2+4.8,maxX*2+2.6);
- for(const b of bullets){scene.remove(b.mesh);}bullets=[];particles=[];
+ $('projectiles').replaceChildren();bullets=[];particles=[];
  rangeStamp='';$('world').dataset.chainEvents='0';$('world').dataset.maxChainRange='0';resize();syncBlocks();
 }
 function resize(){
@@ -60,11 +67,11 @@ function resize(){
 }
 new ResizeObserver(resize).observe($('stage'));
 function syncBlocks(){
- for(const c of model.cells){dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(c.alive?1:0);dummy.rotation.set(0,0,0);dummy.updateMatrix();mesh.setMatrixAt(c.id,dummy.matrix);}
- mesh.instanceMatrix.needsUpdate=true;
+ for(const c of model.cells){dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(c.alive?1:0);dummy.rotation.set(0,0,0);dummy.updateMatrix();pieces[c.id].mesh.setMatrixAt(pieces[c.id].index,dummy.matrix);}
+ for(const m of meshes)m.instanceMatrix.needsUpdate=true;
  for(const mark of coreMarks)mark.visible=model.cells[mark.userData.id].alive;
 }
-function positionOf(c){return new THREE.Vector3(c.x,c.y,c.z).applyAxisAngle(new THREE.Vector3(0,1,0),model.yaw);}
+function positionOf(c){return new THREE.Vector3(c.x,aimY(c),c.z).applyAxisAngle(new THREE.Vector3(0,1,0),model.yaw);}
 function burst(c,core){
  const p=positionOf(c),count=core?10:3;
  for(let i=0;i<count&&particles.length<110;i++)particles.push({p:p.clone(),v:new THREE.Vector3((Math.random()-.5)*8,2+Math.random()*4,(Math.random()-.5)*6),age:0,life:.4+Math.random()*.3,color:c.color,spin:Math.random()*6});
@@ -91,18 +98,23 @@ function soundEvent(e){
 function toast(text){$('toast').textContent=text;$('toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').classList.remove('show'),1600);}
 function capsuleMarkup(c,preview=false,waiting=false){return `<span class="symbol">${SYMBOLS[c.color]}</span><strong>${c.ammo}</strong>`;}
 function syncUI(force=false){
- const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,2)),model.phase,model.remaining,muted]);
+ const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,2)),model.phase,model.remaining,muted,model.reserve,settings]);
  if(!force&&signature===uiStamp)return;uiStamp=signature;
+ applyPresentation();
  $('level-name').textContent=`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
  $('level-dots').textContent=Array.from({length:5},(_,i)=>i<(model.level.id-1)%5+1?'●':'○').join(' ');
  $('remaining').textContent=`剩余 ${model.remaining} 块`;$('percent').textContent=`${Math.round(model.progress*100)}%`;$('progress').style.width=model.progress*100+'%';
  const visibleColors=new Set(model.visibleTargets().map(c=>c.color));
- $('slot-count').textContent=`${model.slots.filter(Boolean).length} / 4`;
- for(let i=0;i<4;i++){
+ $('slot-count').textContent=`${model.slots.filter(Boolean).length} / ${model.slots.length}`;
+ $('reserve-toggle').hidden=!model.reserve.length;$('reserve-toggle').textContent=`暂存 ${model.reserve.length}`;
+ $('reserve-tray').hidden=!reserveOpen||!model.reserve.length;
+ $('reserve-tray').replaceChildren(...model.reserve.map((c,i)=>{const b=document.createElement('button');b.className='capsule';b.dataset.reserve=String(i);b.style.setProperty('--color',COLORS[c.color]);b.innerHTML=capsuleMarkup(c);b.setAttribute('aria-label',`取回${NAMES[c.color]}，${c.ammo}发`);b.onclick=()=>{ensureAudio();if(model.takeReserve(i)){syncUI(true);processEvents();}};return b;}));
+ for(let i=0;i<6;i++){
   const c=model.slots[i];let slot=$('slots').children[i];
   if(!slot){slot=document.createElement('div');slot.dataset.slot=String(i);$('slots').append(slot);}
+  if(i>=model.slots.length){slot.className='slot locked';const b=document.createElement('button');b.className='unlock-slot';b.dataset.unlock=String(i);b.innerHTML='▣<small>视频解锁</small>';b.disabled=i!==model.slots.length;b.setAttribute('aria-label',`模拟广告解锁第${i+1}槽`);b.onclick=()=>requestReward('slot');slot.replaceChildren(b);continue;}
   slot.className='slot'+(c?' occupied':'');
-  if(c){let item=slot.querySelector('.capsule');if(!item||item.dataset.id!==String(c.id)){item=document.createElement('div');item.dataset.id=String(c.id);slot.replaceChildren(item);}item.className='capsule'+(!visibleColors.has(c.color)?' waiting':'');item.style.setProperty('--color',COLORS[c.color]);item.innerHTML=capsuleMarkup(c);item.setAttribute('aria-label',`${NAMES[c.color]}剩余${c.ammo}发`);}else slot.textContent='+';
+  if(c){let item=slot.querySelector('.capsule');if(!item||item.dataset.id!==String(c.id)){item=document.createElement('div');item.dataset.id=String(c.id);slot.replaceChildren(item);}item.className='capsule'+(!visibleColors.has(c.color)?' waiting':'');item.style.setProperty('--color',COLORS[c.color]);item.innerHTML=capsuleMarkup(c);item.setAttribute('aria-label',`${NAMES[c.color]}剩余${c.ammo}发`);}else slot.replaceChildren();
  }
  const buttons=[];
  for(let row=0;row<2;row++)for(let col=0;col<4;col++){
@@ -129,12 +141,16 @@ function processEvents(){
  for(const e of model.drainEvents()){
   soundEvent(e);
   if(e.type==='clear'){burst(e.cell,e.core);changed=true;comboUntil=performance.now()+1000;}
-  if(e.type==='hit'){
-   const b=new THREE.Mesh(bulletGeometry,bulletMaterial);const start=new THREE.Vector3((e.slot-1.5)*1.5,-viewScale*.38,7);b.position.copy(start);scene.add(b);bullets.push({mesh:b,start,end:positionOf(e.cell),age:0});
+  if(e.type==='fire'){
+   const source=$('slots').children[e.slot].getBoundingClientRect(),shell=document.querySelector('.game-shell').getBoundingClientRect();
+   const path=document.createElementNS('http://www.w3.org/2000/svg','path'),ball=document.createElementNS('http://www.w3.org/2000/svg','circle');
+   path.setAttribute('fill','none');path.setAttribute('stroke',COLORS[e.color]);path.setAttribute('stroke-width','2.5');path.setAttribute('opacity','.3');ball.setAttribute('r','4.3');ball.setAttribute('fill','#fffef4');ball.setAttribute('stroke',COLORS[e.color]);ball.setAttribute('stroke-width','2');
+   $('projectiles').append(path,ball);bullets.push({path,ball,start:{x:source.x+source.width/2-shell.x,y:source.y-shell.y+4},cell:e.cell,age:0,id:e.flightId});
+   const slot=$('slots').children[e.slot];slot.classList.remove('firing');void slot.offsetWidth;slot.classList.add('firing');
   }
   if(e.type==='load'){const slot=$('slots').children[e.slot];slot?.classList.add('pop');}
   if(e.type==='chain'){ $('combo').textContent='连锁清除 ✧'; $('world').dataset.chainEvents=String(Number($('world').dataset.chainEvents||0)+1); }
-  if(e.type==='won'){unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,model.level.id+1));save('unlocked',unlocked);}
+  if(e.type==='won'&&!fixtureMode){unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,model.level.id+1));save('unlocked',unlocked);}
  }
  if(changed)syncBlocks();
 }
@@ -144,11 +160,11 @@ function openDialog(mode='phase'){
  $('dialog-symbol').textContent=won?'✧':lost?'↻':'Ⅱ';$('dialog-kicker').textContent=won?'A LITTLE WELL DONE':lost?'TRY A DIFFERENT ORDER':'TAKE YOUR TIME';
  $('dialog-title').textContent=mode==='help'?'两种操作，就会玩':won?'清得漂亮！':lost?'差一点，换个顺序':'休息一下';
  $('dialog-text').textContent=mode==='help'?'点前排胶囊进入发射槽，自动消除同色积木。左右拖动模型寻找目标；白环核心会带走相邻积木。':won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${model.level.id===LEVEL_COUNT?'十关体验完成，也可以回头试试另一种顺序。':'下一份颜色，已经准备好了。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
- $('primary').textContent=won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
- $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost)loadLevel(model.level.id);else{model.resume();$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
+ $('primary').textContent=lost&&model.canContinue?'模拟广告 · 暂存续关':won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
+ $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(model.level.id);}else{model.resume();$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
 }
 function pause(){drag=null;rotationVelocity=0;if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
-function loadLevel(n){drag=null;rotationVelocity=0;model=new ColorClearGame(makeLevel(n));shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
+function loadLevel(n){if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=new ColorClearGame(levelFor(n));shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
 $('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(model.level.id);};
 function toggleSound(){muted=!muted;save('muted',muted);if(!muted){ensureAudio();tone();}syncUI(true);}
 $('sound').onclick=toggleSound;$('dialog-sound').onclick=toggleSound;
@@ -165,14 +181,17 @@ $('stage').addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)re
 function endDrag(e){if(drag?.id===e.pointerId){if(e.type!=='pointerup'||performance.now()-lastDragTime>90)rotationVelocity=0;drag=null;if($('stage').hasPointerCapture(e.pointerId))$('stage').releasePointerCapture(e.pointerId);}}
 for(const event of ['pointerup','pointercancel','lostpointercapture'])$('stage').addEventListener(event,endDrag);
 window.addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
-window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(model.phase==='paused')$('primary').click();else pause();}if(e.key==='ArrowLeft'){model.rotate(-.15);syncUI(true);}if(e.key==='ArrowRight'){model.rotate(.15);syncUI(true);}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(rewardSession){finishReward(false);return;}if(model.phase==='paused')$('primary').click();else pause();}if(e.key==='ArrowLeft'){model.rotate(-.15);syncUI(true);}if(e.key==='ArrowRight'){model.rotate(.15);syncUI(true);}});
 $('world').addEventListener('webglcontextlost',e=>{e.preventDefault();pause();toast('3D画面暂时中断，请刷新页面恢复');});
 function frame(time){
  const dt=Math.min(.04,Math.max(0,(time-lastTime)/1000));lastTime=time;
  if(model.phase==='playing'&&!drag&&Math.abs(rotationVelocity)>.015){model.rotate(rotationVelocity*dt);rotationVelocity*=Math.exp(-18*dt);syncUI(true);}
  model.tick(dt);root.rotation.y=model.yaw;processEvents();syncUI();
- if(model.phase!==shownPhase){shownPhase=model.phase;if(model.phase==='won'||model.phase==='lost')openDialog();}
- for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.age+=dt;b.mesh.position.lerpVectors(b.start,b.end,Math.min(1,b.age/.12));if(b.age>.13){scene.remove(b.mesh);bullets.splice(i,1);}}
+ if(model.phase!==shownPhase){shownPhase=model.phase;if(!rewardSession&&(model.phase==='won'||model.phase==='lost'))openDialog();}
+ const shell=document.querySelector('.game-shell').getBoundingClientRect(),stageRect=$('stage').getBoundingClientRect();$('projectiles').setAttribute('viewBox',`0 0 ${shell.width} ${shell.height}`);
+ for(let i=bullets.length-1;i>=0;i--){const b=bullets[i],flight=model.flights.find(f=>f.id===b.id);if(!flight){b.path.remove();b.ball.remove();bullets.splice(i,1);continue;}const point=positionOf(b.cell).project(camera),end={x:stageRect.x-shell.x+(point.x+1)*stageRect.width/2,y:stageRect.y-shell.y+(1-point.y)*stageRect.height/2};const t=Math.max(0,Math.min(1,1-flight.time/FLIGHT_SECONDS)),control={x:(b.start.x+end.x)/2,y:Math.min(b.start.y,end.y)-24};
+  b.path.setAttribute('d',`M${b.start.x},${b.start.y} Q${control.x},${control.y} ${end.x},${end.y}`);b.ball.setAttribute('cx',String((1-t)**2*b.start.x+2*(1-t)*t*control.x+t*t*end.x));b.ball.setAttribute('cy',String((1-t)**2*b.start.y+2*(1-t)*t*control.y+t*t*end.y));
+ }
  particles=particles.filter(p=>p.age<p.life);
  for(let i=0;i<particles.length;i++){const p=particles[i];p.age+=dt;p.v.y-=14*dt;p.p.addScaledVector(p.v,dt);dummy.position.copy(p.p);dummy.rotation.set(p.age*6,p.spin+p.age*5,p.age*3);dummy.scale.setScalar(Math.max(0,1-p.age/p.life)*1.6);dummy.updateMatrix();particleMesh.setMatrixAt(i,dummy.matrix);particleMesh.setColorAt(i,domColors[p.color]);}
  particleMesh.count=particles.length;particleMesh.instanceMatrix.needsUpdate=true;if(particleMesh.instanceColor)particleMesh.instanceColor.needsUpdate=true;
@@ -186,7 +205,27 @@ function frame(time){
  }
  renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
 }
-window.__colorClear={snapshot:()=>({level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason})};
+window.__colorClear={snapshot:()=>({level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
 window.addEventListener('pagehide',()=>{cancelAnimationFrame(frameId);audio?.suspend();});
 window.addEventListener('pageshow',e=>{if(e.persisted){lastTime=performance.now();frameId=requestAnimationFrame(frame);}});
+
+function applyPresentation(){
+ document.querySelector('.game-shell').classList.toggle('minimal-copy',!settings.labels);
+ document.querySelector('.progress-track').hidden=!settings.progress;$('remaining').hidden=!settings.remaining;$('percent').hidden=!settings.progress;document.querySelector('.background-art').hidden=!settings.background;
+ document.querySelector('.heading h1').textContent=settings.labels?'转转积木':`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
+ for(const b of document.querySelectorAll('[data-display]')){const key=b.dataset.display,names={progress:'进度条',remaining:'剩余块数',labels:'说明文字',background:'背景'};b.textContent=`${names[key]}：${settings[key]?'开':'关'}`;b.setAttribute('aria-pressed',String(settings[key]));}
+}
+for(const b of document.querySelectorAll('[data-display]'))b.onclick=()=>{settings[b.dataset.display]=!settings[b.dataset.display];save('presentation',settings);syncUI(true);};
+$('reserve-toggle').onclick=()=>{reserveOpen=!reserveOpen;syncUI(true);};
+function requestReward(kind){
+ ensureAudio();const owner=model,ticket=owner.beginReward(kind);if(!ticket){toast(kind==='slot'?'本局槽位已全部解锁':'本局无法再次续关');return;}
+ rotationVelocity=0;drag=null;rewardSession={owner,ticket};$('reward-title').textContent=kind==='slot'?`解锁第 ${model.slots.length+1} 个槽位`:'暂存胶囊，继续这一局';$('reward-overlay').hidden=false;syncUI(true);
+}
+function finishReward(completed){
+ const session=rewardSession;if(!session)return;rewardSession=null;$('reward-overlay').hidden=true;
+ const granted=session.owner.resolveReward(session.ticket,completed);if(session.owner!==model)return;
+ if(granted){$('overlay').hidden=true;if(session.ticket.kind==='continue'){reserveOpen=true;toast('胶囊已暂存，可先选择新颜色');}else toast(`已解锁 ${model.slots.length} 个槽位`);}
+ shownPhase=model.phase;syncUI(true);lastTime=performance.now();
+}
+$('reward-complete').onclick=()=>finishReward(true);$('reward-cancel').onclick=()=>finishReward(false);
 buildModel();syncUI(true);shownPhase='playing';frameId=requestAnimationFrame(frame);
