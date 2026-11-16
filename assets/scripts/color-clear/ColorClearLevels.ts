@@ -32,7 +32,7 @@ export function makeLevel(number: number): Level {
         const core = id >= 3 && z === 1 && (x * 7 + y * 11 + id * 3) % 13 === 0;
         cells.push({ id: cells.length, x, y, z, color, core, shape, alive: true });
     }
-    const result: Level = { id, name: NAMES[id - 1], cells, initialYaw: .55, supply: [[], [], [], []], solution: [] };
+    const result: Level = { id, name: NAMES[id - 1], cells, initialYaw: .55, initialPitch: .24, supply: [[], [], [], []], solution: [] };
     const sim = new ColorClearGame({ ...result, supply: [[], [], [], []] });
     let serial = 0;
     while (sim.remaining) {
@@ -66,6 +66,6 @@ export function makeLevel(number: number): Level {
 export function makeRescueFixture(): Level {
     return { id: 1, name: '续关测试', initialYaw: 0, solution: [], cells: [
         {id:0,x:0,y:0,z:0,color:1,core:false,alive:true},
-        ...[[-1,0],[1,0],[0,-1],[0,1]].map(([x,z],i)=>({id:i+1,x,y:0,z,color:0,core:false,alive:true})),
-    ], supply: Array.from({length:4},(_,i)=>[{id:i,color:1,ammo:3},...(i===0?[{id:4,color:0,ammo:4}]:[])]) };
+        ...[[-1,0,0],[1,0,0],[0,0,-1],[0,0,1],[0,-1,0],[0,1,0]].map(([x,y,z],i)=>({id:i+1,x,y,z,color:0,core:false,alive:true})),
+    ], supply: Array.from({length:4},(_,i)=>[{id:i,color:1,ammo:3},...(i===0?[{id:4,color:0,ammo:6}]:[])]) };
 }

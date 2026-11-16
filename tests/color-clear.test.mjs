@@ -33,7 +33,7 @@ test('full slots with a target on the back remain playable',()=>{
  g.rotate(Math.PI);advance(g);assert.equal(g.remaining,1);
 });
 test('all-angle enclosed colour with full slots is a genuine deadlock',()=>{
- const cells=[cell(0,0,0,0,1),cell(1,-1,0,0,0),cell(2,1,0,0,0),cell(3,0,0,-1,0),cell(4,0,0,1,0)];
+ const cells=[cell(0,0,0,0,1),cell(1,-1,0,0,0),cell(2,1,0,0,0),cell(3,0,0,-1,0),cell(4,0,0,1,0),cell(5,0,-1,0,0),cell(6,0,1,0,0)];
  const g=new ColorClearGame(level(cells,Array.from({length:4},(_,i)=>[cap(i,1,2)])));
  for(let i=0;i<4;i++)g.select(i);advance(g);assert.equal(g.phase,'lost');assert.match(g.reason,/槽/);
 });

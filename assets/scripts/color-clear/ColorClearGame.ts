@@ -1,8 +1,8 @@
-/** Shared real-3D gameplay. Horizontal rays match positive model-Y rotation. */
+/** Shared real-3D gameplay; visibility uses the inverse model XYZ rotation. */
 export type PieceShape = 'box' | 'sphere' | 'cylinder' | 'hemisphere' | 'wedge';
 export type Voxel = { id: number; x: number; y: number; z: number; color: number; core: boolean; alive: boolean; shape?: PieceShape };
 export type Capsule = { id: number; color: number; ammo: number };
-export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; solution: { column: number; yaw: number }[] };
+export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[] };
 export type ClearEvent = { type: 'load' | 'fire' | 'hit' | 'clear' | 'chain' | 'empty' | 'won' | 'lost'; cell?: Voxel; slot?: number; color?: number; core?: boolean; flightId?: number };
 export type RewardTicket = { id: number; run: number; kind: 'slot' | 'continue' };
 export type Flight = { id: number; target: number; capsuleId: number; slot: number; color: number; time: number; claimed: number[] };
@@ -11,63 +11,98 @@ const TAU = Math.PI * 2;
 let nextRun = 0;
 export const aimY = (c: Voxel): number => c.y + (c.shape === 'hemisphere' ? .23 : 0);
 const normalize = (a: number) => (a % TAU + TAU) % TAU;
-function polygon(b: Voxel): number[][] {
-    return (b.shape === 'wedge' ? [[-.5, -.5], [.5, -.5], [.3, .5], [-.3, .5]] : [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]]).map(([x, z]) => [b.x + x, b.z + z]);
+const clampPitch = (a: number) => Math.max(-Math.PI / 2, Math.min(Math.PI / 2, a));
+/** Model-local direction toward a world +Z camera for R = Rx(pitch) * Ry(yaw). */
+export function viewDirection(yaw: number, pitch = 0): [number, number, number] {
+    return [-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
 }
-function circleRadius(b: Voxel, y: number): number | null {
-    const dy = y - b.y;
-    if (Math.abs(dy) > .5 || (b.shape === 'hemisphere' && dy < 0)) return 0;
-    if (b.shape === 'sphere' || b.shape === 'hemisphere') return Math.sqrt(Math.max(0, .25 - dy * dy));
-    if (b.shape === 'cylinder') return .5;
-    return null;
-}
-function blocks(cell: Voxel, b: Voxel, yaw: number): boolean {
-    const y = aimY(cell); if (Math.abs(y - b.y) > .5) return false;
-    const dx = -Math.sin(yaw), dz = Math.cos(yaw), radius = circleRadius(b, y);
-    if (radius !== null) {
-        if (radius <= 1e-8) return false;
-        const x = cell.x - b.x, z = cell.z - b.z, along = x * dx + z * dz;
-        const disc = along * along - (x * x + z * z - radius * radius);
-        return disc >= -1e-10 && -along + Math.sqrt(Math.max(0, disc)) > 1e-7;
+function blocks(cell: Voxel, b: Voxel, direction: [number, number, number]): boolean {
+    const origin = [cell.x - b.x, aimY(cell) - b.y, cell.z - b.z];
+    let near = 0, far = Infinity;
+    // Intersect the ray with a closed half-space n.p <= limit.
+    const plane = (nx: number, ny: number, nz: number, limit: number): boolean => {
+        const at = nx * origin[0] + ny * origin[1] + nz * origin[2] - limit;
+        const slope = nx * direction[0] + ny * direction[1] + nz * direction[2];
+        if (Math.abs(slope) < 1e-12) return at <= 1e-10;
+        if (slope > 0) far = Math.min(far, -at / slope); else near = Math.max(near, -at / slope);
+        return far >= near - 1e-10;
+    };
+    const shape = b.shape ?? 'box';
+    if (shape === 'sphere' || shape === 'hemisphere' || shape === 'cylinder') {
+        const axes = shape === 'cylinder' ? [0, 2] : [0, 1, 2];
+        const aa = axes.reduce((v, i) => v + direction[i] ** 2, 0);
+        const bb = axes.reduce((v, i) => v + origin[i] * direction[i], 0);
+        const cc = axes.reduce((v, i) => v + origin[i] ** 2, -.25);
+        if (aa < 1e-24) { if (cc > 1e-10) return false; }
+        else {
+            const disc = bb * bb - aa * cc;
+            if (disc < -1e-10) return false;
+            const root = Math.sqrt(Math.max(0, disc));
+            near = Math.max(near, (-bb - root) / aa); far = Math.min(far, (-bb + root) / aa);
+        }
+        if (shape === 'cylinder' && (!plane(0, 1, 0, .5) || !plane(0, -1, 0, .5))) return false;
+        if (shape === 'hemisphere' && !plane(0, -1, 0, 0)) return false;
+    } else {
+        if (!plane(0, 1, 0, .5) || !plane(0, -1, 0, .5) || !plane(0, 0, 1, .5) || !plane(0, 0, -1, .5)) return false;
+        // Wedge prism has x half-width .4 - .2*z.
+        const slope = shape === 'wedge' ? .2 : 0, width = shape === 'wedge' ? .4 : .5;
+        if (!plane(1, 0, slope, width) || !plane(-1, 0, slope, width)) return false;
     }
-    const points = polygon(b); let near = 0, far = Infinity;
-    for (let i = 0; i < points.length; i++) {
-        const a = points[i], q = points[(i + 1) % points.length], ex = q[0] - a[0], ez = q[1] - a[1];
-        const cross = ex * (cell.z - a[1]) - ez * (cell.x - a[0]), slope = ex * dz - ez * dx;
-        if (Math.abs(slope) < 1e-9) { if (cross < -1e-9) return false; }
-        else if (slope > 0) near = Math.max(near, -cross / slope);
-        else far = Math.min(far, -cross / slope);
+    return far > 1e-7 && far >= near - 1e-10;
+}
+export function canSeeCell(cell: Voxel, cells: Voxel[], yaw: number, pitch = 0): boolean {
+    const direction = viewDirection(yaw, pitch);
+    return cell.alive && !cells.some(b => b.alive && b.id !== cell.id && blocks(cell, b, direction));
+}
+/** Prove enclosure by opaque unit boxes on the target's lattice. Ignoring all
+ * other solids enlarges free space, so failure to escape is a sound proof.
+ * Flooding tests continuous escape (a superset of straight rays), and includes
+ * face boundaries: six touching boxes seal every face of the starting cube.
+ */
+function enclosedByBoxes(cell: Voxel, cells: Voxel[]): boolean {
+    const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
+    const occupied = new Set<string>(); let extent = 1;
+    for (const b of cells) {
+        if (!b.alive || b.id === cell.id || (b.shape && b.shape !== 'box')) continue;
+        const xyz = [b.x - cell.x, b.y - cell.y, b.z - cell.z];
+        if (!xyz.every(Number.isInteger)) continue;
+        occupied.add(key(xyz[0], xyz[1], xyz[2])); extent = Math.max(extent, ...xyz.map(Math.abs));
     }
-    return far > 1e-7 && far >= near - 1e-9;
+    if (occupied.has('0,0,0')) return true;
+    const queue = [[0, 0, 0]], seen = new Set(['0,0,0']);
+    for (let i = 0; i < queue.length; i++) {
+        const [x, y, z] = queue[i];
+        if (Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > extent) return false;
+        // Bound work conservatively: an unproved enclosure remains playable.
+        if (seen.size > 20000) return false;
+        for (const [dx, dy, dz] of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]) {
+            const next = [x + dx, y + dy, z + dz], k = key(...next as [number, number, number]);
+            if (!occupied.has(k) && !seen.has(k)) { seen.add(k); queue.push(next); }
+        }
+    }
+    return true;
 }
-export function canSeeCell(cell: Voxel, cells: Voxel[], yaw: number): boolean {
-    return cell.alive && !cells.some(b => b.alive && b.id !== cell.id && blocks(cell, b, yaw));
-}
-/** Exact angular partition: polygon vertices and circle tangents, not sampled timeouts. */
+/** No false deadlocks: direct rays establish reachability; only a closed-box
+ * proof can exclude a remaining colour. Curved/mixed enclosures may therefore
+ * stay playable until ammunition is exhausted rather than lose on a sample.
+ */
 export function reachableColors(cells: Voxel[]): Set<number> {
     const result = new Set<number>();
     for (const cell of cells) {
         if (!cell.alive || result.has(cell.color)) continue;
-        if ([0, Math.PI / 2, Math.PI, Math.PI * 1.5].some(a => canSeeCell(cell, cells, a))) { result.add(cell.color); continue; }
-        const angles = [0, TAU];
-        for (const b of cells) if (b.alive && b.id !== cell.id && Math.abs(aimY(cell) - b.y) <= .5) {
-            const radius = circleRadius(b, aimY(cell));
-            if (radius !== null) {
-                if (radius <= 1e-8) continue;
-                const distance = Math.hypot(b.x - cell.x, b.z - cell.z);
-                const centre = Math.atan2(-(b.x - cell.x), b.z - cell.z), half = Math.asin(Math.min(1, radius / distance));
-                angles.push(normalize(centre - half), normalize(centre + half));
-            } else for (const [x, z] of polygon(b)) angles.push(normalize(Math.atan2(-(x - cell.x), z - cell.z)));
+        let visible = false;
+        for (const pitch of [-Math.PI / 2, -Math.PI / 4, 0, Math.PI / 4, Math.PI / 2]) {
+            for (let i = 0; i < 8 && !visible; i++) visible = canSeeCell(cell, cells, i * Math.PI / 4, pitch);
+            if (visible) break;
         }
-        angles.sort((a, b) => a - b);
-        for (let i = 1; i < angles.length; i++) if (canSeeCell(cell, cells, (angles[i - 1] + angles[i]) / 2)) { result.add(cell.color); break; }
+        if (visible || !enclosedByBoxes(cell, cells)) result.add(cell.color);
     }
     return result;
 }
 export class ColorClearGame {
     level: Level; cells: Voxel[] = []; supply: Capsule[][] = [];
     slots: (Capsule | null)[] = [null, null, null, null]; reserve: Capsule[] = []; flights: Flight[] = [];
-    phase: 'playing' | 'paused' | 'won' | 'lost' = 'playing'; yaw = 0; reason = ''; combo = 0; shots = 0; continued = false;
+    phase: 'playing' | 'paused' | 'won' | 'lost' = 'playing'; yaw = 0; pitch = 0; reason = ''; combo = 0; shots = 0; continued = false;
     private cooldown = 0; private events: ClearEvent[] = []; private reach: Set<number> | null = null;
     private run = 0; private rewardSerial = 0; private flightSerial = 0;
     private reward: { ticket: RewardTicket; phase: 'playing' | 'paused' | 'lost' } | null = null;
@@ -77,12 +112,15 @@ export class ColorClearGame {
     get canContinue(): boolean { return this.phase === 'lost' && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
-        this.slots = [null, null, null, null]; this.reserve = []; this.flights = []; this.yaw = this.level.initialYaw ?? 0; this.phase = 'playing';
+        this.slots = [null, null, null, null]; this.reserve = []; this.flights = []; this.yaw = this.level.initialYaw ?? 0; this.pitch = clampPitch(this.level.initialPitch ?? 0); this.phase = 'playing';
         this.cooldown = 0; this.reason = ''; this.combo = 0; this.shots = 0; this.continued = false; this.events = []; this.reach = null; this.reward = null; this.run = ++nextRun;
     }
     pause(): void { if (this.phase === 'playing') this.phase = 'paused'; }
     resume(): void { if (this.phase === 'paused' && !this.reward) this.phase = 'playing'; }
-    rotate(delta: number): void { if (this.phase === 'playing' && Number.isFinite(delta)) this.yaw = normalize(this.yaw + delta); }
+    rotate(deltaYaw: number, deltaPitch = 0): void {
+        if (this.phase !== 'playing' || !Number.isFinite(deltaYaw) || !Number.isFinite(deltaPitch)) return;
+        this.yaw = normalize(this.yaw + deltaYaw); this.pitch = clampPitch(this.pitch + deltaPitch);
+    }
     select(column: number): boolean {
         if (this.phase !== 'playing' || !Number.isInteger(column)) return false;
         const slot = this.slots.indexOf(null), next = this.supply[column]?.[0]; if (slot < 0 || !next) return false;
@@ -110,7 +148,7 @@ export class ColorClearGame {
         }
         return true;
     }
-    visibleTargets(): Voxel[] { return this.cells.filter(c => canSeeCell(c, this.cells, this.yaw)); }
+    visibleTargets(): Voxel[] { return this.cells.filter(c => canSeeCell(c, this.cells, this.yaw, this.pitch)); }
     chainPreview(id: number): Voxel[] {
         const first = this.cells.find(c => c.id === id && c.alive); if (!first) return [];
         const seen = new Set<number>(), queue = [first], result: Voxel[] = [];

@@ -1,12 +1,12 @@
 # 转转积木：真3D消除原型
 
-2026-11-16，已更新第二轮试玩反馈。独立于旧 GoDuck 的玩法实验；名称为工作名。
+2026-11-16，已更新连续点击、完整观察与通关图册。独立于旧 GoDuck 的玩法实验；名称为工作名。
 
 ## 现在怎么玩
 
 - 直接打开 [自包含试玩文件](../preview/color-clear.html)，不依赖CDN；桌面Chrome也可离线打开。
-- 或在仓库执行 `npm ci`、`npm run preview:build`、`npm run preview:serve`，访问 `http://127.0.0.1:4179/preview/color-clear.html`。服务只绑定本机，不是公开网址，手机不能用这个地址直接访问电脑。
-- 点击前排胶囊入发射槽（基础4槽），多个胶囊同时发射，弹丸到达后清除同色可见块；左右拖动模型改变目标，松手有短暂且受限的惯性。后排仅作预览，空槽可随时补充。
+- 或在仓库执行 `npm ci`、`npm run preview:build`、`npm run preview:serve`，访问 `http://127.0.0.1:4179/preview/color-clear.html`。当前本机4179保留原浏览器存储来源并转发到18081测试后端，4180为辅助联调；新设备默认API目标仍为8080，可用环境变量覆盖。服务只绑定本机，不是公开网址，手机不能用这个地址直接访问电脑。
+- 点击前排胶囊入发射槽（基础4槽），多个胶囊同时发射，弹丸到达后清除同色可见块；上下左右拖动模型改变视角与真实可攻击目标，松手有短暂且受限的惯性。开局约14°俯视、每秒8°缓慢自动旋转，第一次手动操作停止自动旋转；每个新关卡重新开启，可在暂停面板切换。后排仅作预览，空槽可随时补充。
 - 白环是连锁核心，可见核心附近的浅色线框提示清除范围。点击、命中、连锁、完成各有声音；声音默认开，可关闭。振动默认关，设备不支持时不影响游玩。
 - 没有倒计时。暂停、帮助、重开、胜负说明、下一关、已解锁关卡选择均可用；本地保存解锁进度、显示设置和声音偏好，不接账号或真实广告。
 
@@ -25,12 +25,22 @@
 - `assets/scripts/color-clear/ColorClearGame.ts`：纯规则、真实遮挡、旋转、槽位/弹药、连锁及失败判断。
 - `ColorClearLevels.ts`：10个原创程序化动物积木造型。预先模拟一条解法，按这条路径确定胶囊颜色、弹量和列顺序；进入游戏后不改色、不动态改难度。它是可解性验证，不代表关卡已完成真人难度调优。
 - `preview/color-clear/`：Three.js真WebGL渲染；共享规则，使用实例网格与有上限的碎片。模型不是图片，游戏中的旋转和可见面命中对应。
-- `preview/color-clear.html`：构建后的单文件试玩，含Three.js MIT许可，约588KiB；原生浏览器入口，不是Cocos导出的微信包。
+- `preview/color-clear.html`：构建后的单文件试玩，含Three.js MIT许可，约602KiB；原生浏览器入口，不是Cocos导出的微信包。
 - `ColorClearGeometry.ts`：Cocos半球/楔形几何；有边界与法线测试。
 - `ColorClearView.ts`：Cocos组件适配代码，与网页共用规则和关卡；当前未通过Creator导入和运行验证。网页视觉与适配器不保证逐像素相同。
 - `assets/resources/color-clear-audio/*.wav`：本项目程序合成的5个短音效；可用 `node tools/generate-color-clear-audio.mjs` 重建。Creator自动导入后供AudioSource读取。
 
-为了让规则、画面及所有角度死局判断一致，当前使用水平正交相机，围绕Y轴旋转。逻辑射线根据球、圆柱、半球或楔形的截面判断遮挡；立方块保留单位格逻辑边界及装饰缝隙约定，曲面使用解析曲线，渲染由有限多边形近似。不是任意俯仰的自由观察器，不需要点选模型的某个小方块。
+当前使用正交相机与模型XYZ旋转（Rx(pitch)Ry(yaw)），俯仰允许±90°，可以从顶部和底部观察。命中使用对应形状的解析3D射线。死局判定保守：确认盒状封闭壳或根本没有该颜色时才排除可攻击性，不因少量采样漏掉细缝而误判失败；部分曲面/混合形状的真实封闭局面可能保留为可玩，这是后续难度算法需要继续解决的边界。
+
+## 通关图册与微信登录
+
+- 页脚“图册”展示已完成模型的真实3D缩略图和首次记录日期；每个模型只点亮一次。访客记录仅在当前设备保存，不能靠Git同步玩家数据。
+- 微信登录用户通过后端保存；首次登录按集合合并访客记录，云端已有成就不会被覆盖。离线/网络失败保留待同步记录，重新打开图册会重试。账户缓存按服务端不透明ID隔离，退出登录返回访客图册。
+- 浏览器没有真实小游戏wx.login，登录按钮会明确提示使用微信小游戏，不伪造账号；浏览器登录UI自动测试使用测试专属网络和wx模拟，不是上线能力证明。
+- [Java后端](../backend/README.md)：Java21、Spring Boot4.1.2、H2文件持久化，包含code兑换、随机Bearer会话、账号隔离、合并/完成/注销接口。AppSecret只通过服务端环境变量配置；不返回或持久化session_key。
+- Cocos组件提供 `albumApiOrigin` 配置（HTTPS纯域名）及wx.login/wx.request桥接；当前缺Creator/微信实机，尚未验证这条真实运行链路。
+- 本机预览服务把`/api/*`转发到 `COLOR_CLEAR_API_ORIGIN`（默认`http://127.0.0.1:8080`）。可用`COLOR_CLEAR_PORT=4180 COLOR_CLEAR_API_ORIGIN=http://127.0.0.1:18081 npm run preview:serve`联调；没有配置微信凭据时登录503，访客仍能玩。
+- 开局自动旋转暂停和图册弹窗互不穿透。连续点击保留按钮节点，飞入动画不拦截输入；物理按下/松开跨越发射刷新也能正常装填。
 
 ## Cocos 3.8.8 接续步骤（尚未执行）
 
@@ -45,8 +55,8 @@
 ## 验证与已知边界
 
 `npm test`（规则/旧项目回归）、`npm run check:color-clear`（共享规则严格类型检查）、`npm run preview:build`。
-浏览器自动检查：先启动本机预览服务，再 `npx playwright install chromium` 与 `npm run test:color-clear-ui`；也可用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指向已有测试浏览器。第二轮还需运行 `npm run test:color-clear-v02-ui`，覆盖模拟奖励与续关等流程。本轮使用独立无头Chrome，不操纵用户日常浏览器窗口。
+浏览器自动检查：先启动本机预览服务，再 `npx playwright install chromium` 与 `npm run test:color-clear-ui`；也可用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指向已有测试浏览器。另可运行 `npm run test:color-clear-v02-ui`、`npm run test:color-clear-input`、`npm run test:color-clear-album`，覆盖奖励续关、连续输入、图册与完整观察。本轮使用独立无头Chrome，不操纵用户日常浏览器窗口。
 
 当前已验证实际点击发射、拖动/惯性、暂停重开、第一关胜利、下一关、模拟4→5→6槽、奖励取消、命中前保留积木、暂存续关后通关和多种屏幕布局；具体最终验证见[实施记录](archive/2026-11-16-color-clear-v02-implementation-session.md)。Node在当前CommonJS项目中直接读取新增ES模块TS会给出MODULE_TYPELESS_PACKAGE_JSON提示，不影响测试；没有为去掉提示改变旧项目模块类型。
 
-未验证：Cocos实际编译/运行、微信包、iPhone真机、长时间性能、玩家是否愿意反复玩；关卡尚未做真人难度与公平性调优。模型是程序积木造型，不是竞品模型或AI概念图资产。无后台、真实广告SDK、分享奖励、体力限制或线上部署；扩槽与续关只接了明确标注的模拟奖励。
+未验证：Cocos实际编译/运行、微信包、iPhone真机、长时间性能、玩家是否愿意反复玩；关卡尚未做真人难度与公平性调优。模型是程序积木造型，不是竞品模型或AI概念图资产。已提供独立Java图册后端，未配置真实微信账号、真实广告SDK、分享奖励、体力限制或线上部署；扩槽与续关只接了明确标注的模拟奖励。

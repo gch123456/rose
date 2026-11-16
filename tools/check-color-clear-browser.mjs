@@ -8,7 +8,7 @@ try {
  const page=await browser.newPage({viewport:{width:430,height:932},deviceScaleFactor:1,isMobile:true,hasTouch:true});
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>localStorage.setItem('color-clear.unlocked','3'));
- await page.goto(url);await page.waitForFunction(()=>window.__colorClear?.snapshot().remaining>0);
+ await page.goto(url+(url.includes('?')?'&':'?')+'autospin=0');await page.waitForFunction(()=>window.__colorClear?.snapshot().remaining>0);
  assert.equal(await page.locator('#world').evaluate(c=>!!c.getContext('webgl2')),true,'real WebGL2 context');
  await page.locator('[data-column="0"]').tap();
  assert.ok(await page.locator('#slots .capsule').first().evaluate(n=>n.getAnimations().length)>0,'capsule visibly travels into its reserved slot');
@@ -40,6 +40,7 @@ try {
  assert.equal(await page.locator('#dialog-title').innerText(),'清得漂亮！');
  await page.screenshot({path:'/tmp/rose-color-clear-win.png'});
  await page.locator('#primary').tap();assert.equal((await page.evaluate(()=>window.__colorClear.snapshot())).level,2);
+ await page.locator('#album-button').tap();assert.ok(await page.locator('.album-card.collected[data-model="1"]').count()===1,'winning a real level records its model');await page.locator('#album-close').tap();
  await page.setViewportSize({width:390,height:667});await page.waitForTimeout(150);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('[data-column="0"]').isVisible(),true);

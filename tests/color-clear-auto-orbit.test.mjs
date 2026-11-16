@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {ColorClearGame} from '../assets/scripts/color-clear/ColorClearGame.ts';import {makeLevel} from '../assets/scripts/color-clear/ColorClearLevels.ts';
+import {ModelOrbit} from '../assets/scripts/color-clear/ColorClearOrbit.ts';
+test('opening yaw rotates8degrees/sec and stops after manual interaction',()=>{const g=new ColorClearGame(makeLevel(1)),orbit=new ModelOrbit(),yaw=g.yaw;for(let i=0;i<60;i++)orbit.step(g,1/60);assert.ok(Math.abs(g.yaw-yaw-Math.PI*8/180)<1e-8);orbit.stop();const still=g.yaw;orbit.step(g,.1);assert.equal(g.yaw,still);});
+test('vertical drag changes pitch; paused/reward state freezes both auto and inertia',()=>{const g=new ColorClearGame(makeLevel(1)),orbit=new ModelOrbit(),pitch=g.pitch;orbit.drag(g,10,-20,.02);assert.notEqual(g.pitch,pitch);g.pause();const state=[g.yaw,g.pitch];orbit.step(g,.2);assert.deepEqual([g.yaw,g.pitch],state);orbit.reset(false);g.resume();const still=[g.yaw,g.pitch];orbit.step(g,.1);assert.deepEqual([g.yaw,g.pitch],still);});
