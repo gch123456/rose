@@ -90,14 +90,14 @@ export class ColorClearView extends Component {
         this.status = this.text(this.ui, '', 16, 90, -150, 360, '#8a9991');
         for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, -220, 86, 90, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
         for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-291,86,48,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
-        this.text(this.ui, '下一批颜色 · 点前排入槽', 20, 0, -330, 550);
-        for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
-            const card = this.button(this.ui, '', -222 + col * 148, -378 - row * 88, 124, row ? 62 : 90, () => { if (row === 0 && this.model.phase === 'playing') {
+        this.text(this.ui, '下一批颜色 · 点前排入槽', 20, 0, -310, 550);
+        for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
+            const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? -354 : -366 - row * 45), 124, row ? 40 : 66, () => { if (row === 0 && this.model.phase === 'playing') {
                 this.orbit.stop();
                 const slot = this.model.slots.indexOf(null);
                 if (this.model.select(col)) {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
-                    const flight = this.button(this.ui, `${SYMBOLS[capsule.color]} ${capsule.ammo}`, -222 + col * 148, -378, 104, 78, () => {}, COLORS[capsule.color]);
+                    const flight = this.button(this.ui, `${SYMBOLS[capsule.color]} ${capsule.ammo}`, -222 + col * 148, -354, 104, 60, () => {}, COLORS[capsule.color]);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
                     tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, -220, 0) }).call(() => flight.node.destroy()).start();
                 }
@@ -183,7 +183,7 @@ export class ColorClearView extends Component {
         this.markers.forEach((n, i) => n.active = this.model.cells[i].alive && affected.has(i));
         this.status.string = this.model.slots.some(s => s && visible.has(s.color)) ? '同色消除中' : '↔ 转一转找同色';
         this.slots.forEach((card, i) => { const s = this.model.slots[i]; this.paint(card.pen,86,90,s?COLORS[s.color]:'#f0f2e9');card.label.string=i>=this.model.slots.length?'▣':s?`${SYMBOLS[s.color]} ${s.ammo}`:''; });
-        this.supplies.forEach((card, i) => { const row = Math.floor(i / 4), s = this.model.supply[i % 4][row]; this.paint(card.pen, 124, row ? 62 : 90, s ? COLORS[s.color] : '#f0f2e9'); card.label.string = s ? `${SYMBOLS[s.color]} ${s.ammo}` : '·'; });
+        this.supplies.forEach((card, i) => { const row = Math.floor(i / 4), s = this.model.supply[i % 4][row]; this.paint(card.pen, 124, row ? 40 : 66, s ? COLORS[s.color] : '#f0f2e9'); card.label.string = s ? `${SYMBOLS[s.color]} ${s.ammo}` : '·'; });
         this.reserveCards.forEach((card,i)=>{const c=this.model.reserve[i];card.node.active=!!c;if(c){this.paint(card.pen,86,48,COLORS[c.color]);card.label.string=`${SYMBOLS[c.color]} ${c.ammo}`;}});
         this.dialog.active = this.model.phase !== 'playing';
         this.phaseText.string = this.model.phase === 'won' ? '清得漂亮！' : this.model.phase === 'lost' ? '换个顺序再来' : '休息一下';

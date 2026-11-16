@@ -14,3 +14,10 @@ footer #album-button{width:auto;height:28px;padding:0 10px;border-radius:15px;ba
 .workshop-disc{background:linear-gradient(#fffaf0 0%,#eee4c8 76%,#c8baa0 100%);box-shadow:0 7px 0 #c5b79a99,0 16px 20px #687b6630;border:1px solid #ffffffb3}
 .model-shadow{background:#51685236;filter:blur(9px);width:51%;left:24.5%}
 .capsule{box-shadow:inset 0 2px 2px #fff8,inset 0 -5px 0 #00000014,0 5px 8px #74806b16}
+
+/* Four visible supply rows: active front row, three readable previews. */
+.supply{gap:7px 10px}.supply>.capsule,.supply>.empty-supply{height:60px}.supply>.preview-card{height:34px;opacity:.78;border-radius:12px}.supply>.preview-card .symbol{font-size:9px;line-height:10px}.supply>.preview-card strong{font-size:17px;line-height:19px}
+@media(max-height:740px){.supply{gap:5px 9px}.supply>.capsule,.supply>.empty-supply{height:49px}.supply>.capsule strong{font-size:24px;line-height:26px}.supply>.preview-card{height:27px}.supply>.preview-card .symbol{font-size:8px;line-height:8px}.supply>.preview-card strong{font-size:15px;line-height:17px}.minimal-copy .launch-panel{margin-bottom:8px;padding-bottom:8px}}
+@media(max-height:620px){.supply{gap:4px 8px}.supply>.capsule,.supply>.empty-supply{height:44px}.supply>.preview-card{height:25px}.supply>.preview-card strong{font-size:14px;line-height:15px}.minimal-copy .topbar{height:36px}.minimal-copy footer{height:23px}.minimal-copy #stage{margin-bottom:8px}}
+
+.capsule{color:var(--capsule-ink,#fff)}

@@ -2,7 +2,8 @@
 export type PieceShape = 'box' | 'sphere' | 'cylinder' | 'hemisphere' | 'wedge';
 export type Voxel = { id: number; x: number; y: number; z: number; color: number; core: boolean; alive: boolean; shape?: PieceShape };
 export type Capsule = { id: number; color: number; ammo: number };
-export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[] };
+export type ReplayStep = { yaw:number; pitch:number; column?:number; ticks:number };
+export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[]; replay?: ReplayStep[] };
 export type ClearEvent = { type: 'load' | 'fire' | 'hit' | 'clear' | 'chain' | 'empty' | 'won' | 'lost'; cell?: Voxel; slot?: number; color?: number; core?: boolean; flightId?: number };
 export type RewardTicket = { id: number; run: number; kind: 'slot' | 'continue' };
 export type Flight = { id: number; target: number; capsuleId: number; slot: number; color: number; time: number; claimed: number[] };
@@ -108,6 +109,8 @@ export class ColorClearGame {
     phase: 'playing' | 'paused' | 'won' | 'lost' = 'playing'; yaw = 0; pitch = 0; reason = ''; combo = 0; shots = 0; continued = false;
     private cooldown = 0; private events: ClearEvent[] = []; private reach: Set<number> | null = null;
     private visibility: {yaw:number; pitch:number; remaining:number; cells:Voxel[]} | null = null;
+    private lattice: Map<string,Voxel> | null = null;
+    private bounds: number[][] = [];
     private run = 0; private rewardSerial = 0; private flightSerial = 0;
     private reward: { ticket: RewardTicket; phase: 'playing' | 'paused' | 'lost' } | null = null;
     constructor(level: Level) { this.level = level; this.restart(); }
@@ -117,6 +120,13 @@ export class ColorClearGame {
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
         this.slots = [null, null, null, null]; this.reserve = []; this.flights = []; this.yaw = this.level.initialYaw ?? 0; this.pitch = clampPitch(this.level.initialPitch ?? 0); this.phase = 'playing';
+        this.lattice = this.cells.every(c=>(!c.shape||c.shape==='box')&&[c.x,c.y,c.z].every(Number.isInteger)) ? new Map(this.cells.map(c=>[`${c.x},${c.y},${c.z}`,c])) : null;
+        if(this.lattice&&this.lattice.size!==this.cells.length)this.lattice=null;
+        this.bounds = ['x','y','z'].map(k=>{const values=this.cells.map(c=>c[k as 'x'|'y'|'z']);return [Math.min(...values),Math.max(...values)];});
+        // Each dominant-axis slab can probe up to nine integer boxes. Leave
+        // extra headroom for map/allocation cost: sparse wide lattices are
+        // cheaper with the bounded cell scan than with empty-space traversal.
+        if(this.lattice&&Math.max(...this.bounds.map(([min,max])=>max-min+1))*16>this.cells.length)this.lattice=null;
         this.visibility = null; this.cooldown = 0; this.reason = ''; this.combo = 0; this.shots = 0; this.continued = false; this.events = []; this.reach = null; this.reward = null; this.run = ++nextRun;
     }
     pause(): void { if (this.phase === 'playing') this.phase = 'paused'; }
@@ -155,8 +165,26 @@ export class ColorClearGame {
     visibleTargets(): Voxel[] {
         const n = this.remaining, cache = this.visibility;
         if (!cache || cache.yaw !== this.yaw || cache.pitch !== this.pitch || cache.remaining !== n)
-            this.visibility = {yaw:this.yaw, pitch:this.pitch, remaining:n, cells:this.cells.filter(c => canSeeCell(c, this.cells, this.yaw, this.pitch))};
+            this.visibility = {yaw:this.yaw, pitch:this.pitch, remaining:n, cells:this.cells.filter(c => this.lattice ? this.latticeVisible(c) : canSeeCell(c, this.cells, this.yaw, this.pitch))};
         return this.visibility!.cells.slice();
+    }
+    /** Visit the integer boxes crossed by each dominant-axis ray slab. Closed
+     * ranges include edge/corner ties; the original intersection is the oracle. */
+    private latticeVisible(cell: Voxel): boolean {
+        if (!cell.alive) return false;
+        const direction=viewDirection(this.yaw,this.pitch), origin=[cell.x,cell.y,cell.z];
+        let axis=0;for(let i=1;i<3;i++)if(Math.abs(direction[i])>Math.abs(direction[axis]))axis=i;
+        const sign=direction[axis]>0?1:-1, other=[0,1,2].filter(i=>i!==axis);
+        for(let v=origin[axis];v>=this.bounds[axis][0]&&v<=this.bounds[axis][1];v+=sign){
+            const t0=Math.max(0,(v-origin[axis]-.5*sign)/direction[axis]), t1=(v-origin[axis]+.5*sign)/direction[axis];
+            const ranges=other.map(i=>{const a=origin[i]+direction[i]*t0,b=origin[i]+direction[i]*t1;return [Math.ceil(Math.min(a,b)-.5-1e-9),Math.floor(Math.max(a,b)+.5+1e-9)];});
+            for(let a=ranges[0][0];a<=ranges[0][1];a++)for(let b=ranges[1][0];b<=ranges[1][1];b++){
+                const xyz=[0,0,0];xyz[axis]=v;xyz[other[0]]=a;xyz[other[1]]=b;
+                const blocker=this.lattice!.get(xyz.join(','));
+                if(blocker?.alive&&blocker.id!==cell.id&&blocks(cell,blocker,direction))return false;
+            }
+        }
+        return true;
     }
     chainPreview(id: number): Voxel[] {
         const first = this.cells.find(c => c.id === id && c.alive); if (!first) return [];

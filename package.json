@@ -15,7 +15,8 @@
     "test:color-clear-album": "node tools/check-color-clear-album-orbit.mjs",
     "test:color-clear-studio": "node tools/check-color-clear-studio.mjs",
     "test:ready-models": "node tools/check-ready-shiba.mjs",
-    "test:ready-wizard": "READY_KIND=wizard node tools/check-ready-shiba.mjs"
+    "test:ready-wizard": "READY_KIND=wizard node tools/check-ready-shiba.mjs",
+    "test:hd-supply": "node tools/check-hd-supply.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

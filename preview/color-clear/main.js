@@ -115,9 +115,10 @@ function soundEvent(e){
  else if(e.type==='lost')tone(250,.22,.04);
 }
 function toast(text){$('toast').textContent=text;$('toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').classList.remove('show'),1600);}
+function paintCapsule(node,color){const hex=COLORS[color];node.style.setProperty('--color',hex);const n=parseInt(hex.slice(1),16),luminance=((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000;node.style.setProperty('--capsule-ink',luminance>175?'#354139':'#fff');}
 function capsuleMarkup(c,preview=false,waiting=false){return `<span class="symbol">${SYMBOLS[c.color]}</span><strong>${c.ammo}</strong>`;}
 function syncUI(force=false){
- const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,2)),model.phase,model.remaining,muted,model.reserve,settings,orbit.automatic,...(model.slots.some(Boolean)?[model.yaw.toFixed(2),model.pitch.toFixed(2)]:[])]);
+ const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,4)),model.phase,model.remaining,muted,model.reserve,settings,orbit.automatic,...(model.slots.some(Boolean)?[model.yaw.toFixed(2),model.pitch.toFixed(2)]:[])]);
  if(!force&&signature===uiStamp)return;uiStamp=signature;
  applyPresentation();
  $('level-name').textContent=`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
@@ -127,21 +128,21 @@ function syncUI(force=false){
  $('slot-count').textContent=`${model.slots.filter(Boolean).length} / ${model.slots.length}`;
  $('reserve-toggle').hidden=!model.reserve.length;$('reserve-toggle').textContent=`暂存 ${model.reserve.length}`;
  $('reserve-tray').hidden=!reserveOpen||!model.reserve.length;
- for(let i=0;i<model.reserve.length;i++){const c=model.reserve[i];let b=$('reserve-tray').children[i];if(!b){b=document.createElement('button');$('reserve-tray').append(b);}b.className='capsule';b.dataset.reserve=String(i);b.style.setProperty('--color',COLORS[c.color]);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.setAttribute('aria-label',`取回${NAMES[c.color]}，${c.ammo}发`);b.onclick=()=>{ensureAudio();orbit.stop();if(model.takeReserve(i)){syncUI(true);processEvents();}};}
+ for(let i=0;i<model.reserve.length;i++){const c=model.reserve[i];let b=$('reserve-tray').children[i];if(!b){b=document.createElement('button');$('reserve-tray').append(b);}b.className='capsule';b.dataset.reserve=String(i);paintCapsule(b,c.color);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.setAttribute('aria-label',`取回${NAMES[c.color]}，${c.ammo}发`);b.onclick=()=>{ensureAudio();orbit.stop();if(model.takeReserve(i)){syncUI(true);processEvents();}};}
  while($('reserve-tray').children.length>model.reserve.length)$('reserve-tray').lastElementChild.remove();
  for(let i=0;i<6;i++){
   const c=model.slots[i];let slot=$('slots').children[i];
   if(!slot){slot=document.createElement('div');slot.dataset.slot=String(i);$('slots').append(slot);}
   if(i>=model.slots.length){slot.className='slot locked';let b=slot.querySelector('.unlock-slot');if(!b){b=document.createElement('button');b.className='unlock-slot';b.dataset.unlock=String(i);b.innerHTML='▣<small>视频解锁</small>';b.setAttribute('aria-label',`模拟广告解锁第${i+1}槽`);b.onclick=()=>requestReward('slot');slot.replaceChildren(b);}b.disabled=i!==model.slots.length;continue;}
   slot.className='slot'+(c?' occupied':'');
-  if(c){let item=slot.querySelector('.capsule');if(!item||item.dataset.id!==String(c.id)){item=document.createElement('div');item.dataset.id=String(c.id);slot.replaceChildren(item);}item.className='capsule'+(!visibleColors.has(c.color)?' waiting':'');item.style.setProperty('--color',COLORS[c.color]);item.innerHTML=capsuleMarkup(c);item.setAttribute('aria-label',`${NAMES[c.color]}剩余${c.ammo}发`);}else slot.replaceChildren();
+  if(c){let item=slot.querySelector('.capsule');if(!item||item.dataset.id!==String(c.id)){item=document.createElement('div');item.dataset.id=String(c.id);slot.replaceChildren(item);}item.className='capsule'+(!visibleColors.has(c.color)?' waiting':'');paintCapsule(item,c.color);item.innerHTML=capsuleMarkup(c);item.setAttribute('aria-label',`${NAMES[c.color]}剩余${c.ammo}发`);}else slot.replaceChildren();
  }
- for(let row=0;row<2;row++)for(let col=0;col<4;col++){
+ for(let row=0;row<4;row++)for(let col=0;col<4;col++){
   const c=model.supply[col][row];
   const previous=$('supply').children[row*4+col];
   if(!c){if(!previous?.classList.contains('empty-supply')){const blank=document.createElement('div');blank.className='empty-supply'+(row?' preview-card':'');blank.textContent='·';if(previous)previous.replaceWith(blank);else $('supply').append(blank);}continue;}
   let b=previous;if(!b||b.tagName!=='BUTTON'){b=document.createElement('button');if(previous)previous.replaceWith(b);else $('supply').append(b);}
-  b.className='capsule'+(row?' preview-card':'');b.style.setProperty('--color',COLORS[c.color]);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.disabled=row>0;b.setAttribute('aria-label',`${row?'下一颗':'选择'}${NAMES[c.color]}，${c.ammo}发`);
+  b.className='capsule'+(row?' preview-card':'');paintCapsule(b,c.color);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.disabled=row>0;b.setAttribute('aria-label',`${row?'下一颗':'选择'}${NAMES[c.color]}，${c.ammo}发`);
   if(!row){b.dataset.column=String(col);b.onclick=()=>{
    ensureAudio();orbit.stop();const origin=b.getBoundingClientRect(),slotIndex=model.slots.indexOf(null);
    if(!model.select(col)){toast('发射槽已满，先转动模型消除一些');return;}

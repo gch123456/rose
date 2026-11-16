@@ -14,7 +14,7 @@ export function makeLevel(number: number): Level {
 export type LevelOptions = {id?:number; name?:string; difficulty?:'easy'|'normal'|'hard'; batchSize?:number};
 /** Validate bounded lattice data before geometry or witness work. */
 export function validateLevelCells(cells: Voxel[]): Voxel[] {
-    if (!Array.isArray(cells) || !cells.length || cells.length > 800) throw new Error('积木数量必须为1–800');
+    if (!Array.isArray(cells) || !cells.length || cells.length > 6000) throw new Error('积木数量必须为1–6000');
     const ids = new Set<number>(), positions = new Set<string>();
     const shapes = new Set(['box','sphere','cylinder','hemisphere','wedge']);
     return cells.map(c => {
@@ -71,4 +71,60 @@ export function makeRescueFixture(): Level {
         {id:0,x:0,y:0,z:0,color:1,core:false,alive:true},
         ...[[-1,0,0],[1,0,0],[0,0,-1],[0,0,1],[0,-1,0],[0,1,0]].map(([x,y,z],i)=>({id:i+1,x,y,z,color:0,core:false,alive:true})),
     ], supply: Array.from({length:4},(_,i)=>[{id:i,color:1,ammo:3},...(i===0?[{id:4,color:0,ammo:6}]:[])]) };
+}
+
+/** Long, conserved capsules with a real four-slot witness. Loaded capsules may
+ * survive many camera changes. An impossible bounded plan is rejected. */
+export function makeLongBatchLevel(input: Voxel[], options: LevelOptions = {}): Level {
+    const cells=validateLevelCells(input), id=options.id??1, name=options.name??'精细模型';
+    const budget=options.batchSize??75;
+    if(!Number.isSafeInteger(id)||id<1||typeof name!=='string'||!name.trim()||name.length>80)throw new Error('关卡ID或名称无效');
+    if(!Number.isInteger(budget)||budget<60||budget>90)throw new Error('长弹筒目标必须为60–90');
+    const pending:Capsule[]=[];
+    for(let color=0;color<6;color++){
+        const count=cells.filter(c=>c.color===color).length;
+        const low=Math.ceil(count/90),high=Math.floor(count/60);
+        const batches=low<=high?Math.max(low,Math.min(high,Math.round(count/budget))):Math.ceil(count/budget);
+        for(let i=0;i<batches;i++)pending.push({id:pending.length,color,ammo:low<=high?Math.floor(count/batches)+(i<count%batches?1:0):Math.min(budget,count-i*budget)});
+    }
+    const result:Level={id,name,cells,supply:[[],[],[],[]],initialYaw:.55,initialPitch:.24,solution:[],replay:[]};
+    const sim=new ColorClearGame({...result,supply:[pending.map(c=>({...c})),[],[],[]]});
+    const views=[{yaw:.55,pitch:.24},...[0,Math.PI/2,Math.PI,Math.PI*1.5].flatMap(yaw=>[0,Math.PI/4,-Math.PI/4].map(pitch=>({yaw,pitch}))),{yaw:0,pitch:Math.PI/2},{yaw:0,pitch:-Math.PI/2}];
+    let loads=0,totalTicks=0;
+    while(sim.phase==='playing'&&sim.remaining){
+        const active=new Set(sim.slots.filter((s):s is Capsule=>!!s&&s.ammo>0).map(s=>s.color));
+        let best:{yaw:number;pitch:number;color:number;score:number}|undefined;
+        // Prefer spending already loaded ammunition before occupying another slot.
+        for(const allowLoad of [false,true]){
+            if(allowLoad&&!sim.slots.includes(null))break;
+            for(const view of views){
+                sim.rotate(view.yaw-sim.yaw,view.pitch-sim.pitch);
+                const counts=new Map<number,number>();for(const c of sim.visibleTargets())counts.set(c.color,(counts.get(c.color)??0)+1);
+                for(const [color,score]of counts){
+                    if(allowLoad?active.has(color)||!sim.supply[0].some(c=>c.color===color):!active.has(color))continue;
+                    if(!best||score>best.score)best={...view,color,score};
+                }
+            }
+            if(best)break;
+        }
+        if(!best)throw new Error('长弹筒四槽规划受阻，请调整色区或模型');
+        sim.rotate(best.yaw-sim.yaw,best.pitch-sim.pitch);
+        const action={yaw:sim.yaw,pitch:sim.pitch,ticks:0} as {yaw:number;pitch:number;ticks:number;column?:number};
+        if(!active.has(best.color)){
+            const index=sim.supply[0].findIndex(c=>c.color===best!.color), capsule=sim.supply[0].splice(index,1)[0];
+            sim.supply[0].unshift(capsule);
+            if(!sim.select(0))throw new Error('长弹筒规划无法装填');
+            action.column=loads++%4;result.supply[action.column].push({...capsule});
+        }
+        let idle=0;
+        while(sim.phase==='playing'&&idle<5){
+            const before=sim.shots;sim.tick(.1);sim.drainEvents();action.ticks++;totalTicks++;
+            idle=sim.shots===before&&!sim.flights.length?idle+1:0;
+            if(totalTicks>60000)throw new Error('长弹筒参考通路超过时长上限');
+        }
+        result.replay!.push(action);
+        if(result.replay!.length>20000)throw new Error('长弹筒参考通路步骤超限');
+    }
+    if(sim.phase!=='won'||sim.shots!==cells.length||sim.supply[0].length||sim.slots.some(Boolean)||sim.flights.length)throw new Error('长弹筒参考通路未通关');
+    return result;
 }

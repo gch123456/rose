@@ -59,12 +59,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--mesh', type=Path, default=Path(__file__).resolve().parents[1] / 'preview/models/wizard-duck.glb')
+    parser.add_argument('--target', type=int, default=650)
     parser.add_argument('--output-dir', type=Path, default=Path(__file__).resolve().parents[1] / 'preview/color-clear/ready')
     args = parser.parse_args()
     mesh = trimesh.load(args.mesh, force='mesh', process=False)
     # Bound the search by the longest dimension; search decisions are deterministic.
-    target = 650
-    lo, hi = float(mesh.extents.max() / 16), float(mesh.extents.max() / 11)
+    target = args.target
+    if not 600 <= target <= 5000: raise ValueError('target must be600–5000')
+    factor = (target / 650) ** (1 / 3)
+    lo, hi = float(mesh.extents.max() / (16 * factor)), float(mesh.extents.max() / (11 * factor))
     choices = []
     for _ in range(13):
         pitch = (lo + hi) / 2
@@ -86,7 +89,7 @@ def main():
     labels, components = ndimage.label(solid)
     component_sizes = sorted([int(n) for n in np.bincount(labels.ravel())[1:]], reverse=True)
     interior_count = int(solid.sum() - shell.sum())
-    assert 600 <= len(cells) <= 700, f'Cell count outside playable budget: {len(cells)}'
+    assert target * .85 <= len(cells) <= target * 1.15, f'Cell count outside target range: {len(cells)}'
     assert components == 1, f'Unexpected disconnected volume: {component_sizes}'
     assert interior_count > 0, 'Rasterization did not produce a filled interior'
     metadata = {'generator': 'tools/prepare-wizard-duck.py', 'method': 'triangle shell rasterization and enclosed interior fill', 'pitch': pitch, 'solidCellCount': len(cells), 'shellCellCount': int(shell.sum()), 'filledInteriorCellCount': interior_count, 'connectedComponents': int(components), 'axes': 'original GLB Y-up; integer grid centered on all three axes', 'textureSampling': 'nearest source triangle, barycentric UV interpolation, V-flipped image sampling, nearest Lab palette; palette quantization loses texture detail'}
