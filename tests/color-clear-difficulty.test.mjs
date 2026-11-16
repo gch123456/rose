@@ -11,7 +11,7 @@ test('profiles change actual coherent layout and capsule/lane constraints withou
  assert.equal(easy.tier,'warmup');assert.equal(getDifficultyProfile(4).tier,'planning');assert.equal(hard.tier,'challenge');
  assert.ok(easy.shotBudget>hard.shotBudget);assert.equal(easy.lanes,4);assert.equal(hard.lanes,4);
  assert.notDeepEqual(applyDifficulty(cells,easy),applyDifficulty(cells,hard));assert.deepEqual(cells,before);
- for(let id=1;id<=10;id++){const p=getDifficultyProfile(id),l=makeLevel(id);assert.ok(l.cells.every(c=>c.color>=0&&c.color<4));assert.ok(l.supply.flat().every(c=>c.ammo>0&&c.ammo<=p.shotBudget));assert.equal(l.supply.filter(q=>q.length).length,p.lanes);}
+ for(let id=1;id<=10;id++){const p=getDifficultyProfile(id),l=makeLevel(id);assert.ok(l.cells.every(c=>c.color>=0&&c.color<(id<=6?4:6)));assert.ok(l.supply.flat().every(c=>c.ammo>0&&c.ammo<=p.shotBudget));assert.equal(l.supply.filter(q=>q.length).length,p.lanes);}
  const p=getDifficultyProfile(1);p.shotBudget=999;assert.notEqual(getDifficultyProfile(1).shotBudget,999);
 });
 
@@ -37,4 +37,13 @@ test('rescue fixture retains its enclosed seven-cell UI contract',()=>{const l=m
 
 test('warmup queues tolerate casual multi-load policies without rewards or chain-order ammo traps',()=>{
  for(let id=1;id<=3;id++){const l=makeLevel(id);assert.equal(l.cells.filter(c=>c.core).length,0);assert.equal(l.supply.flat().reduce((n,c)=>n+c.ammo,0),l.cells.length);for(const policy of ['front-first','visible-first','seeded']){const r=simulatePolicy(l,policy,20261116,1800);assert.equal(r.outcome,'won',`level ${id}, ${policy}: ${r.outcome}`);assert.equal(r.rewardUses,0);}}
+});
+test('challenge adds coherent fifth and sixth palette regions while planning stays within four colors',()=>{
+ for(let id=1;id<=10;id++){
+  const cells=buildAnimalCells(id), snapshot=structuredClone(cells), profile=getDifficultyProfile(id), actual=applyDifficulty(cells,profile);
+  assert.deepEqual(cells,snapshot);
+  if(id<=6){assert.ok(actual.every(c=>c.color<4));continue;}
+  assert.ok(new Set(actual.map(c=>c.color)).size>=5,`level ${id} uses more colors than four slots`);
+  for(const c of actual){const source=cells.find(v=>v.id===c.id);assert.equal(c.color,c.y<=-1&&c.x<0?5:c.z<0&&c.y<=1?4:source.color);}
+ }
 });

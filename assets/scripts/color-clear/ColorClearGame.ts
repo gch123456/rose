@@ -18,6 +18,9 @@ export function viewDirection(yaw: number, pitch = 0): [number, number, number] 
 }
 function blocks(cell: Voxel, b: Voxel, direction: [number, number, number]): boolean {
     const origin = [cell.x - b.x, aimY(cell) - b.y, cell.z - b.z];
+    // A bounding sphere cheaply rejects most distant, off-ray pieces.
+    const along = -(origin[0]*direction[0]+origin[1]*direction[1]+origin[2]*direction[2]);
+    if (along < -.87 || origin[0]**2+origin[1]**2+origin[2]**2-along**2 > .750001) return false;
     let near = 0, far = Infinity;
     // Intersect the ray with a closed half-space n.p <= limit.
     const plane = (nx: number, ny: number, nz: number, limit: number): boolean => {
@@ -104,6 +107,7 @@ export class ColorClearGame {
     slots: (Capsule | null)[] = [null, null, null, null]; reserve: Capsule[] = []; flights: Flight[] = [];
     phase: 'playing' | 'paused' | 'won' | 'lost' = 'playing'; yaw = 0; pitch = 0; reason = ''; combo = 0; shots = 0; continued = false;
     private cooldown = 0; private events: ClearEvent[] = []; private reach: Set<number> | null = null;
+    private visibility: {yaw:number; pitch:number; remaining:number; cells:Voxel[]} | null = null;
     private run = 0; private rewardSerial = 0; private flightSerial = 0;
     private reward: { ticket: RewardTicket; phase: 'playing' | 'paused' | 'lost' } | null = null;
     constructor(level: Level) { this.level = level; this.restart(); }
@@ -113,7 +117,7 @@ export class ColorClearGame {
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
         this.slots = [null, null, null, null]; this.reserve = []; this.flights = []; this.yaw = this.level.initialYaw ?? 0; this.pitch = clampPitch(this.level.initialPitch ?? 0); this.phase = 'playing';
-        this.cooldown = 0; this.reason = ''; this.combo = 0; this.shots = 0; this.continued = false; this.events = []; this.reach = null; this.reward = null; this.run = ++nextRun;
+        this.visibility = null; this.cooldown = 0; this.reason = ''; this.combo = 0; this.shots = 0; this.continued = false; this.events = []; this.reach = null; this.reward = null; this.run = ++nextRun;
     }
     pause(): void { if (this.phase === 'playing') this.phase = 'paused'; }
     resume(): void { if (this.phase === 'paused' && !this.reward) this.phase = 'playing'; }
@@ -148,19 +152,21 @@ export class ColorClearGame {
         }
         return true;
     }
-    visibleTargets(): Voxel[] { return this.cells.filter(c => canSeeCell(c, this.cells, this.yaw, this.pitch)); }
+    visibleTargets(): Voxel[] {
+        const n = this.remaining, cache = this.visibility;
+        if (!cache || cache.yaw !== this.yaw || cache.pitch !== this.pitch || cache.remaining !== n)
+            this.visibility = {yaw:this.yaw, pitch:this.pitch, remaining:n, cells:this.cells.filter(c => canSeeCell(c, this.cells, this.yaw, this.pitch))};
+        return this.visibility!.cells.slice();
+    }
     chainPreview(id: number): Voxel[] {
         const first = this.cells.find(c => c.id === id && c.alive); if (!first) return [];
-        const seen = new Set<number>(), queue = [first], result: Voxel[] = [];
-        while (queue.length) { const c = queue.shift()!; if (seen.has(c.id)) continue; seen.add(c.id); result.push(c);
-            if (c.core) for (const b of this.cells) if (b.alive && !seen.has(b.id) && Math.abs(b.x - c.x) + Math.abs(b.y - c.y) + Math.abs(b.z - c.z) <= 1) queue.push(b);
-        } return result;
+        return [first];
     }
     drainEvents(): ClearEvent[] { const out = this.events; this.events = []; return out; }
     private clear(cell: Voxel): void {
         if (!cell.alive) return; cell.alive = false; this.combo++; this.reach = null;
         this.events.push({ type: 'clear', cell: { ...cell }, color: cell.color, core: cell.core });
-        if (cell.core) { this.events.push({ type: 'chain', cell: { ...cell }, color: cell.color }); for (const b of this.cells) if (b.alive && Math.abs(b.x - cell.x) + Math.abs(b.y - cell.y) + Math.abs(b.z - cell.z) <= 1) this.clear(b); }
+        if (cell.core) this.events.push({ type: 'chain', cell: { ...cell }, color: cell.color });
     }
     private settle(): void {
         if (this.flights.length) return;
@@ -186,7 +192,7 @@ export class ColorClearGame {
         while (this.cooldown <= 0 && this.remaining) {
             this.cooldown += .14;
             for (let i = 0; i < this.slots.length; i++) {
-                const s = this.slots[i]; if (!s || s.ammo <= 0) continue;
+                const s = this.slots[i]; if (!s || s.ammo <= 0 || this.flights.some(f=>f.capsuleId===s.id)) continue;
                 const reserved = new Set(this.flights.flatMap(f => f.claimed));
                 const target = this.visibleTargets().filter(c => c.color === s.color && this.chainPreview(c.id).every(b => !reserved.has(b.id))).sort((a, b) => Number(b.core) - Number(a.core) || b.y - a.y || a.id - b.id)[0];
                 if (!target) continue;

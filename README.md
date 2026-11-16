@@ -1,5 +1,7 @@
 # GoDuck · 鸭命要紧（暂定名）
 
+作者可打开[私有关卡工坊](preview/level-studio.html)：参考图/本地GLB→可调密度积木→弹药账本→试玩/导出，详见[使用说明](docs/LEVEL_STUDIO.md)。图片生成服务尚未配置。
+
 > **新增可玩实验：转转积木（2026-11-16）**
 > 真3D动物积木消除，点击胶囊入槽、拖动旋转，含10个入门关卡；可配置简洁HUD、模拟广告扩5/6槽与保留余弹的暂存续关。可直接打开[单文件试玩](preview/color-clear.html)，或查看[运行说明与Cocos接续](docs/COLOR_CLEAR.md)。新增上下观察、开局自动旋转、访客通关图册与[微信登录Java后端](backend/README.md)。网页已验证；真实微信登录配置、Cocos/微信构建与iPhone真机尚待验收。以下GoDuck保留。
 

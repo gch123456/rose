@@ -9,10 +9,11 @@
     "preview:build": "node tools/build-color-clear.mjs",
     "preview:serve": "node tools/serve-preview.mjs",
     "test:color-clear-ui": "node tools/check-color-clear-browser.mjs",
-    "check:color-clear": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions assets/scripts/color-clear/ColorClearGame.ts assets/scripts/color-clear/ColorClearLevels.ts assets/scripts/color-clear/ColorClearGeometry.ts assets/scripts/color-clear/ColorClearAlbum.ts assets/scripts/color-clear/ColorClearOrbit.ts assets/scripts/color-clear/ColorClearWechat.ts",
+    "check:color-clear": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions assets/scripts/color-clear/ColorClearGame.ts assets/scripts/color-clear/ColorClearLevels.ts assets/scripts/color-clear/ColorClearGeometry.ts assets/scripts/color-clear/ColorClearAlbum.ts assets/scripts/color-clear/ColorClearOrbit.ts assets/scripts/color-clear/ColorClearWechat.ts assets/scripts/color-clear/ColorClearLevelData.ts",
     "test:color-clear-v02-ui": "node tools/check-color-clear-v02-browser.mjs",
     "test:color-clear-input": "node tools/check-color-clear-rapid-input.mjs",
-    "test:color-clear-album": "node tools/check-color-clear-album-orbit.mjs"
+    "test:color-clear-album": "node tools/check-color-clear-album-orbit.mjs",
+    "test:color-clear-studio": "node tools/check-color-clear-studio.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

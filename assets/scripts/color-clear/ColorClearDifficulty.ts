@@ -21,8 +21,8 @@ export function getDifficultyProfile(number: number): DifficultyProfile {
 /** Preserve anatomy palette; added colors form solid back/underside regions, never noise. */
 export function applyDifficulty(cells: Voxel[], profile: DifficultyProfile): Voxel[] {
     return cells.map(c => ({...c,
-        color: profile.accentRegions >= 2 && c.y <= -1 && c.x < 0 ? 2
-            : profile.accentRegions >= 1 && c.z < 0 && c.y <= 1 ? 3 : c.color,
+        color: profile.accentRegions >= 2 && c.y <= -1 && c.x < 0 ? 5
+            : profile.accentRegions >= 1 && c.z < 0 && c.y <= 1 ? (profile.accentRegions >= 2 ? 4 : 3) : c.color,
         core: profile.coreStride > 0 && c.z >= 0 && (c.id + 3) % profile.coreStride === 0,
     }));
 }

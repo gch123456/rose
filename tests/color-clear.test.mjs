@@ -21,10 +21,10 @@ test('empty slot can be refilled while another still fires; multiple slots never
  g.select(0);g.select(1);advance(g);assert.equal(g.remaining,0);assert.equal(g.phase,'won');
  assert.equal(g.drainEvents().filter(e=>e.type==='hit').length,2);
 });
-test('chain core removes marked neighbours once and triggers adjacent core',()=>{
+test('core impact clears exactly one cell and keeps adjacent colors alive',()=>{
  const g=new ColorClearGame(level([cell(0,0,0,0,0,true),cell(1,1,0,0,1,true),cell(2,2,0,0,2)],[[cap(0,0)],[],[],[]]));
- g.select(0);advance(g);assert.equal(g.remaining,0);assert.equal(g.phase,'won');
- assert.equal(g.drainEvents().filter(e=>e.type==='clear').length,3);
+ g.select(0);advance(g);assert.equal(g.remaining,2);
+ assert.equal(g.drainEvents().filter(e=>e.type==='clear').length,1);
 });
 test('full slots with a target on the back remain playable',()=>{
  const cells=[cell(0,0,0,0,1),cell(1,0,0,1,0)];
@@ -69,9 +69,9 @@ test('positive model Y rotation matches camera at world +Z: model-local left is 
  assert.equal(canSeeCell(cells[0],cells,Math.PI/2),false,'left cube moves toward +Z and occludes centre');
  assert.equal(canSeeCell(cells[0],cells,-Math.PI/2),true,'left cube moves behind centre');
 });
-test('chain preview includes recursive affected neighbours without changing model state',()=>{
+test('core preview reserves only its actual target without changing model state',()=>{
  const cells=[cell(0,0,0,0,0,true),cell(1,1,0,0,1,true),cell(2,2,0,0,2),cell(3,4,0,0,2)];
  const g=new ColorClearGame(level(cells,[[],[],[],[]]));
- assert.deepEqual(g.chainPreview(0).map(c=>c.id).sort(),[0,1,2]);assert.equal(g.remaining,4);
+ assert.deepEqual(g.chainPreview(0).map(c=>c.id).sort(),[0]);assert.equal(g.remaining,4);
  assert.deepEqual(g.chainPreview(3).map(c=>c.id),[3]);
 });

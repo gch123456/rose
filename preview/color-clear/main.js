@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {makePieceGeometries} from './shapes.js';
+import {decodeLevel} from '../../assets/scripts/color-clear/ColorClearLevelData.ts';
 import {getDifficultyProfile} from '../../assets/scripts/color-clear/ColorClearDifficulty.ts';
 import {ModelOrbit} from '../../assets/scripts/color-clear/ColorClearOrbit.ts';
 import {createAlbumUI} from './album.js';
@@ -8,15 +9,20 @@ import { ColorClearGame, FLIGHT_SECONDS, aimY } from '../../assets/scripts/color
 import { makeLevel, makeRescueFixture, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
 
 const $=id=>document.getElementById(id);
-const COLORS=['#ec8068','#e9b842','#64aaca','#68ad89'];
-const SYMBOLS=['●','▲','◆','■'];
-const NAMES=['珊瑚红','奶油黄','天空蓝','薄荷绿'];
+const COLORS=['#ec8068','#e9b842','#64aaca','#68ad89','#ae8fc9','#db9c63'];
+const SYMBOLS=['●','▲','◆','■','✦','⬟'];
+const NAMES=['珊瑚红','奶油黄','天空蓝','薄荷绿','丁香紫','焦糖棕'];
 const pref=(key,fallback)=>{try{return JSON.parse(localStorage.getItem('color-clear.'+key))??fallback;}catch{return fallback;}};
 const save=(key,value)=>{try{localStorage.setItem('color-clear.'+key,JSON.stringify(value));}catch{/* Private mode may disable storage; play stays available. */}};
 let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Number(pref('unlocked',1))||1));
 let muted=pref('muted',false),haptic=pref('haptic',false);
-const fixtureMode=new URLSearchParams(location.search).get('fixture')==='rescue';
-const levelFor=n=>fixtureMode?makeRescueFixture():makeLevel(n);
+let studioLevel=null,studioError='';
+if(new URLSearchParams(location.search).get('studio')==='1'){
+ try{const raw=JSON.parse(sessionStorage.getItem('color-clear.studio-level')||'null');if(!raw)throw Error('找不到制作工具传入的关卡');studioLevel=decodeLevel(raw.data);if(!Array.isArray(raw.palette)||raw.palette.length>6||!raw.palette.length||!raw.palette.every(c=>/^#[0-9a-f]{6}$/i.test(c))||studioLevel.cells.some(c=>!raw.palette[c.color]))throw Error('试玩调色板无效');raw.palette.forEach((c,i)=>COLORS[i]=c);}
+ catch(error){studioError='制作关卡未加载：'+error.message;studioLevel=null;}
+}
+const fixtureMode=!!studioLevel||new URLSearchParams(location.search).get('fixture')==='rescue';
+const levelFor=n=>studioLevel?structuredClone(studioLevel):fixtureMode?makeRescueFixture():makeLevel(n);
 let settings=normalizePresentation(pref('presentation',{})),rewardSession=null,reserveOpen=false;
 let model=new ColorClearGame(levelFor(1));
 const orbit=new ModelOrbit(),openingSpin=new URLSearchParams(location.search).get('autospin')!=='0';orbit.reset(openingSpin);
@@ -42,9 +48,10 @@ try{renderer=new THREE.WebGLRenderer({canvas:$('world'),alpha:true,antialias:tru
 catch(error){$('webgl-error').hidden=false;throw error;}
 
 function animalDetails(cells,id){
+ if(studioLevel)return [];
  const details=[],duck=(id-1)%3===0;
  for(const c of cells){
-  const eye=duck?c.x===2&&c.y===2&&Math.abs(c.z)===1:Math.abs(c.x)===1&&c.y===2&&Math.abs(c.z)===1;
+  const eye=duck?c.x===3&&c.y===3&&Math.abs(c.z)===2:Math.abs(c.x)===1&&c.y===3&&Math.abs(c.z)===2;
   if(!eye)continue;const side=Math.sign(c.z);
   for(const [radius,color,dx,dy,depth] of [[.22,0xfff9e6,.03,.13,.40],[.135,0x263d37,.07,.14,.55],[.047,0xffffff,.04,.19,.665],[.12,0xed997b,-.17,-.2,.47]]){
    const mark=new THREE.Mesh(new THREE.SphereGeometry(radius,12,10),new THREE.MeshBasicMaterial({color}));
@@ -81,7 +88,7 @@ new ResizeObserver(resize).observe($('stage'));
 function syncBlocks(){
  for(const c of model.cells){dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(c.alive?1:0);dummy.rotation.set(0,0,0);dummy.updateMatrix();pieces[c.id].mesh.setMatrixAt(pieces[c.id].index,dummy.matrix);}
  for(const m of meshes)m.instanceMatrix.needsUpdate=true;
- for(const mark of coreMarks)mark.visible=model.cells[mark.userData.id].alive;
+ for(const mark of coreMarks)mark.visible=model.cells.find(c=>c.id===mark.userData.id)?.alive??false;
 }
 function positionOf(c){return new THREE.Vector3(c.x,aimY(c),c.z).applyEuler(new THREE.Euler(model.pitch,model.yaw,0,'XYZ')).add(root.position);}
 function burst(c,core){
@@ -145,7 +152,7 @@ function syncUI(force=false){
  }
  const active=model.slots.filter(Boolean),waiting=active.length&&!active.some(c=>visibleColors.has(c.color));
  $('status').textContent=waiting?'↔ 转一转，寻找同色积木':active.length?'同色消除中…':'选一颗，让颜色动起来';
- $('core-tip').textContent=model.level.id<4?'● 同色相遇，积木消除':'◇ 命中白环核心，带走相邻积木';
+ $('core-tip').textContent='● 一发一块，同色弹药与积木对应';
  $('sound').textContent=muted?'♪̸':'♫';$('dialog-sound').textContent=`声音：${muted?'关':'开'}`;$('dialog-haptic').textContent=`振动：${haptic?'开':'关'}`;
 }
 function processEvents(){
@@ -161,7 +168,7 @@ function processEvents(){
    const slot=$('slots').children[e.slot];slot.classList.remove('firing');void slot.offsetWidth;slot.classList.add('firing');
   }
   if(e.type==='load'){const slot=$('slots').children[e.slot];slot?.classList.add('pop');}
-  if(e.type==='chain'){ $('combo').textContent='连锁清除 ✧'; $('world').dataset.chainEvents=String(Number($('world').dataset.chainEvents||0)+1); }
+  if(e.type==='chain'){ $('combo').textContent='漂亮命中 ✧'; $('world').dataset.chainEvents=String(Number($('world').dataset.chainEvents||0)+1); }
   if(e.type==='won'&&!fixtureMode){albumUI.record(model.level.id);unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,model.level.id+1));save('unlocked',unlocked);}
  }
  if(changed)syncBlocks();
@@ -171,8 +178,8 @@ function openDialog(mode='phase'){
  const won=model.phase==='won',lost=model.phase==='lost';
  $('dialog-symbol').textContent=won?'✧':lost?'↻':'Ⅱ';$('dialog-kicker').textContent=won?'A LITTLE WELL DONE':lost?'TRY A DIFFERENT ORDER':'TAKE YOUR TIME';
  $('dialog-title').textContent=mode==='help'?'两种操作，就会玩':won?'清得漂亮！':lost?'差一点，换个顺序':'休息一下';
- $('dialog-text').textContent=mode==='help'?`${getDifficultyProfile(model.level.id).label}：点前排胶囊进入发射槽，自动消除同色积木。上下左右拖动寻找目标。${model.level.id<4?'先熟悉颜色与顺序，第四关开始出现连锁核心。':'白环核心会带走相邻积木；注意留槽位给能打开外层的颜色。'}`:won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${model.level.id===LEVEL_COUNT?'十关体验完成，也可以回头试试另一种顺序。':'下一份颜色，已经准备好了。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
- $('primary').textContent=lost&&model.canContinue?'模拟广告 · 暂存续关':won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
+ $('dialog-text').textContent=mode==='help'?`${getDifficultyProfile(model.level.id).label}：点前排胶囊进入发射槽，自动消除同色积木。上下左右拖动寻找目标。${model.level.id<4?'同色弹药与积木数相等，每发清除一块。':'每发清除一块；注意留槽位给能打开外层的颜色。'}`:won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${model.level.id===LEVEL_COUNT?'十关体验完成，也可以回头试试另一种顺序。':'下一份颜色，已经准备好了。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
+ $('primary').textContent=studioLevel&&won?'再玩这关':lost&&model.canContinue?'模拟广告 · 暂存续关':won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
  $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(model.level.id);}else{model.resume();$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
 }
 function pause(){drag=null;rotationVelocity=0;orbit.release(true,0);if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
@@ -212,7 +219,7 @@ function frame(time){
  if(stamp!==rangeStamp){
   rangeStamp=stamp;const affected=new Set();
   for(const core of model.visibleTargets().filter(c=>c.core))for(const c of model.chainPreview(core.id))affected.add(c.id);
-  const positions=[];for(const id of affected){const c=model.cells[id];for(let i=0;i<edgePositions.count;i++)positions.push(edgePositions.getX(i)+c.x,edgePositions.getY(i)+c.y,edgePositions.getZ(i)+c.z);}
+  const positions=[];for(const id of affected){const c=model.cells.find(cell=>cell.id===id);if(!c)continue;for(let i=0;i<edgePositions.count;i++)positions.push(edgePositions.getX(i)+c.x,edgePositions.getY(i)+c.y,edgePositions.getZ(i)+c.z);}
   rangeGeometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));rangeGeometry.computeBoundingSphere();rangeLines.visible=positions.length>0; $('world').dataset.maxChainRange=String(Math.max(Number($('world').dataset.maxChainRange||0),affected.size));
  }
  renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
@@ -225,7 +232,7 @@ function applyPresentation(){
  if($('auto-rotate'))$('auto-rotate').textContent=`自动旋转：${orbit.automatic?'开':'关'}`;
  document.querySelector('.game-shell').classList.toggle('minimal-copy',!settings.labels);
  document.querySelector('.progress-track').hidden=!settings.progress;$('remaining').hidden=!settings.remaining;$('percent').hidden=!settings.progress;document.querySelector('.background-art').hidden=!settings.background;
- document.querySelector('.heading h1').textContent=settings.labels?'转转积木':`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
+ document.querySelector('.heading h1').textContent=studioLevel?`制作试玩 · ${model.level.name}`:settings.labels?'转转积木':`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
  for(const b of document.querySelectorAll('[data-display]')){const key=b.dataset.display,names={progress:'进度条',remaining:'剩余块数',labels:'说明文字',background:'背景'};b.textContent=`${names[key]}：${settings[key]?'开':'关'}`;b.setAttribute('aria-pressed',String(settings[key]));}
 }
 $('auto-rotate').onclick=()=>{orbit.reset(!orbit.automatic);syncUI(true);};
@@ -256,4 +263,4 @@ const albumUI=createAlbumUI({fixtureMode,thumbnail:modelThumbnail,toast,pause(){
  const playing=model.phase==='playing',overlayWasHidden=$('overlay').hidden;if(playing)model.pause();drag=null;rotationVelocity=0;orbit.release(true,0);$('overlay').hidden=true;
  return()=>{if(playing&&model.phase==='paused'){model.resume();shownPhase='playing';}else $('overlay').hidden=overlayWasHidden;lastTime=performance.now();};
 }});
-buildModel();syncUI(true);shownPhase='playing';frameId=requestAnimationFrame(frame);
+buildModel();syncUI(true);shownPhase='playing';if(studioError)toast(studioError);if(studioLevel){$('level-select').hidden=true;$('album-button').hidden=true;}frameId=requestAnimationFrame(frame);

@@ -9,7 +9,7 @@ try{
  assert.equal(await page.locator('#slots .slot').count(),6);assert.equal(await page.locator('#slots .slot').first().innerText(),'');
  assert.equal(await page.locator('.progress-track').isVisible(),false);assert.equal(await page.locator('#remaining').isVisible(),false);
  assert.equal(await page.locator('.background-art').isVisible(),true);
- assert.ok(await page.evaluate(()=>window.__colorClear.snapshot().shapes.some(s=>s!=='box')));
+ assert.ok(await page.evaluate(()=>{const s=window.__colorClear.snapshot();return s.remaining>=200&&s.remaining<=450&&s.shapes.every(shape=>shape==='box');}),'dense solid animal uses collider-aligned rounded blocks');
  await page.locator('[data-unlock="4"]').tap();assert.match(await page.locator('#reward-overlay').innerText(),/模拟广告/);
  const paused=await page.evaluate(()=>window.__colorClear.snapshot());await page.waitForTimeout(100);assert.deepEqual(await page.evaluate(()=>window.__colorClear.snapshot()),paused);
  await page.locator('#reward-cancel').tap();assert.equal((await page.evaluate(()=>window.__colorClear.snapshot())).slots.length,4);
@@ -39,5 +39,5 @@ try{
  await page.waitForFunction(()=>window.__colorClear.snapshot().remaining===1);
  await page.locator('[data-reserve="0"]').tap();await page.waitForFunction(()=>window.__colorClear.snapshot().phase==='won');
  await page.screenshot({path:'/tmp/rose-v02-rescue-win.png'});
- assert.deepEqual(errors,[]);console.log('PASS: minimal HUD, non-box animal, 4→5→6, simulated cancel/reward, projectile before impact, settings, deadlock, ammo-preserving rescue and victory.');
+ assert.deepEqual(errors,[]);console.log('PASS: minimal HUD, dense solid animal, 4→5→6, simulated cancel/reward, projectile before impact, settings, deadlock, ammo-preserving rescue and victory.');
 }finally{await browser.close();}

@@ -7,8 +7,8 @@ import {AlbumService} from './ColorClearAlbum';
 import {wechatLoginCode,wechatAlbumTransport} from './ColorClearWechat';
 import {specialPieceGeometry} from './ColorClearGeometry';
 const { ccclass, property } = _decorator;
-const COLORS = ['#ec8068', '#e9b842', '#64aaca', '#68ad89'];
-const SYMBOLS = ['●', '▲', '◆', '■'];
+const COLORS = ['#ec8068', '#e9b842', '#64aaca', '#68ad89', '#ae8fc9', '#db9c63'];
+const SYMBOLS = ['●', '▲', '◆', '■', '✦', '⬟'];
 type Card = { node: Node; pen: Graphics; label: Label };
 /** Attach only to a new empty scene after selecting the colorClear engine profile.
  * Browser preview is validated independently; this adapter requires Creator import/runtime validation. */
@@ -104,7 +104,7 @@ export class ColorClearView extends Component {
             } });
             this.supplies.push(card);
         }
-        this.text(this.ui, '没有倒计时，想好了再点 · ◇ 核心可连锁', 16, 0, -530, 590, '#8a9991');
+        this.text(this.ui, '没有倒计时，想好了再点 · 同色弹药匹配', 16, 0, -530, 590, '#8a9991');
         this.dialog = this.child(this.ui, 'ColorClearDialog', true);this.dialog.addComponent(BlockInputEvents);
         this.dialog.addComponent(UITransform).setContentSize(640, 1120);
         this.paint(this.dialog.addComponent(Graphics), 640, 1120, '#eef2e0', 0);
@@ -140,7 +140,7 @@ export class ColorClearView extends Component {
     private child(parent: Node, name: string, ui: boolean): Node { const n = new Node(name); n.layer = ui ? Layers.Enum.UI_2D : Layers.Enum.DEFAULT; parent.addChild(n); return n; }
     private text(parent: Node, value: string, size: number, x: number, y: number, width: number, color = '#293b39'): Label {
         const n = this.child(parent, 'Text', true); n.setPosition(x, y); n.addComponent(UITransform).setContentSize(width, size * 3.6);
-        const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size * 1.45; l.color = new Color(color); l.horizontalAlign = Label.HorizontalAlign.CENTER; l.verticalAlign = Label.VerticalAlign.CENTER; l.overflow = Label.Overflow.SHRINK; if(!this.showLabels&&['A LITTLE COLOR BREAK','转转积木','↔ 上下左右拖动，发现另一面','发射台','下一批颜色 · 点前排入槽','没有倒计时，想好了再点 · ◇ 核心可连锁'].includes(value))n.active=false;return l;
+        const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size * 1.45; l.color = new Color(color); l.horizontalAlign = Label.HorizontalAlign.CENTER; l.verticalAlign = Label.VerticalAlign.CENTER; l.overflow = Label.Overflow.SHRINK; if(!this.showLabels&&['A LITTLE COLOR BREAK','转转积木','↔ 上下左右拖动，发现另一面','发射台','下一批颜色 · 点前排入槽','没有倒计时，想好了再点 · 同色弹药匹配'].includes(value))n.active=false;return l;
     }
     private paint(g: Graphics, w: number, h: number, hex: string, radius = 20): void { g.clear(); g.fillColor = new Color(hex); g.roundRect(-w / 2, -h / 2, w, h, radius); g.fill(); }
     private button(parent: Node, label: string, x: number, y: number, w: number, h: number, click: () => void, color = '#edf1e5'): Card {
@@ -158,8 +158,8 @@ export class ColorClearView extends Component {
         for (const p of this.fragments) p.node.destroy(); this.fragments = [];
         for (const cell of this.model.cells) {
             const n = this.cubeNode(this.world, `Block-${cell.id}`, cell.color, cell.shape); n.setPosition(cell.x, cell.y, cell.z); n.setScale(cell.shape&&cell.shape!=='box'?1:.94,cell.shape&&cell.shape!=='box'?1:.94,cell.shape&&cell.shape!=='box'?1:.94); this.voxels.push(n);
-            if (cell.core) { const mark = this.cubeNode(n, 'ChainCore', 4); mark.setPosition(0, 0, .54); mark.setScale(.25, .25, .12); }
-            const range = this.cubeNode(n, 'RangeCorner', 4); range.setPosition(.41, .41, .51); range.setScale(.11, .11, .05); range.active = false; this.markers.push(range);
+            if (cell.core) { const mark = this.cubeNode(n, 'ChainCore', COLORS.length); mark.setPosition(0, 0, .54); mark.setScale(.25, .25, .12); }
+            const range = this.cubeNode(n, 'RangeCorner', COLORS.length); range.setPosition(.41, .41, .51); range.setScale(.11, .11, .05); range.active = false; this.markers.push(range);
         }
         this.camera.orthoHeight = Math.max(5, Math.max(...this.model.cells.map(c => Math.abs(c.x))) + 3);
         this.refresh(true);
