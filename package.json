@@ -5,6 +5,16 @@
     "version": "3.8.8"
   },
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "preview:build": "node tools/build-color-clear.mjs",
+    "preview:serve": "node tools/serve-preview.mjs",
+    "test:color-clear-ui": "node tools/check-color-clear-browser.mjs",
+    "check:color-clear": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions assets/scripts/color-clear/ColorClearGame.ts assets/scripts/color-clear/ColorClearLevels.ts"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright": "^1.65.1",
+    "three": "^0.187.0",
+    "typescript": "~5.8.3"
   }
 }

@@ -2,6 +2,10 @@
 
 更新日期：2026-11-16（北京时间）。
 
+## A方案原型已可浏览器试玩（2026-11-16）
+
+用户明确要求实现。已完成真实WebGL体素模型、点击入4槽、自动多槽消除、拖动旋转/短惯性、连锁范围提示与清除、10个带模拟解的关卡、浅色竖屏UI、音效及暂停/重开/关卡进度。打开[单文件试玩](../preview/color-clear.html)，或按[运行说明](COLOR_CLEAR.md)启动。已提供Cocos组件及独立3D配置，旧Home与2D默认配置保持；本机无Creator，尚未做引擎/微信/iPhone验证。最终证据见[实施记录](archive/2026-11-16-color-clear-implementation-session.md)。
+
 ## A方案获认可、真实3D可行（2026-11-16）
 
 用户对当前玩法与UI其余设计无异议，询问真实3D支持。核实Cocos3.8支持3D模型及微信小游戏构建，采用真3D模型＋2D界面可行；当前旧游戏配置关闭3D，尚未修改。未实现3D或验证真机性能。详见[本次记录](archive/2026-11-16-color-clear-3d-confirmation-session.md)及[设计补充](design-drafts/2026-11-16-color-clear-gameplay-ui-draft.md)。

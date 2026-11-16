@@ -1,0 +1,192 @@
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { ColorClearGame } from '../../assets/scripts/color-clear/ColorClearGame.ts';
+import { makeLevel, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
+
+const $=id=>document.getElementById(id);
+const COLORS=['#f28576','#efc75f','#7eb5e1','#70bba0'];
+const SYMBOLS=['●','▲','◆','■'];
+const NAMES=['珊瑚红','奶油黄','天空蓝','薄荷绿'];
+const pref=(key,fallback)=>{try{return JSON.parse(localStorage.getItem('color-clear.'+key))??fallback;}catch{return fallback;}};
+const save=(key,value)=>{try{localStorage.setItem('color-clear.'+key,JSON.stringify(value));}catch{/* Private mode may disable storage; play stays available. */}};
+let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Number(pref('unlocked',1))||1));
+let muted=pref('muted',false),haptic=pref('haptic',false);
+let model=new ColorClearGame(makeLevel(1));
+let renderer,mesh,coreMarks=[],viewScale=9,frameId,drag=null,lastTime=performance.now(),uiStamp='',shownPhase='',comboUntil=0,lastTone=0,audio,rotationVelocity=0,lastDragTime=0,rangeStamp='';
+let particles=[],bullets=[];
+const scene=new THREE.Scene();
+const root=new THREE.Group();scene.add(root);
+const rangeGeometry=new THREE.BufferGeometry();
+const rangeLines=new THREE.LineSegments(rangeGeometry,new THREE.LineBasicMaterial({color:0xffeab1,transparent:true,opacity:.8,depthTest:true}));root.add(rangeLines);
+const edgePositions=new THREE.EdgesGeometry(new THREE.BoxGeometry(1.015,1.015,1.015)).getAttribute('position');
+const camera=new THREE.OrthographicCamera(-8,8,10,-10,.1,100);
+// Horizontal orthographic view matches the exact horizontal occlusion rules.
+// The perspective of the cubic side faces comes from model rotation, not tilted hit rays.
+camera.position.set(0,0,25);camera.lookAt(0,0,0);
+scene.add(new THREE.HemisphereLight(0xfffff5,0x98a58c,2.4));
+const key=new THREE.DirectionalLight(0xfff5df,3.1);key.position.set(-6,11,10);scene.add(key);
+const fill=new THREE.DirectionalLight(0xb9dfed,1.2);fill.position.set(7,0,3);scene.add(fill);
+const geometry=new RoundedBoxGeometry(.94,.94,.94,2,.07);
+const material=new THREE.MeshStandardMaterial({roughness:.46,metalness:.02});
+const particleMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.18,.18,.18),material,120);particleMesh.count=0;particleMesh.frustumCulled=false;scene.add(particleMesh);
+const bulletGeometry=new THREE.SphereGeometry(.075,6,5);
+const bulletMaterial=new THREE.MeshBasicMaterial({color:0xfffff5});
+const dummy=new THREE.Object3D();
+let domColors=COLORS.map(c=>new THREE.Color(c));
+try{renderer=new THREE.WebGLRenderer({canvas:$('world'),alpha:true,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
+catch(error){$('webgl-error').hidden=false;throw error;}
+
+function buildModel(){
+ if(mesh){root.remove(mesh);mesh.dispose();}
+ for(const m of coreMarks){root.remove(m);m.geometry.dispose();m.material.dispose();}coreMarks=[];
+ mesh=new THREE.InstancedMesh(geometry,material,model.cells.length);mesh.frustumCulled=false;root.add(mesh);
+ for(const c of model.cells){
+  mesh.setColorAt(c.id,domColors[c.color]);
+  if(c.core){const mark=new THREE.Mesh(new THREE.TorusGeometry(.20,.032,5,12),new THREE.MeshBasicMaterial({color:0xfff8d7}));mark.position.set(c.x,c.y,c.z+.49);mark.userData.id=c.id;root.add(mark);coreMarks.push(mark);}
+ }
+ const maxY=Math.max(...model.cells.map(c=>Math.abs(c.y))),maxX=Math.max(...model.cells.map(c=>Math.hypot(c.x,c.z)));
+ viewScale=Math.max(maxY*2+4.8,maxX*2+2.6);
+ for(const b of bullets){scene.remove(b.mesh);}bullets=[];particles=[];
+ rangeStamp='';$('world').dataset.chainEvents='0';$('world').dataset.maxChainRange='0';resize();syncBlocks();
+}
+function resize(){
+ const r=$('stage').getBoundingClientRect();
+ if(!r.width||!r.height)return;
+ renderer.setSize(r.width,r.height,false);
+ const aspect=r.width/r.height;
+ const width=Math.max(viewScale,viewScale*aspect*.9);
+ const height=width/aspect;
+ camera.left=-width/2;camera.right=width/2;camera.top=height/2;camera.bottom=-height/2;camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe($('stage'));
+function syncBlocks(){
+ for(const c of model.cells){dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(c.alive?1:0);dummy.rotation.set(0,0,0);dummy.updateMatrix();mesh.setMatrixAt(c.id,dummy.matrix);}
+ mesh.instanceMatrix.needsUpdate=true;
+ for(const mark of coreMarks)mark.visible=model.cells[mark.userData.id].alive;
+}
+function positionOf(c){return new THREE.Vector3(c.x,c.y,c.z).applyAxisAngle(new THREE.Vector3(0,1,0),model.yaw);}
+function burst(c,core){
+ const p=positionOf(c),count=core?10:3;
+ for(let i=0;i<count&&particles.length<110;i++)particles.push({p:p.clone(),v:new THREE.Vector3((Math.random()-.5)*8,2+Math.random()*4,(Math.random()-.5)*6),age:0,life:.4+Math.random()*.3,color:c.color,spin:Math.random()*6});
+}
+function ensureAudio(){
+ if(muted)return;
+ try{const C=globalThis.AudioContext||globalThis.webkitAudioContext;if(!C)return;if(!audio)audio=new C();if(audio.state==='suspended')audio.resume().catch(()=>{});}catch{/* Audio is optional. */}
+}
+function tone(freq=600,duration=.055,volume=.035,delay=0){
+ if(muted||!audio||audio.state!=='running')return;
+ const t=audio.currentTime+delay,o=audio.createOscillator(),gain=audio.createGain();o.type='sine';o.frequency.setValueAtTime(freq,t);o.frequency.exponentialRampToValueAtTime(freq*.68,t+duration);
+ gain.gain.setValueAtTime(volume,t);gain.gain.exponentialRampToValueAtTime(.001,t+duration);o.connect(gain);gain.connect(audio.destination);o.start(t);o.stop(t+duration+.01);o.onended=()=>{o.disconnect();gain.disconnect();};
+}
+function vibrate(){if(haptic&&navigator.vibrate)navigator.vibrate(9);}
+function soundEvent(e){
+ const now=performance.now();
+ if(e.type==='load'){tone(480+e.color*70,.06,.05);vibrate();}
+ else if(e.type==='chain'){tone(1100,.16,.04);vibrate();}
+ else if(e.type==='hit'&&now-lastTone>45){tone(540+Math.min(12,model.combo%16)*42,.035,.023);lastTone=now;}
+ else if(e.type==='empty')tone(1000,.09,.018);
+ else if(e.type==='won'){[660,830,990,1320].forEach((f,i)=>tone(f,.19,.045,i*.10));}
+ else if(e.type==='lost')tone(250,.22,.04);
+}
+function toast(text){$('toast').textContent=text;$('toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').classList.remove('show'),1600);}
+function capsuleMarkup(c,preview=false,waiting=false){return `<span class="symbol">${SYMBOLS[c.color]}</span><strong>${c.ammo}</strong>`;}
+function syncUI(force=false){
+ const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,2)),model.phase,model.remaining,muted]);
+ if(!force&&signature===uiStamp)return;uiStamp=signature;
+ $('level-name').textContent=`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
+ $('level-dots').textContent=Array.from({length:5},(_,i)=>i<(model.level.id-1)%5+1?'●':'○').join(' ');
+ $('remaining').textContent=`剩余 ${model.remaining} 块`;$('percent').textContent=`${Math.round(model.progress*100)}%`;$('progress').style.width=model.progress*100+'%';
+ const visibleColors=new Set(model.visibleTargets().map(c=>c.color));
+ $('slot-count').textContent=`${model.slots.filter(Boolean).length} / 4`;
+ for(let i=0;i<4;i++){
+  const c=model.slots[i];let slot=$('slots').children[i];
+  if(!slot){slot=document.createElement('div');slot.dataset.slot=String(i);$('slots').append(slot);}
+  slot.className='slot'+(c?' occupied':'');
+  if(c){let item=slot.querySelector('.capsule');if(!item||item.dataset.id!==String(c.id)){item=document.createElement('div');item.dataset.id=String(c.id);slot.replaceChildren(item);}item.className='capsule'+(!visibleColors.has(c.color)?' waiting':'');item.style.setProperty('--color',COLORS[c.color]);item.innerHTML=capsuleMarkup(c);item.setAttribute('aria-label',`${NAMES[c.color]}剩余${c.ammo}发`);}else slot.textContent='+';
+ }
+ const buttons=[];
+ for(let row=0;row<2;row++)for(let col=0;col<4;col++){
+  const c=model.supply[col][row];
+  if(!c){const blank=document.createElement('div');blank.className='empty-supply'+(row?' preview-card':'');blank.textContent='·';buttons.push(blank);continue;}
+  const b=document.createElement('button');b.className='capsule'+(row?' preview-card':'');b.style.setProperty('--color',COLORS[c.color]);b.innerHTML=capsuleMarkup(c);b.disabled=row>0;b.setAttribute('aria-label',`${row?'下一颗':'选择'}${NAMES[c.color]}，${c.ammo}发`);
+  if(!row){b.dataset.column=String(col);b.onclick=()=>{
+   ensureAudio();const origin=b.getBoundingClientRect(),slotIndex=model.slots.indexOf(null);
+   if(!model.select(col)){toast('发射槽已满，先转动模型消除一些');return;}
+   syncUI(true);const arrival=$('slots').children[slotIndex]?.querySelector('.capsule');
+   if(arrival&&!matchMedia('(prefers-reduced-motion: reduce)').matches){const target=arrival.getBoundingClientRect();arrival.style.zIndex='4';arrival.animate([{transform:`translate(${origin.x+origin.width/2-target.x-target.width/2}px,${origin.y+origin.height/2-target.y-target.height/2}px) scale(1.1)`},{transform:'translate(0,0) scale(1)'}],{duration:190,easing:'cubic-bezier(.2,.7,.25,1)'});}
+   processEvents();
+  };}
+  buttons.push(b);
+ }
+ $('supply').replaceChildren(...buttons);
+ const active=model.slots.filter(Boolean),waiting=active.length&&!active.some(c=>visibleColors.has(c.color));
+ $('status').textContent=waiting?'↔ 转一转，寻找同色积木':active.length?'同色消除中…':'选一颗，让颜色动起来';
+ $('core-tip').textContent=model.level.id<3?'● 同色相遇，积木消除':'◇ 命中白环核心，带走相邻积木';
+ $('sound').textContent=muted?'♪̸':'♫';$('dialog-sound').textContent=`声音：${muted?'关':'开'}`;$('dialog-haptic').textContent=`振动：${haptic?'开':'关'}`;
+}
+function processEvents(){
+ let changed=false;
+ for(const e of model.drainEvents()){
+  soundEvent(e);
+  if(e.type==='clear'){burst(e.cell,e.core);changed=true;comboUntil=performance.now()+1000;}
+  if(e.type==='hit'){
+   const b=new THREE.Mesh(bulletGeometry,bulletMaterial);const start=new THREE.Vector3((e.slot-1.5)*1.5,-viewScale*.38,7);b.position.copy(start);scene.add(b);bullets.push({mesh:b,start,end:positionOf(e.cell),age:0});
+  }
+  if(e.type==='load'){const slot=$('slots').children[e.slot];slot?.classList.add('pop');}
+  if(e.type==='chain'){ $('combo').textContent='连锁清除 ✧'; $('world').dataset.chainEvents=String(Number($('world').dataset.chainEvents||0)+1); }
+  if(e.type==='won'){unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,model.level.id+1));save('unlocked',unlocked);}
+ }
+ if(changed)syncBlocks();
+}
+function openDialog(mode='phase'){
+ $('overlay').hidden=false;
+ const won=model.phase==='won',lost=model.phase==='lost';
+ $('dialog-symbol').textContent=won?'✧':lost?'↻':'Ⅱ';$('dialog-kicker').textContent=won?'A LITTLE WELL DONE':lost?'TRY A DIFFERENT ORDER':'TAKE YOUR TIME';
+ $('dialog-title').textContent=mode==='help'?'两种操作，就会玩':won?'清得漂亮！':lost?'差一点，换个顺序':'休息一下';
+ $('dialog-text').textContent=mode==='help'?'点前排胶囊进入发射槽，自动消除同色积木。左右拖动模型寻找目标；白环核心会带走相邻积木。':won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${model.level.id===LEVEL_COUNT?'十关体验完成，也可以回头试试另一种顺序。':'下一份颜色，已经准备好了。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
+ $('primary').textContent=won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
+ $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost)loadLevel(model.level.id);else{model.resume();$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
+}
+function pause(){drag=null;rotationVelocity=0;if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
+function loadLevel(n){drag=null;rotationVelocity=0;model=new ColorClearGame(makeLevel(n));shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
+$('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(model.level.id);};
+function toggleSound(){muted=!muted;save('muted',muted);if(!muted){ensureAudio();tone();}syncUI(true);}
+$('sound').onclick=toggleSound;$('dialog-sound').onclick=toggleSound;
+$('dialog-haptic').onclick=()=>{haptic=!haptic;save('haptic',haptic);syncUI(true);vibrate();};
+$('help').onclick=()=>{pause();openDialog('help');};
+$('level-select').onclick=()=>{
+ $('dialog-title').textContent='选择一份颜色';$('dialog-text').textContent=`已解锁 ${unlocked} / ${LEVEL_COUNT} 关`;
+ const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:14px 0';
+ for(let i=1;i<=LEVEL_COUNT;i++){const b=document.createElement('button');b.textContent=String(i);b.disabled=i>unlocked;b.style.cssText=`padding:10px 0;background:${i<=unlocked?'#deedda':'#eff0e9'};opacity:${i<=unlocked?1:.4}`;b.onclick=()=>loadLevel(i);grid.append(b);}
+ $('dialog-text').append(grid);
+};
+$('stage').addEventListener('pointerdown',e=>{if(model.phase!=='playing'||drag)return;ensureAudio();drag={id:e.pointerId,x:e.clientX};rotationVelocity=0;lastDragTime=performance.now();$('stage').setPointerCapture(e.pointerId);});
+$('stage').addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;const now=performance.now(),delta=(e.clientX-drag.x)*.012;rotationVelocity=Math.max(-1.8,Math.min(1.8,delta/Math.max(.008,(now-lastDragTime)/1000)));lastDragTime=now;model.rotate(delta);drag.x=e.clientX;root.rotation.y=model.yaw;syncUI(true);});
+function endDrag(e){if(drag?.id===e.pointerId){if(e.type!=='pointerup'||performance.now()-lastDragTime>90)rotationVelocity=0;drag=null;if($('stage').hasPointerCapture(e.pointerId))$('stage').releasePointerCapture(e.pointerId);}}
+for(const event of ['pointerup','pointercancel','lostpointercapture'])$('stage').addEventListener(event,endDrag);
+window.addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(model.phase==='paused')$('primary').click();else pause();}if(e.key==='ArrowLeft'){model.rotate(-.15);syncUI(true);}if(e.key==='ArrowRight'){model.rotate(.15);syncUI(true);}});
+$('world').addEventListener('webglcontextlost',e=>{e.preventDefault();pause();toast('3D画面暂时中断，请刷新页面恢复');});
+function frame(time){
+ const dt=Math.min(.04,Math.max(0,(time-lastTime)/1000));lastTime=time;
+ if(model.phase==='playing'&&!drag&&Math.abs(rotationVelocity)>.015){model.rotate(rotationVelocity*dt);rotationVelocity*=Math.exp(-18*dt);syncUI(true);}
+ model.tick(dt);root.rotation.y=model.yaw;processEvents();syncUI();
+ if(model.phase!==shownPhase){shownPhase=model.phase;if(model.phase==='won'||model.phase==='lost')openDialog();}
+ for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.age+=dt;b.mesh.position.lerpVectors(b.start,b.end,Math.min(1,b.age/.12));if(b.age>.13){scene.remove(b.mesh);bullets.splice(i,1);}}
+ particles=particles.filter(p=>p.age<p.life);
+ for(let i=0;i<particles.length;i++){const p=particles[i];p.age+=dt;p.v.y-=14*dt;p.p.addScaledVector(p.v,dt);dummy.position.copy(p.p);dummy.rotation.set(p.age*6,p.spin+p.age*5,p.age*3);dummy.scale.setScalar(Math.max(0,1-p.age/p.life)*1.6);dummy.updateMatrix();particleMesh.setMatrixAt(i,dummy.matrix);particleMesh.setColorAt(i,domColors[p.color]);}
+ particleMesh.count=particles.length;particleMesh.instanceMatrix.needsUpdate=true;if(particleMesh.instanceColor)particleMesh.instanceColor.needsUpdate=true;
+ if(time<comboUntil&&model.combo>=3){if(!$('combo').textContent.startsWith('连锁')||model.combo%7===0)$('combo').textContent=`消除 × ${model.combo}`;$('combo').classList.add('show');}else{$('combo').classList.remove('show');$('combo').textContent='';}
+ const stamp=model.remaining+':'+model.yaw.toFixed(3);
+ if(stamp!==rangeStamp){
+  rangeStamp=stamp;const affected=new Set();
+  for(const core of model.visibleTargets().filter(c=>c.core))for(const c of model.chainPreview(core.id))affected.add(c.id);
+  const positions=[];for(const id of affected){const c=model.cells[id];for(let i=0;i<edgePositions.count;i++)positions.push(edgePositions.getX(i)+c.x,edgePositions.getY(i)+c.y,edgePositions.getZ(i)+c.z);}
+  rangeGeometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));rangeGeometry.computeBoundingSphere();rangeLines.visible=positions.length>0; $('world').dataset.maxChainRange=String(Math.max(Number($('world').dataset.maxChainRange||0),affected.size));
+ }
+ renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
+}
+window.__colorClear={snapshot:()=>({level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason})};
+window.addEventListener('pagehide',()=>{cancelAnimationFrame(frameId);audio?.suspend();});
+window.addEventListener('pageshow',e=>{if(e.persisted){lastTime=performance.now();frameId=requestAnimationFrame(frame);}});
+buildModel();syncUI(true);shownPhase='playing';frameId=requestAnimationFrame(frame);

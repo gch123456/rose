@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4e9"><title>转转积木 · 3D 消除原型</title><link rel="stylesheet" href="./style.css"></head>
+<body><main class="game-shell">
+<header class="topbar"><button id="pause" class="icon-button" aria-label="暂停">Ⅱ</button><div class="heading"><span class="eyebrow">A LITTLE COLOR BREAK</span><h1>转转积木<span class="prototype">试玩</span></h1></div><button id="sound" class="icon-button" aria-label="切换声音">♫</button></header>
+<section class="level-heading"><span id="level-name">第 01 关 · 初见方糖</span><span id="level-dots" aria-hidden="true">● ○ ○ ○ ○</span></section>
+<section id="stage" aria-label="3D积木模型，左右拖动旋转"><div class="scene-caption"><span class="pill">轻松一下，慢慢来</span><span id="remaining">剩余 0 块</span></div><div class="model-shadow"></div><canvas id="world"></canvas><div id="combo" aria-live="polite"></div><div id="rotate-hint">↔ <span>左右拖动，发现另一面</span></div><div class="stage-bottom"><span id="core-tip">◇ 发光核心可以连锁清除</span><span id="percent">0%</span></div><div class="progress-track"><div id="progress"></div></div></section>
+<section class="launch-panel"><div class="section-title"><span>发射台 <small id="slot-count">0 / 4</small></span><span id="status">选一颗，让颜色动起来</span></div><div id="slots" class="slots"></div></section>
+<section class="supply-panel"><div class="section-title"><span>下一批颜色</span><small>点前排入槽 · 下排为预览</small></div><div id="supply" class="supply"></div></section>
+<footer><span class="footer-mark">● ◆ ▲ ■</span><span id="footer-hint">没有倒计时，想好了再点</span><button id="help" aria-label="玩法说明">?</button></footer>
+<div id="toast" role="status"></div>
+<div id="overlay" class="overlay" hidden><div class="dialog"><div id="dialog-symbol" class="dialog-symbol">Ⅱ</div><span id="dialog-kicker" class="eyebrow">TAKE YOUR TIME</span><h2 id="dialog-title">休息一下</h2><p id="dialog-text">颜色不会偷偷溜走。</p><button id="primary" class="primary">继续游戏</button><button id="restart" class="secondary">重新开始这一关</button><div class="dialog-options"><button id="dialog-sound">声音：开</button><button id="dialog-haptic">振动：关</button></div><button id="level-select" class="text-button">选择已解锁关卡</button></div></div>
+<div id="webgl-error" hidden>这台设备暂时无法开启 3D 画面，请尝试更新浏览器。</div>
+</main><script type="module" src="./main.js"></script></body></html>
