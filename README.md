@@ -1,5 +1,7 @@
 # GoDuck · 鸭命要紧（暂定名）
 
+**现成试玩：[法师鸭 · 650块](preview/wizard-duck.html) / [柴犬团子 · 400块](preview/shiba.html)。打开后点“直接试玩”，不用自行导入或配弹。**
+
 作者可打开[私有关卡工坊](preview/level-studio.html)：参考图/本地GLB→可调密度积木→弹药账本→试玩/导出，详见[使用说明](docs/LEVEL_STUDIO.md)。图片生成服务尚未配置。
 
 > **新增可玩实验：转转积木（2026-11-16）**

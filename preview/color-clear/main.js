@@ -18,7 +18,7 @@ let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Number(pref('unlocked',1))||1));
 let muted=pref('muted',false),haptic=pref('haptic',false);
 let studioLevel=null,studioError='';
 if(new URLSearchParams(location.search).get('studio')==='1'){
- try{const raw=JSON.parse(sessionStorage.getItem('color-clear.studio-level')||'null');if(!raw)throw Error('找不到制作工具传入的关卡');studioLevel=decodeLevel(raw.data);if(!Array.isArray(raw.palette)||raw.palette.length>6||!raw.palette.length||!raw.palette.every(c=>/^#[0-9a-f]{6}$/i.test(c))||studioLevel.cells.some(c=>!raw.palette[c.color]))throw Error('试玩调色板无效');raw.palette.forEach((c,i)=>COLORS[i]=c);}
+ try{const raw=JSON.parse(sessionStorage.getItem('color-clear.studio-level')||'null');if(!raw)throw Error('找不到制作工具传入的关卡');studioLevel=decodeLevel(raw.data);if(!Array.isArray(raw.palette)||raw.palette.length>6||!raw.palette.length||!raw.palette.every(c=>/^#[0-9a-f]{6}$/i.test(c))||studioLevel.cells.some(c=>!raw.palette[c.color]))throw Error('试玩调色板无效');raw.palette.forEach((c,i)=>{COLORS[i]=c;NAMES[i]=`颜色${i+1}`;});}
  catch(error){studioError='制作关卡未加载：'+error.message;studioLevel=null;}
 }
 const fixtureMode=!!studioLevel||new URLSearchParams(location.search).get('fixture')==='rescue';

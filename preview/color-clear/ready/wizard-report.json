@@ -1,0 +1,141 @@
+{
+  "generator": "tools/prepare-wizard-duck.py",
+  "method": "triangle shell rasterization and enclosed interior fill",
+  "pitch": 0.1459312761399732,
+  "solidCellCount": 650,
+  "shellCellCount": 558,
+  "filledInteriorCellCount": 92,
+  "connectedComponents": 1,
+  "axes": "original GLB Y-up; integer grid centered on all three axes",
+  "textureSampling": "nearest source triangle, barycentric UV interpolation, V-flipped image sampling, nearest Lab palette; palette quantization loses texture detail",
+  "name": "法师鸭",
+  "original": {
+    "bytes": 24427824,
+    "triangles": 776274,
+    "sha256": "58a7971dbd3eb65b137d10ed33ba7a7ce26d20d024651b8bbe8bffcd57bd0049"
+  },
+  "optimized": {
+    "bytes": 2770364,
+    "triangles": 31050,
+    "sha256": "939aa148a275c592b287b3acf975fed3d6457b18379584b793ef4bccbe37a182"
+  },
+  "inputWatertight": false,
+  "sealed": true,
+  "sealingDescription": "Coarse rasterized shell encloses an interior; binary hole fill adds only enclosed grid cells. Source mesh is not watertight.",
+  "closingApplied": false,
+  "manualBridgesAdded": 0,
+  "randomDeletionApplied": false,
+  "targetCount": 650,
+  "searchedPitches": [
+    {
+      "pitch": 0.14599728330292483,
+      "cells": 650
+    },
+    {
+      "pitch": 0.1324790163304318,
+      "cells": 816
+    },
+    {
+      "pitch": 0.1392381498166783,
+      "cells": 729
+    },
+    {
+      "pitch": 0.14261771655980157,
+      "cells": 696
+    },
+    {
+      "pitch": 0.14430749993136321,
+      "cells": 669
+    },
+    {
+      "pitch": 0.14515239161714402,
+      "cells": 657
+    },
+    {
+      "pitch": 0.1455748374600344,
+      "cells": 653
+    },
+    {
+      "pitch": 0.14578606038147962,
+      "cells": 652
+    },
+    {
+      "pitch": 0.14589167184220223,
+      "cells": 651
+    },
+    {
+      "pitch": 0.1459444775725635,
+      "cells": 650
+    },
+    {
+      "pitch": 0.14591807470738288,
+      "cells": 651
+    },
+    {
+      "pitch": 0.1459312761399732,
+      "cells": 650
+    },
+    {
+      "pitch": 0.14592467542367804,
+      "cells": 651
+    }
+  ],
+  "gridDimensions": [
+    13,
+    15,
+    11
+  ],
+  "componentSizes": [
+    650
+  ],
+  "palette": [
+    "#e8ebe4",
+    "#174d8b",
+    "#69b8d2",
+    "#e7b74c",
+    "#795536",
+    "#273438"
+  ],
+  "colorCounts": {
+    "#e8ebe4": 158,
+    "#174d8b": 336,
+    "#69b8d2": 30,
+    "#e7b74c": 46,
+    "#795536": 56,
+    "#273438": 24
+  },
+  "transforms": {
+    "sourceToGridScale": 6.852540637284827,
+    "voxelTransform": [
+      [
+        0.1459312761399732,
+        0.0,
+        0.0,
+        -0.8755876568398392
+      ],
+      [
+        0.0,
+        0.1459312761399732,
+        0.0,
+        -1.0215189329798124
+      ],
+      [
+        0.0,
+        0.0,
+        0.1459312761399732,
+        -0.7296563806998659
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "indexOffset": [
+      6,
+      7,
+      5
+    ]
+  }
+}

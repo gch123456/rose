@@ -1,5 +1,7 @@
 # 作者关卡工坊
 
+只看已做好的模型时，直接打开[法师鸭650块](../preview/wizard-duck.html)或[柴犬400块](../preview/shiba.html)，再点直接试玩，无需走以下制作流程。
+
 仅作者本机使用，未放入玩家界面。使用同一预览服务，执行 `npm ci`、`npm run preview:build`、`npm run preview:serve`，打开 `http://127.0.0.1:4179/preview/level-studio.html`。默认只绑定本机；不是公开后台。可导出文件到另一台电脑使用。
 
 ## 工作流程
