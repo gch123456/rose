@@ -1,0 +1,653 @@
+{
+  "version": 1,
+  "notes": [
+    "Profiles are design hypotheses; these measurements are not human win rates, completion times, or retention predictions.",
+    "Witness replay loads one capsule at a time, uses at most four slots, and invokes no reward/continue API.",
+    "witnessViewChanges counts chosen reference-view changes, not a proof that rotation is necessary.",
+    "Policies rotate 0.035 radians and tick 0.2 seconds per step; max1800 ticks, seed20261116; timeout is not proof of unsolvability.",
+    "meanQueueOptions counts distinct colors among available lane heads before each witness action. Color boundaries count adjacent lattice pairs.",
+    "All colors/cores/queues are fixed at generation. No runtime adaptation, paid advantage, or forced ad is part of the witness."
+  ],
+  "levels": [
+    {
+      "id": 1,
+      "name": "柠檬小鸭",
+      "profile": {
+        "tier": "warmup",
+        "label": "轻松上手",
+        "shotBudget": 14,
+        "lanes": 4,
+        "accentRegions": 0,
+        "coreStride": 0,
+        "viewStride": 0
+      },
+      "metrics": {
+        "cells": 82,
+        "colors": 3,
+        "cores": 0,
+        "capsules": 9,
+        "totalAmmo": 82,
+        "colorTransitions": 5,
+        "colorBoundaries": 17,
+        "neighborPairs": 157,
+        "meanQueueOptions": 2.111,
+        "witnessViewChanges": 0,
+        "witnessShots": 82,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 30,
+          "shots": 82,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 28,
+          "shots": 82,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 31,
+          "shots": 82,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "薄荷小兔",
+      "profile": {
+        "tier": "warmup",
+        "label": "轻松上手",
+        "shotBudget": 12,
+        "lanes": 4,
+        "accentRegions": 0,
+        "coreStride": 0,
+        "viewStride": 4
+      },
+      "metrics": {
+        "cells": 62,
+        "colors": 4,
+        "cores": 0,
+        "capsules": 9,
+        "totalAmmo": 62,
+        "colorTransitions": 6,
+        "colorBoundaries": 40,
+        "neighborPairs": 121,
+        "meanQueueOptions": 2.667,
+        "witnessViewChanges": 2,
+        "witnessShots": 62,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 27,
+          "shots": 62,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 23,
+          "shots": 62,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 22,
+          "shots": 62,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "奶油小猫",
+      "profile": {
+        "tier": "warmup",
+        "label": "轻松上手",
+        "shotBudget": 10,
+        "lanes": 4,
+        "accentRegions": 0,
+        "coreStride": 0,
+        "viewStride": 4
+      },
+      "metrics": {
+        "cells": 67,
+        "colors": 3,
+        "cores": 0,
+        "capsules": 8,
+        "totalAmmo": 67,
+        "colorTransitions": 5,
+        "colorBoundaries": 36,
+        "neighborPairs": 127,
+        "meanQueueOptions": 1.875,
+        "witnessViewChanges": 1,
+        "witnessShots": 67,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 23,
+          "shots": 67,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 23,
+          "shots": 67,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 23,
+          "shots": 67,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "海盐小鸭",
+      "profile": {
+        "tier": "planning",
+        "label": "顺序规划",
+        "shotBudget": 8,
+        "lanes": 4,
+        "accentRegions": 1,
+        "coreStride": 19,
+        "viewStride": 2
+      },
+      "metrics": {
+        "cells": 82,
+        "colors": 4,
+        "cores": 4,
+        "capsules": 12,
+        "totalAmmo": 71,
+        "colorTransitions": 6,
+        "colorBoundaries": 31,
+        "neighborPairs": 157,
+        "meanQueueOptions": 2,
+        "witnessViewChanges": 5,
+        "witnessShots": 71,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 38,
+          "shots": 71,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 32,
+          "shots": 71,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 33,
+          "shots": 71,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "草莓小兔",
+      "profile": {
+        "tier": "planning",
+        "label": "顺序规划",
+        "shotBudget": 7,
+        "lanes": 4,
+        "accentRegions": 1,
+        "coreStride": 19,
+        "viewStride": 2
+      },
+      "metrics": {
+        "cells": 62,
+        "colors": 4,
+        "cores": 2,
+        "capsules": 11,
+        "totalAmmo": 56,
+        "colorTransitions": 7,
+        "colorBoundaries": 25,
+        "neighborPairs": 121,
+        "meanQueueOptions": 2.273,
+        "witnessViewChanges": 5,
+        "witnessShots": 56,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 31,
+          "shots": 56,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 29,
+          "shots": 56,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 28,
+          "shots": 56,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "天空小猫",
+      "profile": {
+        "tier": "planning",
+        "label": "顺序规划",
+        "shotBudget": 6,
+        "lanes": 4,
+        "accentRegions": 1,
+        "coreStride": 19,
+        "viewStride": 2
+      },
+      "metrics": {
+        "cells": 67,
+        "colors": 4,
+        "cores": 2,
+        "capsules": 12,
+        "totalAmmo": 60,
+        "colorTransitions": 5,
+        "colorBoundaries": 36,
+        "neighborPairs": 127,
+        "meanQueueOptions": 1.833,
+        "witnessViewChanges": 5,
+        "witnessShots": 60,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 31,
+          "shots": 60,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 23,
+          "shots": 60,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 31,
+          "shots": 60,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "连锁小鸭",
+      "profile": {
+        "tier": "challenge",
+        "label": "多面挑战",
+        "shotBudget": 5,
+        "lanes": 4,
+        "accentRegions": 2,
+        "coreStride": 31,
+        "viewStride": 1
+      },
+      "metrics": {
+        "cells": 82,
+        "colors": 4,
+        "cores": 2,
+        "capsules": 18,
+        "totalAmmo": 75,
+        "colorTransitions": 14,
+        "colorBoundaries": 38,
+        "neighborPairs": 157,
+        "meanQueueOptions": 2.389,
+        "witnessViewChanges": 17,
+        "witnessShots": 75,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 61,
+          "shots": 75,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 39,
+          "shots": 75,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 36,
+          "shots": 73,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "花园小兔",
+      "profile": {
+        "tier": "challenge",
+        "label": "多面挑战",
+        "shotBudget": 4,
+        "lanes": 4,
+        "accentRegions": 2,
+        "coreStride": 31,
+        "viewStride": 1
+      },
+      "metrics": {
+        "cells": 62,
+        "colors": 4,
+        "cores": 2,
+        "capsules": 15,
+        "totalAmmo": 54,
+        "colorTransitions": 6,
+        "colorBoundaries": 27,
+        "neighborPairs": 121,
+        "meanQueueOptions": 1.933,
+        "witnessViewChanges": 14,
+        "witnessShots": 54,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 25,
+          "shots": 54,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 25,
+          "shots": 54,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 25,
+          "shots": 54,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "彩虹小猫",
+      "profile": {
+        "tier": "challenge",
+        "label": "多面挑战",
+        "shotBudget": 3,
+        "lanes": 4,
+        "accentRegions": 2,
+        "coreStride": 31,
+        "viewStride": 1
+      },
+      "metrics": {
+        "cells": 67,
+        "colors": 4,
+        "cores": 2,
+        "capsules": 21,
+        "totalAmmo": 61,
+        "colorTransitions": 5,
+        "colorBoundaries": 38,
+        "neighborPairs": 127,
+        "meanQueueOptions": 1.571,
+        "witnessViewChanges": 20,
+        "witnessShots": 61,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 35,
+          "shots": 61,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 35,
+          "shots": 61,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "won",
+          "ticks": 42,
+          "shots": 61,
+          "remaining": 0,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "晚安小鸭",
+      "profile": {
+        "tier": "challenge",
+        "label": "多面挑战",
+        "shotBudget": 3,
+        "lanes": 4,
+        "accentRegions": 2,
+        "coreStride": 31,
+        "viewStride": 1
+      },
+      "metrics": {
+        "cells": 82,
+        "colors": 4,
+        "cores": 2,
+        "capsules": 28,
+        "totalAmmo": 75,
+        "colorTransitions": 15,
+        "colorBoundaries": 38,
+        "neighborPairs": 157,
+        "meanQueueOptions": 2.143,
+        "witnessViewChanges": 27,
+        "witnessShots": 75,
+        "witnessOutcome": "won",
+        "witnessPeakSlots": 1,
+        "rewardUses": 0
+      },
+      "policies": [
+        {
+          "policy": "front-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 78,
+          "shots": 75,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "visible-first",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "timeout",
+          "ticks": 1800,
+          "shots": 65,
+          "remaining": 10,
+          "peakSlots": 4,
+          "rewardUses": 0
+        },
+        {
+          "policy": "seeded",
+          "seed": 20261116,
+          "maxTicks": 1800,
+          "outcome": "lost",
+          "ticks": 59,
+          "shots": 74,
+          "remaining": 1,
+          "peakSlots": 4,
+          "rewardUses": 0
+        }
+      ]
+    }
+  ]
+}

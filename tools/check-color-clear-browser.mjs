@@ -7,7 +7,7 @@ const errors=[];
 try {
  const page=await browser.newPage({viewport:{width:430,height:932},deviceScaleFactor:1,isMobile:true,hasTouch:true});
  page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>localStorage.setItem('color-clear.unlocked','3'));
+ await page.addInitScript(()=>localStorage.setItem('color-clear.unlocked','4'));
  await page.goto(url+(url.includes('?')?'&':'?')+'autospin=0');await page.waitForFunction(()=>window.__colorClear?.snapshot().remaining>0);
  assert.equal(await page.locator('#world').evaluate(c=>!!c.getContext('webgl2')),true,'real WebGL2 context');
  await page.locator('[data-column="0"]').tap();
@@ -47,9 +47,9 @@ try {
  await page.screenshot({path:'/tmp/rose-color-clear-small.png'});
  await page.setViewportSize({width:1280,height:900});await page.waitForTimeout(150);
  await page.screenshot({path:'/tmp/rose-color-clear-desktop.png'});
- await page.locator('#pause').click();await page.locator('#level-select').click();await page.locator('#dialog-text button').nth(2).click();
+ await page.locator('#pause').click();await page.locator('#level-select').click();await page.locator('#dialog-text button').nth(3).click();
  const box=await page.locator('#stage').boundingBox();
- for(const action of makeLevel(3).solution){
+ for(const action of makeLevel(4).solution){
   const current=(await page.evaluate(()=>window.__colorClear.snapshot())).yaw;
   let delta=((action.yaw-current+Math.PI*3)%(Math.PI*2))-Math.PI;
   while(Math.abs(delta)>.00001){const step=Math.max(-.9,Math.min(.9,delta));const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+step/.012,y,{steps:3});await page.waitForTimeout(110);await page.mouse.up();delta-=step;}
