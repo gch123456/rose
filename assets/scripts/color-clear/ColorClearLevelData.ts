@@ -26,7 +26,8 @@ export function decodeLevel(input: unknown): Level {
     }
     const envelope=record(input,['version','level','palette']);
     if(envelope.version!==1) throw new Error('不支持的关卡版本');
-    const raw=record(envelope.level,['id','name','cells','supply','initialYaw','initialPitch','solution','replay']);
+    const raw=record(envelope.level,['id','name','cells','supply','initialYaw','initialPitch','solution','replay','pacing']);
+    if(raw.pacing!==undefined&&raw.pacing!=='remaining')throw new Error('清除节奏无效');
     const id=integer(raw.id,1,Number.MAX_SAFE_INTEGER);
     if(typeof raw.name!=='string'||!raw.name.trim()||raw.name.length>80) throw new Error('关卡名称无效');
     if(!Array.isArray(raw.cells)||raw.cells.length>6000) throw new Error('积木数量超限');
@@ -51,7 +52,7 @@ export function decodeLevel(input: unknown): Level {
     for(let color=0;color<6;color++)if(cells.filter(c=>c.color===color).length!==supply.flat().filter(c=>c.color===color).reduce((n,c)=>n+c.ammo,0))throw new Error('每色弹量必须等于积木数量');
     if(!Array.isArray(raw.solution)||raw.solution.length>400||(raw.replay===undefined&&raw.solution.length!==capsuleIds.size))throw new Error('参考通路长度无效');
     const solution=raw.solution.map(v=>{const a=record(v,['column','yaw']);if(typeof a.yaw!=='number')throw new Error('参考通路缺少视角');return {column:integer(a.column,0,3),yaw:angle(a.yaw,0,Math.PI*16)};});
-    const level:Level={id,name:raw.name,cells,supply,solution,initialYaw:angle(raw.initialYaw,0,Math.PI*16),initialPitch:angle(raw.initialPitch,0,Math.PI/2)};
+    const level:Level={...(raw.pacing?{pacing:raw.pacing}:{}),id,name:raw.name,cells,supply,solution,initialYaw:angle(raw.initialYaw,0,Math.PI*16),initialPitch:angle(raw.initialPitch,0,Math.PI/2)};
     if(raw.replay!==undefined){
         if(!Array.isArray(raw.replay)||!raw.replay.length||raw.replay.length>20000||solution.length)throw new Error('长弹筒通路长度无效');
         let total=0;

@@ -2,6 +2,9 @@ import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {decodeLevel} from '../assets/scripts/color-clear/ColorClearLevelData.ts';
+import {variantData} from '../preview/color-clear/supply-variants.js';
+import {wizardFingerprint} from './build-wizard.mjs';
 import {buildWizardPreset} from './build-wizard.mjs';
 await buildWizardPreset();
 import {buildShibaPreset} from './build-shiba.mjs';
@@ -32,5 +35,8 @@ async function buildReady(output,config){
 }
 await buildReady('shiba.html',{kind:'shiba',title:'柴犬团子',kicker:'YOUR LITTLE SHIBA · 原创程序造型',description:'尖耳朵、奶油肚皮和卷尾巴。',data:JSON.parse(fs.readFileSync(path.join(root,'preview/color-clear/ready/level.json'),'utf8'))});
 const wizard=path.join(root,'preview/color-clear/ready/wizard-level.json');
-if(fs.existsSync(wizard))await buildReady('wizard-duck.html',{kind:'wizard',title:'法师鸭',kicker:'YOUR LITTLE WIZARD · 已为你做好',description:'蓝色巫师帽、魔法球和法杖。',asset:'./models/wizard-duck.glb',triangles:31050,data:JSON.parse(fs.readFileSync(wizard,'utf8'))});
+const wizardData=JSON.parse(fs.readFileSync(wizard,'utf8')),shuffles=JSON.parse(fs.readFileSync(path.join(root,'preview/color-clear/ready/wizard-shuffles.json'),'utf8'));
+if(shuffles.version!==1||shuffles.fingerprint!==wizardFingerprint(wizardData.level)||shuffles.variants.length!==4)throw Error('随机队列需要重新生成');
+for(const variant of shuffles.variants)decodeLevel(variantData(wizardData,variant));
+if(fs.existsSync(wizard))await buildReady('wizard-duck.html',{kind:'wizard',title:'法师鸭',kicker:'YOUR LITTLE WIZARD · 已为你做好',description:'蓝色巫师帽、魔法球和法杖。',asset:'./models/wizard-duck.glb',triangles:31050,data:wizardData,shuffles});
 console.log('Built ready-to-play models.');

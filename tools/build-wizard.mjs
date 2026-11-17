@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {makeLongBatchLevel} from '../assets/scripts/color-clear/ColorClearLevels.ts';
 import {encodeLevel,decodeLevel} from '../assets/scripts/color-clear/ColorClearLevelData.ts';
 /** Keep the same reference load order while making four lane heads informative. */
@@ -12,9 +13,11 @@ function spreadSupplyHeads(level){
 export async function buildWizardPreset(){
  const source=JSON.parse(await fs.readFile(new URL('../preview/color-clear/ready/wizard-hd-cells.json',import.meta.url),'utf8'));
  if(source.cells.length<2800||source.cells.length>3500)throw Error('高清法师鸭应为约3000块');
- const level=makeLongBatchLevel(source.cells,{id:1003,name:'法师鸭',difficulty:'normal',batchSize:75});
+ const level=makeLongBatchLevel(source.cells,{id:1003,name:'法师鸭',difficulty:'normal',batchSize:75,pacing:'remaining'});
  spreadSupplyHeads(level);level.initialYaw=.1;level.initialPitch=.12;
  const data={...JSON.parse(encodeLevel(level)),palette:source.palette};decodeLevel(data);
  await fs.writeFile(new URL('../preview/color-clear/ready/wizard-level.json',import.meta.url),JSON.stringify(data)+'\n');return data;
 }
 if(process.argv[1]?.endsWith('/build-wizard.mjs'))console.log('Verified wizard pieces:',(await buildWizardPreset()).level.cells.length);
+
+export function wizardFingerprint(level){return createHash('sha256').update(JSON.stringify({cells:level.cells,caps:level.supply.flat().slice().sort((a,b)=>a.id-b.id),pacing:level.pacing})).digest('hex');}

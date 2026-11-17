@@ -200,7 +200,7 @@ export class ColorClearView extends Component {
         const g=this.projectilePen;g.clear();
         for(let i=this.visualShots.length-1;i>=0;i--){const shot=this.visualShots[i],flight=this.model.flights.find(f=>f.id===shot.flightId);if(!flight){this.visualShots.splice(i,1);continue;}
             const target=this.voxels[shot.id];if(!target)continue;const aim=new Vec3(0,this.model.cells[shot.id].shape==='hemisphere'?.23:0,0);Vec3.transformMat4(aim,aim,target.worldMatrix);const screen=this.camera.worldToScreen(aim),world=this.uiCamera.screenToWorld(screen),end=this.ui.getComponent(UITransform)!.convertToNodeSpaceAR(world);
-            const x=-245+shot.slot*98,y=-175,t=Math.max(0,Math.min(1,1-flight.time/FLIGHT_SECONDS)),cx=(x+end.x)/2,cy=Math.max(y,end.y)+30;
+            const x=-245+shot.slot*98,y=-175,t=Math.max(0,Math.min(1,1-flight.time/(flight.duration??FLIGHT_SECONDS))),cx=(x+end.x)/2,cy=Math.max(y,end.y)+30;
             const px=(1-t)*(1-t)*x+2*(1-t)*t*cx+t*t*end.x,py=(1-t)*(1-t)*y+2*(1-t)*t*cy+t*t*end.y;
             g.strokeColor=new Color('#a9d9cf');g.lineWidth=3;g.moveTo(x,y);g.lineTo(px,py);g.stroke();g.fillColor=new Color('#ffffed');g.circle(px,py,6);g.fill();
         }

@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import {chooseVariant,variantData} from './supply-variants.js';
 import {makePieceGeometries} from './shapes.js';
 import {decodeLevel} from '../../assets/scripts/color-clear/ColorClearLevelData.ts';
 import {getDifficultyProfile} from '../../assets/scripts/color-clear/ColorClearDifficulty.ts';
 import {ModelOrbit} from '../../assets/scripts/color-clear/ColorClearOrbit.ts';
 import {createAlbumUI} from './album.js';
 import {normalizePresentation} from './presentation.js';
-import { ColorClearGame, FLIGHT_SECONDS, aimY } from '../../assets/scripts/color-clear/ColorClearGame.ts';
+import { ColorClearGame, FLIGHT_SECONDS, aimY, eliminationPace } from '../../assets/scripts/color-clear/ColorClearGame.ts';
 import { makeLevel, makeRescueFixture, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
 
 const $=id=>document.getElementById(id);
@@ -16,10 +17,17 @@ const pref=(key,fallback)=>{try{return JSON.parse(localStorage.getItem('color-cl
 const save=(key,value)=>{try{localStorage.setItem('color-clear.'+key,JSON.stringify(value));}catch{/* Private mode may disable storage; play stays available. */}};
 let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Number(pref('unlocked',1))||1));
 let muted=pref('muted',false),haptic=pref('haptic',false);
-let studioLevel=null,studioError='';
+let studioLevel=null,studioError='',shuffleBase=null,shuffleVariants=[],shuffleIndex=-1;
 if(new URLSearchParams(location.search).get('studio')==='1'){
- try{const raw=JSON.parse(sessionStorage.getItem('color-clear.studio-level')||'null');if(!raw)throw Error('找不到制作工具传入的关卡');studioLevel=decodeLevel(raw.data);if(!Array.isArray(raw.palette)||raw.palette.length>6||!raw.palette.length||!raw.palette.every(c=>/^#[0-9a-f]{6}$/i.test(c))||studioLevel.cells.some(c=>!raw.palette[c.color]))throw Error('试玩调色板无效');raw.palette.forEach((c,i)=>{COLORS[i]=c;NAMES[i]=`颜色${i+1}`;});}
- catch(error){studioError='制作关卡未加载：'+error.message;studioLevel=null;}
+ try{
+  const rawText=sessionStorage.getItem('color-clear.studio-level')||'null';if(rawText.length>3000000)throw Error('试玩数据超限');const raw=JSON.parse(rawText);if(!raw)throw Error('找不到制作工具传入的关卡');
+  const pool=Array.isArray(raw.shuffleVariants)&&raw.shuffleVariants.length>=2&&raw.shuffleVariants.length<=8?raw.shuffleVariants:[];
+  const last=Number(sessionStorage.getItem('color-clear.last-shuffle')??raw.shuffleIndex??-1),index=pool.length?chooseVariant(pool.length,last):-1;
+  const next=decodeLevel(pool.length?variantData(raw.data,pool[index]):raw.data);
+  if(!Array.isArray(raw.palette)||raw.palette.length>6||!raw.palette.length||!raw.palette.every(c=>/^#[0-9a-f]{6}$/i.test(c))||next.cells.some(c=>!raw.palette[c.color]))throw Error('试玩调色板无效');
+  studioLevel=next;shuffleBase=pool.length?raw.data:null;shuffleVariants=pool;shuffleIndex=index;
+  raw.palette.forEach((c,i)=>{COLORS[i]=c;NAMES[i]=`颜色${i+1}`;});if(pool.length)try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}
+ }catch(error){studioError='制作关卡未加载：'+error.message;studioLevel=null;shuffleBase=null;shuffleVariants=[];shuffleIndex=-1;}
 }
 const fixtureMode=!!studioLevel||new URLSearchParams(location.search).get('fixture')==='rescue';
 const levelFor=n=>studioLevel?structuredClone(studioLevel):fixtureMode?makeRescueFixture():makeLevel(n);
@@ -184,7 +192,7 @@ function openDialog(mode='phase'){
  $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(model.level.id);}else{model.resume();$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
 }
 function pause(){drag=null;rotationVelocity=0;orbit.release(true,0);if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
-function loadLevel(n){if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=new ColorClearGame(levelFor(n));orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
+function loadLevel(n){if(shuffleVariants.length){try{const index=chooseVariant(shuffleVariants.length,shuffleIndex);const next=decodeLevel(variantData(shuffleBase,shuffleVariants[index]));studioLevel=next;shuffleIndex=index;try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}}catch{toast('随机队列未通过校验，保留当前排列');}}if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=new ColorClearGame(levelFor(n));orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
 $('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(model.level.id);};
 function toggleSound(){muted=!muted;save('muted',muted);if(!muted){ensureAudio();tone();}syncUI(true);}
 $('sound').onclick=toggleSound;$('dialog-sound').onclick=toggleSound;
@@ -209,7 +217,7 @@ function frame(time){
  model.tick(dt);root.rotation.set(model.pitch,model.yaw,0,'XYZ');processEvents();syncUI();
  if(model.phase!==shownPhase){shownPhase=model.phase;if(!rewardSession&&(model.phase==='won'||model.phase==='lost'))openDialog();}
  const shell=document.querySelector('.game-shell').getBoundingClientRect(),stageRect=$('stage').getBoundingClientRect();$('projectiles').setAttribute('viewBox',`0 0 ${shell.width} ${shell.height}`);
- for(let i=bullets.length-1;i>=0;i--){const b=bullets[i],flight=model.flights.find(f=>f.id===b.id);if(!flight){b.path.remove();b.ball.remove();bullets.splice(i,1);continue;}const point=positionOf(b.cell).project(camera),end={x:stageRect.x-shell.x+(point.x+1)*stageRect.width/2,y:stageRect.y-shell.y+(1-point.y)*stageRect.height/2};const t=Math.max(0,Math.min(1,1-flight.time/FLIGHT_SECONDS)),control={x:(b.start.x+end.x)/2,y:Math.min(b.start.y,end.y)-24};
+ for(let i=bullets.length-1;i>=0;i--){const b=bullets[i],flight=model.flights.find(f=>f.id===b.id);if(!flight){b.path.remove();b.ball.remove();bullets.splice(i,1);continue;}const point=positionOf(b.cell).project(camera),end={x:stageRect.x-shell.x+(point.x+1)*stageRect.width/2,y:stageRect.y-shell.y+(1-point.y)*stageRect.height/2};const t=Math.max(0,Math.min(1,1-flight.time/(flight.duration??FLIGHT_SECONDS))),control={x:(b.start.x+end.x)/2,y:Math.min(b.start.y,end.y)-24};
   b.path.setAttribute('d',`M${b.start.x},${b.start.y} Q${control.x},${control.y} ${end.x},${end.y}`);b.ball.setAttribute('cx',String((1-t)**2*b.start.x+2*(1-t)*t*control.x+t*t*end.x));b.ball.setAttribute('cy',String((1-t)**2*b.start.y+2*(1-t)*t*control.y+t*t*end.y));
  }
  particles=particles.filter(p=>p.age<p.life);
@@ -225,7 +233,7 @@ function frame(time){
  }
  renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
 }
-window.__colorClear={snapshot:()=>({level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
+window.__colorClear={snapshot:()=>({visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:model.level.pacing==='remaining'?eliminationPace(model.remaining,model.cells.length):{interval:.14,flightSeconds:FLIGHT_SECONDS},shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
 window.addEventListener('pagehide',()=>{cancelAnimationFrame(frameId);audio?.suspend();});
 window.addEventListener('pageshow',e=>{if(e.persisted){lastTime=performance.now();frameId=requestAnimationFrame(frame);}});
 

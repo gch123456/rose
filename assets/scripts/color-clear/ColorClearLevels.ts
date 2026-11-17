@@ -11,7 +11,7 @@ export function makeLevel(number: number): Level {
     const cells = applyDifficulty(buildAnimalCells(id), profile);
     return generateLevel(cells, {id, name:NAMES[id-1], batchSize:profile.shotBudget}, profile.viewStride);
 }
-export type LevelOptions = {id?:number; name?:string; difficulty?:'easy'|'normal'|'hard'; batchSize?:number};
+export type LevelOptions = {id?:number; name?:string; difficulty?:'easy'|'normal'|'hard'; batchSize?:number; pacing?:'remaining'};
 /** Validate bounded lattice data before geometry or witness work. */
 export function validateLevelCells(cells: Voxel[]): Voxel[] {
     if (!Array.isArray(cells) || !cells.length || cells.length > 6000) throw new Error('积木数量必须为1–6000');
@@ -37,7 +37,8 @@ function generateLevel(input: Voxel[], options: LevelOptions, viewStride: number
     if (!Number.isSafeInteger(id)||id<1||typeof name!=='string'||!name.trim()||name.length>80) throw new Error('关卡ID或名称无效');
     if (!Number.isInteger(budget)||budget<1||budget>800) throw new Error('每筒弹量必须为1–800');
     if(options.difficulty!==undefined&&!['easy','normal','hard'].includes(options.difficulty)) throw new Error('难度无效');
-    const result: Level = { id, name, cells, initialYaw: .55, initialPitch: .24, supply: [[], [], [], []], solution: [] };
+    if(options.pacing!==undefined&&options.pacing!=='remaining')throw new Error('清除节奏无效');
+    const result: Level = { ...(options.pacing?{pacing:options.pacing}:{}), id, name, cells, initialYaw: .55, initialPitch: .24, supply: [[], [], [], []], solution: [] };
     const sim = new ColorClearGame(result);
     let serial = 0;
     while (sim.remaining) {
@@ -87,7 +88,8 @@ export function makeLongBatchLevel(input: Voxel[], options: LevelOptions = {}): 
         const batches=low<=high?Math.max(low,Math.min(high,Math.round(count/budget))):Math.ceil(count/budget);
         for(let i=0;i<batches;i++)pending.push({id:pending.length,color,ammo:low<=high?Math.floor(count/batches)+(i<count%batches?1:0):Math.min(budget,count-i*budget)});
     }
-    const result:Level={id,name,cells,supply:[[],[],[],[]],initialYaw:.55,initialPitch:.24,solution:[],replay:[]};
+    if(options.pacing!==undefined&&options.pacing!=='remaining')throw new Error('清除节奏无效');
+    const result:Level={...(options.pacing?{pacing:options.pacing}:{}),id,name,cells,supply:[[],[],[],[]],initialYaw:.55,initialPitch:.24,solution:[],replay:[]};
     const sim=new ColorClearGame({...result,supply:[pending.map(c=>({...c})),[],[],[]]});
     const views=[{yaw:.55,pitch:.24},...[0,Math.PI/2,Math.PI,Math.PI*1.5].flatMap(yaw=>[0,Math.PI/4,-Math.PI/4].map(pitch=>({yaw,pitch}))),{yaw:0,pitch:Math.PI/2},{yaw:0,pitch:-Math.PI/2}];
     let loads=0,totalTicks=0;
@@ -126,5 +128,65 @@ export function makeLongBatchLevel(input: Voxel[], options: LevelOptions = {}): 
         if(result.replay!.length>20000)throw new Error('长弹筒参考通路步骤超限');
     }
     if(sim.phase!=='won'||sim.shots!==cells.length||sim.supply[0].length||sim.slots.some(Boolean)||sim.flights.length)throw new Error('长弹筒参考通路未通关');
+    return result;
+}
+
+/** Offline seeded permutation of every capsule, followed by a real four-slot
+ * head-only planning run. Blocked seeds are rejected rather than changing the
+ * queue, granting slots, or rewriting ammunition to manufacture a witness. */
+export function planShuffledLevel(baseLevel: Level, seed: number): Level {
+    if(!Number.isSafeInteger(seed))throw new Error('随机种子必须为安全整数');
+    const cells=validateLevelCells(baseLevel.cells), capsules=baseLevel.supply.flat().map(c=>({...c}));
+    if(baseLevel.supply.length!==4||!capsules.length||capsules.length>400)throw new Error('随机供应需要四列且不超过400筒');
+    const ids=new Set<number>();
+    for(const c of capsules){
+        if(!Number.isSafeInteger(c.id)||c.id<0||ids.has(c.id)||!Number.isInteger(c.color)||c.color<0||c.color>5||!Number.isInteger(c.ammo)||c.ammo<1||c.ammo>6000)throw new Error('随机供应弹筒无效');
+        ids.add(c.id);
+    }
+    for(let color=0;color<6;color++)if(cells.filter(c=>c.color===color).length!==capsules.filter(c=>c.color===color).reduce((n,c)=>n+c.ammo,0))throw new Error('随机供应必须逐色守恒');
+    let state=seed>>>0;
+    const random=()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};
+    for(let i=capsules.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[capsules[i],capsules[j]]=[capsules[j],capsules[i]];}
+    const result:Level={...baseLevel,cells,supply:[[],[],[],[]],solution:[],replay:[]};
+    capsules.forEach((c,i)=>result.supply[i%4].push(c));
+    const sim=new ColorClearGame(result);
+    const views=[{yaw:baseLevel.initialYaw??.55,pitch:baseLevel.initialPitch??.24},...[0,Math.PI/2,Math.PI,Math.PI*1.5].flatMap(yaw=>[0,Math.PI/4,-Math.PI/4].map(pitch=>({yaw,pitch}))),{yaw:0,pitch:Math.PI/2},{yaw:0,pitch:-Math.PI/2}];
+    let totalTicks=0;
+    while(sim.phase==='playing'&&sim.remaining){
+        const active=new Set(sim.slots.filter((s):s is Capsule=>!!s&&s.ammo>0).map(s=>s.color));
+        let best:{yaw:number;pitch:number;score:number;column?:number}|undefined;
+        for(const allowLoad of [false,true]){
+            if(allowLoad&&!sim.slots.includes(null))break;
+            for(const view of views){
+                sim.rotate(view.yaw-sim.yaw,view.pitch-sim.pitch);
+                const counts=new Map<number,number>();for(const c of sim.visibleTargets())counts.set(c.color,(counts.get(c.color)??0)+1);
+                if(!allowLoad){
+                    const score=[...counts].reduce((n,[color,count])=>n+(active.has(color)?count:0),0);
+                    if(score&&(!best||score>best.score))best={...view,score};
+                }else{
+                    for(let column=0;column<4;column++){
+                        const head=sim.supply[column][0];
+                        if(!head||active.has(head.color))continue;
+                        const score=counts.get(head.color)??0;
+                        if(score&&(!best||score>best.score))best={...view,score,column};
+                    }
+                }
+            }
+            if(best)break;
+        }
+        if(!best)throw new Error('随机供应四槽规划受阻，请尝试其他种子');
+        sim.rotate(best.yaw-sim.yaw,best.pitch-sim.pitch);
+        const action={yaw:sim.yaw,pitch:sim.pitch,ticks:0,...(best.column===undefined?{}:{column:best.column})};
+        if(best.column!==undefined&&!sim.select(best.column))throw new Error('随机供应无法装填队首');
+        let idle=0;
+        while(sim.phase==='playing'&&idle<5){
+            const before=sim.shots;sim.tick(.1);sim.drainEvents();action.ticks++;totalTicks++;
+            idle=sim.shots===before&&!sim.flights.length?idle+1:0;
+            if(totalTicks>60000)throw new Error('随机供应参考通路超过时长上限');
+        }
+        result.replay!.push(action);
+        if(result.replay!.length>20000)throw new Error('随机供应参考通路步骤超限');
+    }
+    if(sim.phase!=='won'||sim.shots!==cells.length||sim.supply.some(q=>q.length)||sim.slots.some(Boolean)||sim.flights.length)throw new Error('随机供应参考通路未通关');
     return result;
 }
