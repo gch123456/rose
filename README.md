@@ -1,5 +1,7 @@
 # GoDuck · 鸭命要紧（暂定名）
 
+**新入口：[鸭命要紧 · 救援营地](preview/duck-camp.html)**：首页、每日本机补给、救援手册与独立音乐/音效开关。法师鸭可在[对比页](preview/wizard-duck.html)切换4500纯色/4500细节/5950细节后直接试玩。
+
 **现成试玩：[法师鸭 · 4500块](preview/wizard-duck.html) / [柴犬团子 · 400块](preview/shiba.html)。打开后点“直接试玩”，不用自行导入或配弹。**
 
 作者可打开[私有关卡工坊](preview/level-studio.html)：参考图/本地GLB→可调密度积木→弹药账本→试玩/导出，详见[使用说明](docs/LEVEL_STUDIO.md)。图片生成服务尚未配置。

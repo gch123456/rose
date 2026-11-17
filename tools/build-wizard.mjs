@@ -10,14 +10,15 @@ function spreadSupplyHeads(level){
  for(const {step,capsule}of loads){let column=colors.indexOf(capsule.color);if(column<0)column=supply.reduce((best,q,i)=>q.length<supply[best].length?i:best,0);step.column=column;supply[column].push(capsule);}
  level.supply=supply;
 }
-export async function buildWizardPreset(){
- const source=JSON.parse(await fs.readFile(new URL('../preview/color-clear/ready/wizard-ultra-cells.json',import.meta.url),'utf8'));
- if(source.cells.length<4000||source.cells.length>5000)throw Error('高清法师鸭应为约4500块');
- const level=makeLongBatchLevel(source.cells,{id:1003,name:'法师鸭',difficulty:'normal',batchSize:75,pacing:'fast'});
+export async function buildWizardPreset(density='ultra'){
+ if(!['ultra','fine'].includes(density))throw Error('Unknown wizard density');
+ const source=JSON.parse(await fs.readFile(new URL(`../preview/color-clear/ready/wizard-${density}-cells.json`,import.meta.url),'utf8'));
+ if(source.cells.length<4000||source.cells.length>(density==='fine'?6000:5000))throw Error('高清法师鸭积木数量超出预设范围');
+ const level=makeLongBatchLevel(source.cells,{id:density==='fine'?1004:1003,name:'法师鸭',difficulty:'normal',batchSize:75,pacing:'fast'});
  spreadSupplyHeads(level);level.initialYaw=.1;level.initialPitch=.12;
  const data={...JSON.parse(encodeLevel(level)),palette:source.palette};decodeLevel(data);
- await fs.writeFile(new URL('../preview/color-clear/ready/wizard-level.json',import.meta.url),JSON.stringify(data)+'\n');return data;
+ await fs.writeFile(new URL(`../preview/color-clear/ready/wizard${density==='fine'?'-fine':''}-level.json`,import.meta.url),JSON.stringify(data)+'\n');return data;
 }
 if(process.argv[1]?.endsWith('/build-wizard.mjs'))console.log('Verified wizard pieces:',(await buildWizardPreset()).level.cells.length);
 
-export function wizardFingerprint(level){return createHash('sha256').update(JSON.stringify({cells:level.cells,caps:level.supply.flat().slice().sort((a,b)=>a.id-b.id),pacing:level.pacing})).digest('hex');}
+export function wizardFingerprint(level){return createHash('sha256').update(JSON.stringify({cells:level.cells.map(({visualTint,visualDetail,...cell})=>cell),caps:level.supply.flat().slice().sort((a,b)=>a.id-b.id),pacing:level.pacing})).digest('hex');}

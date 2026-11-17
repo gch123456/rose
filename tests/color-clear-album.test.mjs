@@ -30,3 +30,16 @@ test('newer login wins when responses arrive out of order',async()=>{
  const resolvers=[];const service=new AlbumService(storage(),async path=>path==='/api/auth/wechat'?new Promise(resolve=>resolvers.push(resolve)):{ok:true,status:200,json:async()=>({version:1,entries:[]})},time);
  const older=service.loginWithCode('old'),newer=service.loginWithCode('new');resolvers[1]({ok:true,status:200,json:async()=>({token:'new',expiresAt:'2030-01-01T00:00:00Z',user:{id:'B'}})});await newer;resolvers[0]({ok:true,status:200,json:async()=>({token:'old',expiresAt:'2030-01-01T00:00:00Z',user:{id:'A'}})});await older;assert.equal(service.book.accountId,'B');
 });
+test('separate album services refresh child rescues and preserve guest unlocks through parent login',async()=>{
+ const s=storage(),transport=async path=>path==='/api/auth/wechat'?{ok:true,status:200,json:async()=>({token:'A',expiresAt:'2030-01-01T00:00:00Z',user:{id:'A'}})}:{ok:true,status:200,json:async()=>({version:1,entries:[]})};
+ const parent=new AlbumService(s,transport,time),child=new AlbumService(s,transport,time);child.book.unlock(2);parent.refresh();assert.deepEqual(parent.book.entries.map(e=>e.levelId),[2]);child.book.unlock(3);await parent.loginWithCode('code');assert.deepEqual(parent.book.entries.map(e=>e.levelId),[2,3]);child.refresh();assert.equal(child.book.accountId,'A');child.book.unlock(4);await parent.logout();assert.deepEqual(parent.book.entries.map(e=>e.levelId),[2,3]);child.refresh();assert.equal(child.book.accountId,null);child.book.useAccount('A');assert.deepEqual(child.book.entries.map(e=>e.levelId),[2,3,4]);
+});
+test('stale book mutations preserve newer entries and acknowledged pending stays acknowledged',()=>{
+ const s=storage(),a=new AlbumBook(s,time),b=new AlbumBook(s,time);a.unlock(1);b.unlock(2);assert.deepEqual(new AlbumBook(s,time).entries.map(e=>e.levelId),[1,2]);a.useAccount('A');a.importGuest();b.useAccount('A');b.mergeCloud([{levelId:1,unlockedAt:time()}]);a.unlock(3);assert.deepEqual(a.pending,[2,3]);assert.deepEqual(a.entries.map(e=>e.levelId),[1,2,3]);
+});
+test('external auth switching isolates accounts without implicitly importing guest entries',()=>{
+ const s=storage(),service=new AlbumService(s,async()=>({ok:true,status:204}),time);service.book.unlock(1);s.setItem('color-clear.auth',JSON.stringify({token:'B',expiresAt:'2030-01-01T00:00:00Z',user:{id:'B'}}));service.refresh();assert.equal(service.book.accountId,'B');assert.deepEqual(service.book.entries,[]);service.book.unlock(2);s.removeItem('color-clear.auth');service.refresh();assert.equal(service.book.accountId,null);assert.deepEqual(service.book.entries.map(e=>e.levelId),[1]);
+});
+test('album refresh preserves session rescues after a write is denied',()=>{
+ const s=storage(),book=new AlbumBook(s,time);book.unlock(1);s.setItem=()=>{throw Error('quota');};book.unlock(2);book.refreshFromStorage();book.unlock(3);assert.deepEqual(book.entries.map(e=>e.levelId),[1,2,3]);
+});

@@ -1,6 +1,6 @@
 /** Shared real-3D gameplay; visibility uses the inverse model XYZ rotation. */
 export type PieceShape = 'box' | 'sphere' | 'cylinder' | 'hemisphere' | 'wedge';
-export type Voxel = { id: number; x: number; y: number; z: number; color: number; core: boolean; alive: boolean; shape?: PieceShape };
+export type Voxel = { id: number; x: number; y: number; z: number; color: number; core: boolean; alive: boolean; shape?: PieceShape; visualTint?: string; visualDetail?: 'eye' | 'bill' };
 export type Capsule = { id: number; color: number; ammo: number };
 export type ReplayStep = { yaw:number; pitch:number; column?:number; ticks:number };
 export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[]; replay?: ReplayStep[]; pacing?: 'remaining' | 'fast' };

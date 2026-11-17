@@ -31,7 +31,7 @@ export function decodeLevel(input: unknown): Level {
     const id=integer(raw.id,1,Number.MAX_SAFE_INTEGER);
     if(typeof raw.name!=='string'||!raw.name.trim()||raw.name.length>80) throw new Error('关卡名称无效');
     if(!Array.isArray(raw.cells)||raw.cells.length>6000) throw new Error('积木数量超限');
-    for(const c of raw.cells) record(c,['id','x','y','z','color','core','alive','shape']);
+    for(const c of raw.cells) record(c,['id','x','y','z','color','core','alive','shape','visualTint','visualDetail']);
     const cells=validateLevelCells(raw.cells as Voxel[]);
     if(envelope.palette!==undefined){
         const p=envelope.palette;

@@ -11,6 +11,8 @@
 
 ## 产品与技术基线
 
+- 新网页入口preview/duck-camp.html，归营用同源iframe保留当前页一局，对比另开页不替换；CampState每日补给仅本机，AudioPreferences.refresh维护跨页音乐/音效；AlbumBook/Service写入前刷新共享存档，避免旧营地覆盖子页新收藏。默认法师鸭4500细节/23显示明暗/6逻辑色，可选5950对比且守恒复放通过。UI/音频未迁到Creator，真实奖励后端/手机性能待验收，记录见docs/archive/2026-11-17-rescue-camp-implementation-session.md。
+
 - 最新法师鸭4500格、61颗61–81发、pacing=fast恒定0.045/0.10；remaining/legacy仅兼容历史。ModelOrbit.enabled表示开关、automatic表示自动段，beginDrag/release控制释放后1秒恢复；装填不能stop，暂停/奖励/图册只释放实际拖动，所有清dragId入口必须避免遗留held。慢帧倒计时用真实elapsed，角移动仍限幅。
 
 

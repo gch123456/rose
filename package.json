@@ -19,7 +19,8 @@
     "test:hd-supply": "node tools/check-hd-supply.mjs",
     "test:pacing-shuffle": "node tools/check-pacing-shuffle.mjs",
     "build:wizard-shuffles": "node tools/build-wizard-shuffles.mjs",
-    "test:fast-orbit": "node tools/check-fast-orbit.mjs"
+    "test:fast-orbit": "node tools/check-fast-orbit.mjs",
+    "test:rescue-camp": "node tools/check-rescue-camp.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

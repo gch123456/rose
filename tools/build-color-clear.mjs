@@ -12,7 +12,7 @@ await buildShibaPreset();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const result = await build({entryPoints:[path.join(root,'preview/color-clear/main.js')],bundle:true,tsconfigRaw:{compilerOptions:{target:'ES2022'}},write:false,minify:true,format:'iife',target:'es2020'});
 const license=fs.readFileSync(path.join(root,'node_modules/three/LICENSE'),'utf8');
-const css=fs.readFileSync(path.join(root,'preview/color-clear/style.css'),'utf8');
+const css=['style.css','manual.css','inspector.css'].map(name=>fs.readFileSync(path.join(root,'preview/color-clear',name),'utf8')).join('\n');
 // Normalize whitespace in embedded shader template strings for clean generated diffs.
 const js=result.outputFiles[0].text.replace(/<\/script/gi,'<\\/script').replace(/[ \t]+$/gm,'').replace(/^ +(?=\t)/gm,'');
 const html=fs.readFileSync(path.join(root,'preview/color-clear/index.html'),'utf8').replace('<head>',()=>'<head>\n<!-- Bundled Three.js license\n'+license+'\n-->').replace('<link rel="stylesheet" href="./style.css">',()=>`<style>${css}</style>`).replace('<script type="module" src="./main.js"></script>',()=>`<script>${js}</script>`);
@@ -38,5 +38,11 @@ const wizard=path.join(root,'preview/color-clear/ready/wizard-level.json');
 const wizardData=JSON.parse(fs.readFileSync(wizard,'utf8')),shuffles=JSON.parse(fs.readFileSync(path.join(root,'preview/color-clear/ready/wizard-shuffles.json'),'utf8'));
 if(shuffles.version!==1||shuffles.fingerprint!==wizardFingerprint(wizardData.level)||shuffles.variants.length!==4)throw Error('随机队列需要重新生成');
 for(const variant of shuffles.variants)decodeLevel(variantData(wizardData,variant));
-if(fs.existsSync(wizard))await buildReady('wizard-duck.html',{kind:'wizard',title:'法师鸭',kicker:'YOUR LITTLE WIZARD · 已为你做好',description:'蓝色巫师帽、魔法球和法杖。',asset:'./models/wizard-duck.glb',triangles:31050,data:wizardData,shuffles});
+if(fs.existsSync(wizard))await buildReady('wizard-duck.html',{kind:'wizard',comparisonData:JSON.parse(fs.readFileSync(path.join(root,'preview/color-clear/ready/wizard-fine-level.json'),'utf8')),title:'法师鸭',kicker:'YOUR LITTLE WIZARD · 已为你做好',description:'蓝色巫师帽、魔法球和法杖。',asset:'./models/wizard-duck.glb',triangles:31050,data:wizardData,shuffles});
 console.log('Built ready-to-play models.');
+
+const campBundle=await build({tsconfigRaw:{compilerOptions:{target:'ES2022'}},entryPoints:[path.join(root,'preview/color-clear/camp/main.js')],bundle:true,write:false,minify:true,format:'iife',target:'es2022'});
+const campCSS=['camp/style.css','manual.css','inspector.css'].map(name=>fs.readFileSync(path.join(root,'preview/color-clear',name),'utf8')).join('\n');
+const campHTML=fs.readFileSync(path.join(root,'preview/color-clear/camp/index.html'),'utf8').replace('<link rel="stylesheet" href="./style.css">',()=>'<style>'+campCSS+'</style>').replace('<script type="module" src="./main.js"></script>',()=>'<script>'+campBundle.outputFiles[0].text.replace(/<\/script/gi,'<\\/script').replace(/[ \t]+$/gm,'').replace(/^ +(?=\t)/gm,'')+'</script>');
+fs.writeFileSync(path.join(root,'preview/duck-camp.html'),campHTML);
+console.log('Built rescue camp preview/duck-camp.html');

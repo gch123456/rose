@@ -23,8 +23,9 @@ export function validateLevelCells(cells: Voxel[]): Voxel[] {
         const key = `${c.x},${c.y},${c.z}`;
         if (positions.has(key)) throw new Error('积木坐标重复');
         if (!Number.isInteger(c.color) || c.color<0 || c.color>5 || typeof c.core!=='boolean' || c.alive!==true || (c.shape!==undefined&&!shapes.has(c.shape))) throw new Error('积木颜色或形状无效');
+        if ((c.visualTint!==undefined&&(typeof c.visualTint!=='string'||!/^#[0-9a-fA-F]{6}$/.test(c.visualTint))) || (c.visualDetail!==undefined&&!['eye','bill'].includes(c.visualDetail))) throw new Error('积木外观无效');
         ids.add(c.id); positions.add(key);
-        return {id:c.id,x:c.x,y:c.y,z:c.z,color:c.color,core:c.core,alive:true,...(c.shape?{shape:c.shape}:{})};
+        return {id:c.id,x:c.x,y:c.y,z:c.z,color:c.color,core:c.core,alive:true,...(c.shape?{shape:c.shape}:{}),...(c.visualTint?{visualTint:c.visualTint}:{}),...(c.visualDetail?{visualDetail:c.visualDetail}:{})};
     });
 }
 export function makeLevelFromCells(cells: Voxel[], options: LevelOptions = {}): Level {
