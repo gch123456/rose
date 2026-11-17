@@ -93,7 +93,6 @@ export class ColorClearView extends Component {
         this.text(this.ui, '下一批颜色 · 点前排入槽', 20, 0, -310, 550);
         for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
             const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? -354 : -366 - row * 45), 124, row ? 40 : 66, () => { if (row === 0 && this.model.phase === 'playing') {
-                this.orbit.stop();
                 const slot = this.model.slots.indexOf(null);
                 if (this.model.select(col)) {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
@@ -129,7 +128,7 @@ export class ColorClearView extends Component {
         this.button(this.albumPanel,'微信登录并同步',0,-300,440,70,()=>{void this.loginAlbum();},'#68ad89');
         this.button(this.albumPanel,'退出登录',0,-390,440,64,()=>{void this.album.logout().catch(()=>{}).finally(()=>this.renderAlbum());});
         this.button(this.albumPanel,'返回游戏',0,-480,440,64,()=>{this.albumPanel.active=false;if(this.albumResume)this.model.resume();this.refresh(true);});this.albumPanel.active=false;
-        this.button(this.ui,'图册',220,-530,110,48,()=>{if(this.albumPanel.active)return;this.albumPanel.setSiblingIndex(this.ui.children.length-1);this.albumResume=this.model.phase==='playing';this.model.pause();this.dragId=-1;this.orbit.release(true,0);this.albumPanel.active=true;this.renderAlbum();void this.album.synchronize().then(()=>this.renderAlbum()).catch(()=>{});});
+        this.button(this.ui,'图册',220,-530,110,48,()=>{if(this.albumPanel.active)return;this.albumPanel.setSiblingIndex(this.ui.children.length-1);this.albumResume=this.model.phase==='playing';this.model.pause();if(this.dragId>=0)this.orbit.release(true,0);this.dragId=-1;this.albumPanel.active=true;this.renderAlbum();void this.album.synchronize().then(()=>this.renderAlbum()).catch(()=>{});});
         this.sound = this.node.addComponent(AudioSource);
         for (const name of ['load', 'hit', 'chain', 'won', 'lost']) resources.load(`color-clear-audio/${name}`, AudioClip, (error, clip) => { if (!error && clip && isValid(this.node)) this.clips.set(name, clip); });
         input.on(Input.EventType.TOUCH_START, this.touchStart, this); input.on(Input.EventType.TOUCH_MOVE, this.touchMove, this);
@@ -190,7 +189,7 @@ export class ColorClearView extends Component {
         this.resultText.string = this.model.phase === 'lost' ? this.model.reason : `已清除 ${this.model.cells.length - this.model.remaining} 块\n声音：${this.muted ? '关' : '开'}`;
     }
     private startReward(kind:'slot'|'continue'):void {
-        const owner=this.model,ticket=owner.beginReward(kind);if(!ticket)return;this.pendingReward={owner,ticket};this.rotationSpeed=0;this.dragId=-1;
+        const owner=this.model,ticket=owner.beginReward(kind);if(!ticket)return;this.pendingReward={owner,ticket};this.rotationSpeed=0;if(this.dragId>=0)this.orbit.release(true,0);this.dragId=-1;
         this.rewardTitle.string=kind==='slot'?`开发测试 · 模拟解锁第${owner.slots.length+1}槽`:'开发测试 · 模拟暂存续关';this.rewardPanel.active=true;this.refresh(true);
     }
     private finishReward(completed:boolean):void {
@@ -209,8 +208,8 @@ export class ColorClearView extends Component {
         if(!isValid(this.node))return;const ids=new Set(this.album.book.entries.map(e=>e.levelId));this.albumText.string=(this.album.authenticated?'微信用户 · 云端图册':'访客 · 仅本机')+'\n\n'+Array.from({length:LEVEL_COUNT},(_,i)=>`${ids.has(i+1)?'✓':'◇'} ${makeLevel(i+1).name}`).join('\n');
     }
     private async loginAlbum():Promise<void>{try{await this.album.login(wechatLoginCode);this.renderAlbum();}catch(error){if(isValid(this.node))this.albumText.string=error instanceof Error?error.message:'登录暂时不可用';}}
-    private pause(): void { this.dragId = -1;this.orbit.release(true,0); this.rotationSpeed = 0; this.model.pause(); this.refresh(true); }
-    private touchStart(e: EventTouch): void { const p = e.getUILocation(); if (this.model.phase === 'playing' && this.dragId < 0 && p.y > 450 && p.y < 970) { this.dragId = e.getID();this.orbit.stop(); this.rotationSpeed = 0; this.lastDrag = this.clock; } }
+    private pause(): void { if(this.dragId>=0)this.orbit.release(true,0);this.dragId = -1; this.rotationSpeed = 0; this.model.pause(); this.refresh(true); }
+    private touchStart(e: EventTouch): void { const p = e.getUILocation(); if (this.model.phase === 'playing' && this.dragId < 0 && p.y > 450 && p.y < 970) { this.dragId = e.getID();this.orbit.beginDrag(); this.rotationSpeed = 0; this.lastDrag = this.clock; } }
     private touchMove(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.drag(this.model,e.getUIDelta().x*.67,-e.getUIDelta().y*.67,this.clock-this.lastDrag);this.lastDrag=this.clock;this.refresh(true); } }
     private touchEnd(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.release(e.type===Input.EventType.TOUCH_CANCEL,this.clock-this.lastDrag); this.dragId = -1; } }
     update(dt: number): void {

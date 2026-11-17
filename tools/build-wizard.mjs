@@ -11,9 +11,9 @@ function spreadSupplyHeads(level){
  level.supply=supply;
 }
 export async function buildWizardPreset(){
- const source=JSON.parse(await fs.readFile(new URL('../preview/color-clear/ready/wizard-hd-cells.json',import.meta.url),'utf8'));
- if(source.cells.length<2800||source.cells.length>3500)throw Error('高清法师鸭应为约3000块');
- const level=makeLongBatchLevel(source.cells,{id:1003,name:'法师鸭',difficulty:'normal',batchSize:75,pacing:'remaining'});
+ const source=JSON.parse(await fs.readFile(new URL('../preview/color-clear/ready/wizard-ultra-cells.json',import.meta.url),'utf8'));
+ if(source.cells.length<4000||source.cells.length>5000)throw Error('高清法师鸭应为约4500块');
+ const level=makeLongBatchLevel(source.cells,{id:1003,name:'法师鸭',difficulty:'normal',batchSize:75,pacing:'fast'});
  spreadSupplyHeads(level);level.initialYaw=.1;level.initialPitch=.12;
  const data={...JSON.parse(encodeLevel(level)),palette:source.palette};decodeLevel(data);
  await fs.writeFile(new URL('../preview/color-clear/ready/wizard-level.json',import.meta.url),JSON.stringify(data)+'\n');return data;

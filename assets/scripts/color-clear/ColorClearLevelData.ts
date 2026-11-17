@@ -27,7 +27,7 @@ export function decodeLevel(input: unknown): Level {
     const envelope=record(input,['version','level','palette']);
     if(envelope.version!==1) throw new Error('不支持的关卡版本');
     const raw=record(envelope.level,['id','name','cells','supply','initialYaw','initialPitch','solution','replay','pacing']);
-    if(raw.pacing!==undefined&&raw.pacing!=='remaining')throw new Error('清除节奏无效');
+    if(raw.pacing!==undefined&&raw.pacing!=='remaining'&&raw.pacing!=='fast')throw new Error('清除节奏无效');
     const id=integer(raw.id,1,Number.MAX_SAFE_INTEGER);
     if(typeof raw.name!=='string'||!raw.name.trim()||raw.name.length>80) throw new Error('关卡名称无效');
     if(!Array.isArray(raw.cells)||raw.cells.length>6000) throw new Error('积木数量超限');

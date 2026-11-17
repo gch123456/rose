@@ -3,7 +3,7 @@ export type PieceShape = 'box' | 'sphere' | 'cylinder' | 'hemisphere' | 'wedge';
 export type Voxel = { id: number; x: number; y: number; z: number; color: number; core: boolean; alive: boolean; shape?: PieceShape };
 export type Capsule = { id: number; color: number; ammo: number };
 export type ReplayStep = { yaw:number; pitch:number; column?:number; ticks:number };
-export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[]; replay?: ReplayStep[]; pacing?: 'remaining' };
+export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[]; replay?: ReplayStep[]; pacing?: 'remaining' | 'fast' };
 export type ClearEvent = { type: 'load' | 'fire' | 'hit' | 'clear' | 'chain' | 'empty' | 'won' | 'lost'; cell?: Voxel; slot?: number; color?: number; core?: boolean; flightId?: number };
 export type RewardTicket = { id: number; run: number; kind: 'slot' | 'continue' };
 export type Flight = { id: number; target: number; capsuleId: number; slot: number; color: number; time: number; readonly duration: number; claimed: number[] };
@@ -14,6 +14,12 @@ export function eliminationPace(remaining: number, total: number): {interval:num
     const ratio = Math.max(0, Math.min(1, remaining / Math.max(1, total)));
     const slow = (1 - ratio) ** 2;
     return {interval: .045 + .135 * slow, flightSeconds: .10 + .26 * slow};
+}
+/** Shared by the simulation and presentation diagnostics. */
+export function levelEliminationPace(level: Pick<Level, 'pacing'>, remaining: number, total: number): {interval:number; flightSeconds:number} {
+    if (level.pacing === 'fast') return {interval:.045, flightSeconds:.10};
+    if (level.pacing === 'remaining') return eliminationPace(remaining, total);
+    return {interval:.14, flightSeconds:FLIGHT_SECONDS};
 }
 const TAU = Math.PI * 2;
 let nextRun = 0;
@@ -225,7 +231,7 @@ export class ColorClearGame {
         this.slots.forEach((s, i) => { if (s && s.ammo <= 0 && !this.flights.some(f => f.capsuleId === s.id)) { this.slots[i] = null; this.events.push({ type: 'empty', slot: i, color: s.color }); } });
         this.cooldown -= step;
         while (this.cooldown <= 0 && this.remaining) {
-            const pace = this.level.pacing === 'remaining' ? eliminationPace(this.remaining, this.cells.length) : {interval:.14, flightSeconds:FLIGHT_SECONDS};
+            const pace = levelEliminationPace(this.level, this.remaining, this.cells.length);
             this.cooldown += pace.interval;
             for (let i = 0; i < this.slots.length; i++) {
                 const s = this.slots[i]; if (!s || s.ammo <= 0 || this.flights.some(f=>f.capsuleId===s.id)) continue;

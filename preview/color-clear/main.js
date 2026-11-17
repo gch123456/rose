@@ -6,7 +6,7 @@ import {getDifficultyProfile} from '../../assets/scripts/color-clear/ColorClearD
 import {ModelOrbit} from '../../assets/scripts/color-clear/ColorClearOrbit.ts';
 import {createAlbumUI} from './album.js';
 import {normalizePresentation} from './presentation.js';
-import { ColorClearGame, FLIGHT_SECONDS, aimY, eliminationPace } from '../../assets/scripts/color-clear/ColorClearGame.ts';
+import { ColorClearGame, FLIGHT_SECONDS, aimY, levelEliminationPace } from '../../assets/scripts/color-clear/ColorClearGame.ts';
 import { makeLevel, makeRescueFixture, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
 
 const $=id=>document.getElementById(id);
@@ -136,7 +136,7 @@ function syncUI(force=false){
  $('slot-count').textContent=`${model.slots.filter(Boolean).length} / ${model.slots.length}`;
  $('reserve-toggle').hidden=!model.reserve.length;$('reserve-toggle').textContent=`暂存 ${model.reserve.length}`;
  $('reserve-tray').hidden=!reserveOpen||!model.reserve.length;
- for(let i=0;i<model.reserve.length;i++){const c=model.reserve[i];let b=$('reserve-tray').children[i];if(!b){b=document.createElement('button');$('reserve-tray').append(b);}b.className='capsule';b.dataset.reserve=String(i);paintCapsule(b,c.color);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.setAttribute('aria-label',`取回${NAMES[c.color]}，${c.ammo}发`);b.onclick=()=>{ensureAudio();orbit.stop();if(model.takeReserve(i)){syncUI(true);processEvents();}};}
+ for(let i=0;i<model.reserve.length;i++){const c=model.reserve[i];let b=$('reserve-tray').children[i];if(!b){b=document.createElement('button');$('reserve-tray').append(b);}b.className='capsule';b.dataset.reserve=String(i);paintCapsule(b,c.color);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.setAttribute('aria-label',`取回${NAMES[c.color]}，${c.ammo}发`);b.onclick=()=>{ensureAudio();if(model.takeReserve(i)){syncUI(true);processEvents();}};}
  while($('reserve-tray').children.length>model.reserve.length)$('reserve-tray').lastElementChild.remove();
  for(let i=0;i<6;i++){
   const c=model.slots[i];let slot=$('slots').children[i];
@@ -152,7 +152,7 @@ function syncUI(force=false){
   let b=previous;if(!b||b.tagName!=='BUTTON'){b=document.createElement('button');if(previous)previous.replaceWith(b);else $('supply').append(b);}
   b.className='capsule'+(row?' preview-card':'');paintCapsule(b,c.color);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.disabled=row>0;b.setAttribute('aria-label',`${row?'下一颗':'选择'}${NAMES[c.color]}，${c.ammo}发`);
   if(!row){b.dataset.column=String(col);b.onclick=()=>{
-   ensureAudio();orbit.stop();const origin=b.getBoundingClientRect(),slotIndex=model.slots.indexOf(null);
+   ensureAudio();const origin=b.getBoundingClientRect(),slotIndex=model.slots.indexOf(null);
    if(!model.select(col)){toast('发射槽已满，先转动模型消除一些');return;}
    syncUI(true);const arrival=$('slots').children[slotIndex]?.querySelector('.capsule');
    if(arrival&&!matchMedia('(prefers-reduced-motion: reduce)').matches){const target=arrival.getBoundingClientRect();arrival.style.zIndex='4';arrival.animate([{transform:`translate(${origin.x+origin.width/2-target.x-target.width/2}px,${origin.y+origin.height/2-target.y-target.height/2}px) scale(1.1)`},{transform:'translate(0,0) scale(1)'}],{duration:190,easing:'cubic-bezier(.2,.7,.25,1)'});}
@@ -191,7 +191,7 @@ function openDialog(mode='phase'){
  $('primary').textContent=studioLevel&&won?'再玩这关':lost&&model.canContinue?'模拟广告 · 暂存续关':won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
  $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(model.level.id);}else{model.resume();$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
 }
-function pause(){drag=null;rotationVelocity=0;orbit.release(true,0);if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
+function pause(){if(drag)orbit.release(true,0);drag=null;rotationVelocity=0;if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
 function loadLevel(n){if(shuffleVariants.length){try{const index=chooseVariant(shuffleVariants.length,shuffleIndex);const next=decodeLevel(variantData(shuffleBase,shuffleVariants[index]));studioLevel=next;shuffleIndex=index;try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}}catch{toast('随机队列未通过校验，保留当前排列');}}if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=new ColorClearGame(levelFor(n));orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
 $('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(model.level.id);};
 function toggleSound(){muted=!muted;save('muted',muted);if(!muted){ensureAudio();tone();}syncUI(true);}
@@ -204,16 +204,16 @@ $('level-select').onclick=()=>{
  for(let i=1;i<=LEVEL_COUNT;i++){const b=document.createElement('button');b.textContent=String(i);b.disabled=i>unlocked;b.style.cssText=`padding:10px 0;background:${i<=unlocked?'#deedda':'#eff0e9'};opacity:${i<=unlocked?1:.4}`;b.onclick=()=>loadLevel(i);grid.append(b);}
  $('dialog-text').append(grid);
 };
-$('stage').addEventListener('pointerdown',e=>{if(model.phase!=='playing'||drag)return;ensureAudio();drag={id:e.pointerId,x:e.clientX,y:e.clientY};rotationVelocity=0;orbit.stop();lastDragTime=performance.now();$('stage').setPointerCapture(e.pointerId);});
+$('stage').addEventListener('pointerdown',e=>{if(model.phase!=='playing'||drag)return;ensureAudio();drag={id:e.pointerId,x:e.clientX,y:e.clientY};rotationVelocity=0;orbit.beginDrag();lastDragTime=performance.now();$('stage').setPointerCapture(e.pointerId);});
 $('stage').addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;const now=performance.now();orbit.drag(model,e.clientX-drag.x,e.clientY-drag.y,(now-lastDragTime)/1000);lastDragTime=now;drag.x=e.clientX;drag.y=e.clientY;root.rotation.set(model.pitch,model.yaw,0,'XYZ');syncUI(true);});
 function endDrag(e){if(drag?.id===e.pointerId){orbit.release(e.type!=='pointerup',(performance.now()-lastDragTime)/1000);drag=null;if($('stage').hasPointerCapture(e.pointerId))$('stage').releasePointerCapture(e.pointerId);}}
 for(const event of ['pointerup','pointercancel','lostpointercapture'])$('stage').addEventListener(event,endDrag);
 window.addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
-window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(albumUI.isOpen){albumUI.close();return;}if(rewardSession){finishReward(false);return;}if(model.phase==='paused')$('primary').click();else pause();}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){orbit.stop();model.rotate(e.key==='ArrowLeft'?-.15:e.key==='ArrowRight'?.15:0,e.key==='ArrowUp'?.15:e.key==='ArrowDown'?-.15:0);syncUI(true);}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(albumUI.isOpen){albumUI.close();return;}if(rewardSession){finishReward(false);return;}if(model.phase==='paused')$('primary').click();else pause();}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){orbit.beginDrag();model.rotate(e.key==='ArrowLeft'?-.15:e.key==='ArrowRight'?.15:0,e.key==='ArrowUp'?.15:e.key==='ArrowDown'?-.15:0);orbit.release(true,0);syncUI(true);}});
 $('world').addEventListener('webglcontextlost',e=>{e.preventDefault();pause();toast('3D画面暂时中断，请刷新页面恢复');});
 function frame(time){
- const dt=Math.min(.04,Math.max(0,(time-lastTime)/1000));lastTime=time;
- orbit.step(model,dt,!!drag);
+ const elapsed=Math.max(0,(time-lastTime)/1000),dt=Math.min(.04,elapsed);lastTime=time;
+ orbit.step(model,elapsed,!!drag);
  model.tick(dt);root.rotation.set(model.pitch,model.yaw,0,'XYZ');processEvents();syncUI();
  if(model.phase!==shownPhase){shownPhase=model.phase;if(!rewardSession&&(model.phase==='won'||model.phase==='lost'))openDialog();}
  const shell=document.querySelector('.game-shell').getBoundingClientRect(),stageRect=$('stage').getBoundingClientRect();$('projectiles').setAttribute('viewBox',`0 0 ${shell.width} ${shell.height}`);
@@ -233,23 +233,23 @@ function frame(time){
  }
  renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
 }
-window.__colorClear={snapshot:()=>({visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:model.level.pacing==='remaining'?eliminationPace(model.remaining,model.cells.length):{interval:.14,flightSeconds:FLIGHT_SECONDS},shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
+window.__colorClear={snapshot:()=>({visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:levelEliminationPace(model.level,model.remaining,model.cells.length),shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,autoEnabled:orbit.enabled,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
 window.addEventListener('pagehide',()=>{cancelAnimationFrame(frameId);audio?.suspend();});
 window.addEventListener('pageshow',e=>{if(e.persisted){lastTime=performance.now();frameId=requestAnimationFrame(frame);}});
 
 function applyPresentation(){
- if($('auto-rotate'))$('auto-rotate').textContent=`自动旋转：${orbit.automatic?'开':'关'}`;
+ if($('auto-rotate'))$('auto-rotate').textContent=`自动旋转：${orbit.enabled?'开':'关'}`;
  document.querySelector('.game-shell').classList.toggle('minimal-copy',!settings.labels);
  document.querySelector('.progress-track').hidden=!settings.progress;$('remaining').hidden=!settings.remaining;$('percent').hidden=!settings.progress;document.querySelector('.background-art').hidden=!settings.background;
  document.querySelector('.heading h1').textContent=studioLevel?`制作试玩 · ${model.level.name}`:settings.labels?'转转积木':`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
  for(const b of document.querySelectorAll('[data-display]')){const key=b.dataset.display,names={progress:'进度条',remaining:'剩余块数',labels:'说明文字',background:'背景'};b.textContent=`${names[key]}：${settings[key]?'开':'关'}`;b.setAttribute('aria-pressed',String(settings[key]));}
 }
-$('auto-rotate').onclick=()=>{orbit.reset(!orbit.automatic);syncUI(true);};
+$('auto-rotate').onclick=()=>{orbit.reset(!orbit.enabled);syncUI(true);};
 for(const b of document.querySelectorAll('[data-display]'))b.onclick=()=>{settings[b.dataset.display]=!settings[b.dataset.display];save('presentation',settings);syncUI(true);};
 $('reserve-toggle').onclick=()=>{reserveOpen=!reserveOpen;syncUI(true);};
 function requestReward(kind){
  ensureAudio();const owner=model,ticket=owner.beginReward(kind);if(!ticket){toast(kind==='slot'?'本局槽位已全部解锁':'本局无法再次续关');return;}
- rotationVelocity=0;drag=null;orbit.release(true,0);rewardSession={owner,ticket};$('reward-title').textContent=kind==='slot'?`解锁第 ${model.slots.length+1} 个槽位`:'暂存胶囊，继续这一局';$('reward-overlay').hidden=false;syncUI(true);
+ rotationVelocity=0;if(drag)orbit.release(true,0);drag=null;rewardSession={owner,ticket};$('reward-title').textContent=kind==='slot'?`解锁第 ${model.slots.length+1} 个槽位`:'暂存胶囊，继续这一局';$('reward-overlay').hidden=false;syncUI(true);
 }
 function finishReward(completed){
  const session=rewardSession;if(!session)return;rewardSession=null;$('reward-overlay').hidden=true;
@@ -269,7 +269,7 @@ function modelThumbnail(id){
  const extent=new THREE.Box3().setFromObject(group),centre=extent.getCenter(new THREE.Vector3()),size=extent.getSize(new THREE.Vector3());group.position.sub(centre);const half=Math.max(size.x,size.y)*.6,cam=new THREE.OrthographicCamera(-half,half,half,-half,.1,100);cam.position.set(0,0,25);cam.lookAt(0,0,0);thumbnailRenderer.render(miniature,cam);const image=thumbnailRenderer.domElement.toDataURL('image/png');parts.forEach(p=>p.dispose());details.forEach(p=>{p.geometry.dispose();p.material.dispose();});thumbnailCache.set(id,image);return image;
 }
 const albumUI=createAlbumUI({fixtureMode,thumbnail:modelThumbnail,toast,pause(){
- const playing=model.phase==='playing',overlayWasHidden=$('overlay').hidden;if(playing)model.pause();drag=null;rotationVelocity=0;orbit.release(true,0);$('overlay').hidden=true;
+ const playing=model.phase==='playing',overlayWasHidden=$('overlay').hidden;if(playing)model.pause();if(drag)orbit.release(true,0);drag=null;rotationVelocity=0;$('overlay').hidden=true;
  return()=>{if(playing&&model.phase==='paused'){model.resume();shownPhase='playing';}else $('overlay').hidden=overlayWasHidden;lastTime=performance.now();};
 }});
 buildModel();syncUI(true);shownPhase='playing';if(studioError)toast(studioError);if(studioLevel){$('level-select').hidden=true;$('album-button').hidden=true;}frameId=requestAnimationFrame(frame);

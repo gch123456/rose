@@ -18,7 +18,8 @@
     "test:ready-wizard": "READY_KIND=wizard node tools/check-ready-shiba.mjs",
     "test:hd-supply": "node tools/check-hd-supply.mjs",
     "test:pacing-shuffle": "node tools/check-pacing-shuffle.mjs",
-    "build:wizard-shuffles": "node tools/build-wizard-shuffles.mjs"
+    "build:wizard-shuffles": "node tools/build-wizard-shuffles.mjs",
+    "test:fast-orbit": "node tools/check-fast-orbit.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

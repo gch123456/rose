@@ -11,7 +11,7 @@ export function makeLevel(number: number): Level {
     const cells = applyDifficulty(buildAnimalCells(id), profile);
     return generateLevel(cells, {id, name:NAMES[id-1], batchSize:profile.shotBudget}, profile.viewStride);
 }
-export type LevelOptions = {id?:number; name?:string; difficulty?:'easy'|'normal'|'hard'; batchSize?:number; pacing?:'remaining'};
+export type LevelOptions = {id?:number; name?:string; difficulty?:'easy'|'normal'|'hard'; batchSize?:number; pacing?:'remaining'|'fast'};
 /** Validate bounded lattice data before geometry or witness work. */
 export function validateLevelCells(cells: Voxel[]): Voxel[] {
     if (!Array.isArray(cells) || !cells.length || cells.length > 6000) throw new Error('积木数量必须为1–6000');
@@ -37,7 +37,7 @@ function generateLevel(input: Voxel[], options: LevelOptions, viewStride: number
     if (!Number.isSafeInteger(id)||id<1||typeof name!=='string'||!name.trim()||name.length>80) throw new Error('关卡ID或名称无效');
     if (!Number.isInteger(budget)||budget<1||budget>800) throw new Error('每筒弹量必须为1–800');
     if(options.difficulty!==undefined&&!['easy','normal','hard'].includes(options.difficulty)) throw new Error('难度无效');
-    if(options.pacing!==undefined&&options.pacing!=='remaining')throw new Error('清除节奏无效');
+    if(options.pacing!==undefined&&options.pacing!=='remaining'&&options.pacing!=='fast')throw new Error('清除节奏无效');
     const result: Level = { ...(options.pacing?{pacing:options.pacing}:{}), id, name, cells, initialYaw: .55, initialPitch: .24, supply: [[], [], [], []], solution: [] };
     const sim = new ColorClearGame(result);
     let serial = 0;
@@ -88,7 +88,7 @@ export function makeLongBatchLevel(input: Voxel[], options: LevelOptions = {}): 
         const batches=low<=high?Math.max(low,Math.min(high,Math.round(count/budget))):Math.ceil(count/budget);
         for(let i=0;i<batches;i++)pending.push({id:pending.length,color,ammo:low<=high?Math.floor(count/batches)+(i<count%batches?1:0):Math.min(budget,count-i*budget)});
     }
-    if(options.pacing!==undefined&&options.pacing!=='remaining')throw new Error('清除节奏无效');
+    if(options.pacing!==undefined&&options.pacing!=='remaining'&&options.pacing!=='fast')throw new Error('清除节奏无效');
     const result:Level={...(options.pacing?{pacing:options.pacing}:{}),id,name,cells,supply:[[],[],[],[]],initialYaw:.55,initialPitch:.24,solution:[],replay:[]};
     const sim=new ColorClearGame({...result,supply:[pending.map(c=>({...c})),[],[],[]]});
     const views=[{yaw:.55,pitch:.24},...[0,Math.PI/2,Math.PI,Math.PI*1.5].flatMap(yaw=>[0,Math.PI/4,-Math.PI/4].map(pitch=>({yaw,pitch}))),{yaw:0,pitch:Math.PI/2},{yaw:0,pitch:-Math.PI/2}];

@@ -20,7 +20,7 @@ test('actual remaining count controls hit intervals; launched duration stays fix
 test('adaptive long batch replay is decoded under its actual pace and rejects unknown pace',()=>{
  const l=levels.makeLongBatchLevel(Array.from({length:360},(_,id)=>cell(id,id%6)),{pacing:'remaining'});
  assert.equal(l.pacing,'remaining');assert.deepEqual(decodeLevel(encodeLevel(l)),l);
- assert.throws(()=>decodeLevel({version:1,level:{...l,pacing:'fast'}}));
+ assert.throws(()=>decodeLevel({version:1,level:{...l,pacing:'turbo'}}));
 });
 test('seeded complete capsule shuffle mixes columns while preserving cells, ids, ammunition and a real four-slot win',()=>{
  assert.equal(typeof levels.planShuffledLevel,'function');
@@ -39,4 +39,28 @@ test('decoder validates witness ticks against adaptive flight time rather than l
  assert.equal(decodeLevel({version:1,level:{...level,pacing:'remaining'}}).pacing,'remaining');
  const shortened={...level,pacing:'remaining',replay:[level.replay[0],{...level.replay[1],ticks:1}]};
  assert.throws(()=>decodeLevel({version:1,level:shortened}),/参考通路/);
+});
+
+test('fast pace stays at the existing fast values through the final piece',()=>{
+ assert.equal(typeof rules.levelEliminationPace,'function');
+ for(const remaining of [4500,2000,1,0])assert.deepEqual(rules.levelEliminationPace({pacing:'fast'},remaining,4500),{interval:.045,flightSeconds:.10});
+ assert.deepEqual(rules.levelEliminationPace({},1,4500),{interval:.14,flightSeconds:rules.FLIGHT_SECONDS});
+ assert.deepEqual(rules.levelEliminationPace({pacing:'remaining'},1,4500),rules.eliminationPace(1,4500));
+});
+test('actual fast flights and shot timing stay equal at front and tail over frame rates',()=>{
+ const run=(low,dt)=>{
+  const g=new rules.ColorClearGame({...flat(),pacing:'fast'});if(low){g.cells.slice(0,115).forEach(c=>c.alive=false);g.supply[0][0].ammo=5;}
+  const total=g.remaining;g.select(0);g.tick(.01);assert.equal(g.flights[0].duration,.10);
+  const frozen=JSON.stringify([g.flights,g.shots,g.remaining,g.slots]);g.pause();g.tick(20);assert.equal(JSON.stringify([g.flights,g.shots,g.remaining,g.slots]),frozen);g.resume();
+  let seconds=0;while(g.shots<3&&seconds<2){g.tick(dt);seconds+=dt;assert.ok(g.flights.every(f=>f.duration===.10));assert.equal(g.remaining,g.slots.filter(Boolean).reduce((n,c)=>n+c.ammo,0)+g.flights.length);}
+  while(g.phase==='playing')g.tick(dt);assert.equal(g.phase,'won');assert.equal(g.shots,total);return seconds;
+ };
+ for(const dt of [.01,1/60,1/30,.1,.25])assert.equal(run(false,dt),run(true,dt),`frame ${dt}`);
+});
+test('fast generators and shuffled replay preserve fast pace through strict decoding',()=>{
+ const cells=Array.from({length:360},(_,id)=>cell(id,id%6));
+ const long=levels.makeLongBatchLevel(cells,{pacing:'fast'});assert.equal(long.pacing,'fast');assert.deepEqual(decodeLevel(encodeLevel(long)),long);
+ const shuffled=levels.planShuffledLevel(long,71);assert.equal(shuffled.pacing,'fast');assert.deepEqual(decodeLevel(encodeLevel(shuffled)),shuffled);
+ const short=levels.makeLevelFromCells(cells.slice(0,12),{pacing:'fast'});assert.equal(short.pacing,'fast');assert.deepEqual(decodeLevel(encodeLevel(short)),short);
+ assert.throws(()=>levels.makeLongBatchLevel(cells,{pacing:'turbo'}),/节奏/);
 });
