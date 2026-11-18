@@ -29,6 +29,23 @@ class PersistenceTest {
         assertThat(reopened.album(login.user().id())).isEqualTo(album);
         assertThat(reopened.login("another-code").user()).isEqualTo(login.user());
     }
+    @Test void existingDatabaseKeepsLegacyEntriesAndAcceptsNewRescues() {
+        String url = "jdbc:h2:file:" + directory.resolve("legacy-album");
+        var first = service(url);
+        var login = first.login("code");
+        var user = login.user().id();
+        var legacyEntry = first.merge(user, List.of(1)).entries().getFirst();
+        var jdbc = new JdbcTemplate(new DriverManagerDataSource(url, "sa", ""));
+        jdbc.execute("ALTER TABLE album_entries DROP CONSTRAINT album_catalog_range");
+        jdbc.execute("ALTER TABLE album_entries ADD CHECK (level_id BETWEEN 1 AND 10)");
+
+        var reopened = service(url);
+        AlbumCatalogMigration.extendLevelRange(jdbc);
+        AlbumCatalogMigration.extendLevelRange(jdbc);
+        assertThat(reopened.merge(user, List.of(11, 12)).entries())
+            .extracting(AlbumService.Entry::levelId).containsExactly(1, 11, 12);
+        assertThat(reopened.album(user).entries().getFirst()).isEqualTo(legacyEntry);
+    }
     @Test void concurrentCompletionsPreserveOneEntryAndFirstTimestamp() throws Exception {
         var service=service("jdbc:h2:mem:concurrent;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000");
         var login=service.login("code"); String user=login.user().id();

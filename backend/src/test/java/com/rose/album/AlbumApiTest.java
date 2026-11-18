@@ -79,10 +79,10 @@ class AlbumApiTest {
     }
     @Test void invalidIdsAndMalformedBodiesDoNotPartiallyMerge() throws Exception {
         String token=login("alice-code");
-        for(String body:new String[]{"{\"levelIds\":[1,11]}","{\"levelIds\":[0]}","{\"levelIds\":[null]}","{}","null","{\"levelIds\":[1.5]}","{\"levelIds\":[\"1\"]}"}) {
+        for(String body:new String[]{"{\"levelIds\":[1,13]}","{\"levelIds\":[0]}","{\"levelIds\":[null]}","{}","null","{\"levelIds\":[1.5]}","{\"levelIds\":[\"1\"]}"}) {
             api.perform(post("/api/album/merge").header("Authorization","Bearer "+token).contentType("application/json").content(body)).andExpect(status().isBadRequest());
         }
-        for(String body:new String[]{"{}","{\"levelId\":-1}","{\"levelId\":11}","{\"levelId\":1.5}","{\"levelId\":\"1\"}"}) {
+        for(String body:new String[]{"{}","{\"levelId\":-1}","{\"levelId\":13}","{\"levelId\":1.5}","{\"levelId\":\"1\"}"}) {
             api.perform(post("/api/album/complete").header("Authorization","Bearer "+token).contentType("application/json").content(body)).andExpect(status().isBadRequest());
         }
         assertThat((java.util.List<?>)JsonPath.read(album(token),"$.entries")).isEmpty();

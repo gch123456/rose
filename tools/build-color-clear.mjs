@@ -7,8 +7,6 @@ import {variantData} from '../preview/color-clear/supply-variants.js';
 import {wizardFingerprint} from './build-wizard.mjs';
 import {buildWizardPreset} from './build-wizard.mjs';
 await buildWizardPreset();
-import {buildShibaPreset} from './build-shiba.mjs';
-await buildShibaPreset();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const result = await build({entryPoints:[path.join(root,'preview/color-clear/main.js')],bundle:true,tsconfigRaw:{compilerOptions:{target:'ES2022'}},write:false,minify:true,format:'iife',target:'es2020'});
 const license=fs.readFileSync(path.join(root,'node_modules/three/LICENSE'),'utf8');
@@ -33,7 +31,6 @@ async function buildReady(output,config){
  const readyHtml=fs.readFileSync(path.join(root,'preview/color-clear/ready/index.html'),'utf8').replaceAll('__MODEL_TITLE__',config.title).replaceAll('__MODEL_KICKER__',config.kicker).replaceAll('__MODEL_DESCRIPTION__',config.description).replace('<head>',()=>'<head>\n<!-- Bundled Three.js license\n'+license+'\n-->').replace('<link rel="stylesheet" href="./style.css">',()=>`<style>${fs.readFileSync(path.join(root,'preview/color-clear/ready/style.css'),'utf8')}</style>`).replace('<script type="module" src="./main.js"></script>',()=>`<script type="module">${readyJs}</script>`);
  fs.writeFileSync(path.join(root,'preview',output),readyHtml);
 }
-await buildReady('shiba.html',{kind:'shiba',title:'柴犬团子',kicker:'YOUR LITTLE SHIBA · 原创程序造型',description:'尖耳朵、奶油肚皮和卷尾巴。',data:JSON.parse(fs.readFileSync(path.join(root,'preview/color-clear/ready/level.json'),'utf8'))});
 const wizard=path.join(root,'preview/color-clear/ready/wizard-level.json');
 const wizardData=JSON.parse(fs.readFileSync(wizard,'utf8')),shuffles=JSON.parse(fs.readFileSync(path.join(root,'preview/color-clear/ready/wizard-shuffles.json'),'utf8'));
 if(shuffles.version!==1||shuffles.fingerprint!==wizardFingerprint(wizardData.level)||shuffles.variants.length!==4)throw Error('随机队列需要重新生成');

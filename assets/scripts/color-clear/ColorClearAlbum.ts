@@ -5,7 +5,7 @@ type Disk={version:1;guest:BookData;accounts:Record<string,BookData>};
 export type AlbumResponse={ok:boolean;status:number;json?:()=>Promise<unknown>};
 export type AlbumTransport=(path:string,init:{method:string;headers:Record<string,string>;body?:string})=>Promise<AlbumResponse>;
 const KEY='color-clear.album.v1',AUTH_KEY='color-clear.auth';
-const validId=(n:unknown):n is number=>Number.isInteger(n)&&Number(n)>=1&&Number(n)<=10;
+const validId=(n:unknown):n is number=>Number.isInteger(n)&&Number(n)>=1&&Number(n)<=12;
 const empty=():BookData=>({entries:[],pending:[]});
 function entries(raw:unknown):AlbumEntry[]{
  if(!Array.isArray(raw))return[];const result=new Map<number,AlbumEntry>();

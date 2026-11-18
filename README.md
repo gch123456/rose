@@ -1,13 +1,13 @@
 # GoDuck · 鸭命要紧（暂定名）
 
-**新入口：[鸭命要紧 · 救援营地](preview/duck-camp.html)**：首页、每日本机补给、救援手册与独立音乐/音效开关。法师鸭可在[对比页](preview/wizard-duck.html)切换4500纯色/4500细节/5950细节后直接试玩。
+**新入口：[鸭命要紧 · 救援营地](preview/duck-camp.html)**：首页、每日本机补给、救援图鉴与独立音乐/音效开关。法师鸭可在[对比页](preview/wizard-duck.html)切换4500纯色/4500细节/5950细节后直接试玩。
 
-**现成试玩：[法师鸭 · 4500块](preview/wizard-duck.html) / [柴犬团子 · 400块](preview/shiba.html)。打开后点“直接试玩”，不用自行导入或配弹。**
+**网页主线为雨衣鸭 → 法师鸭两关。** 营地进入雨衣鸭，通关后解锁法师鸭。也可从[法师鸭对比页](preview/wizard-duck.html)直接进入独立试玩。
 
 作者可打开[私有关卡工坊](preview/level-studio.html)：参考图/本地GLB→可调密度积木→弹药账本→试玩/导出，详见[使用说明](docs/LEVEL_STUDIO.md)。图片生成服务尚未配置。
 
 > **新增可玩实验：转转积木（2026-11-16）**
-> 真3D动物积木消除，点击胶囊入槽、拖动旋转，含10个入门关卡；可配置简洁HUD、模拟广告扩5/6槽与保留余弹的暂存续关。可直接打开[单文件试玩](preview/color-clear.html)，或查看[运行说明与Cocos接续](docs/COLOR_CLEAR.md)。新增上下观察、开局自动旋转、访客通关图册与[微信登录Java后端](backend/README.md)。网页已验证；真实微信登录配置、Cocos/微信构建与iPhone真机尚待验收。以下GoDuck保留。
+> 真3D动物积木消除，点击胶囊入槽、拖动旋转，网页含两关；可配置简洁HUD、模拟广告扩5/6槽与保留余弹的暂存续关。可直接打开[单文件试玩](preview/color-clear.html)，或查看[运行说明与Cocos接续](docs/COLOR_CLEAR.md)。新增上下观察、开局自动旋转、访客通关图册与[微信登录Java后端](backend/README.md)。网页已验证；真实微信登录配置、Cocos/微信构建与iPhone真机尚待验收。以下GoDuck保留。
 
 竖屏单手生存割草游戏，使用 Cocos Creator 3.8.8 + TypeScript。最新剧情方向：不同职业的鸭子自救，逃离被怪物变成鸭货的命运；通关解锁新角色，失败变成熟食。
 已确认可爱像素与荒诞逃生喜剧的表现方向；项目代号仍为 GoDuck。

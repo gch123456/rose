@@ -7,12 +7,13 @@ import * as THREE from 'three';
 import {chooseVariant,variantData} from './supply-variants.js';
 import {makePieceGeometries} from './shapes.js';
 import {decodeLevel} from '../../assets/scripts/color-clear/ColorClearLevelData.ts';
-import {getDifficultyProfile} from '../../assets/scripts/color-clear/ColorClearDifficulty.ts';
 import {ModelOrbit} from '../../assets/scripts/color-clear/ColorClearOrbit.ts';
 import {createAlbumUI} from './album.js';
 import {normalizePresentation} from './presentation.js';
 import { ColorClearGame, FLIGHT_SECONDS, aimY, levelEliminationPace } from '../../assets/scripts/color-clear/ColorClearGame.ts';
-import { makeLevel, makeRescueFixture, LEVEL_COUNT } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
+import { makeRescueFixture } from '../../assets/scripts/color-clear/ColorClearLevels.ts';
+
+import {RESCUES, RESCUE_COUNT, CAMPAIGN_PROGRESS_KEY, WIZARD_QUEUE_COUNT, makeCampaignLevel, campaignModel, normalizeRescueOrder} from './campaign.js';
 
 const $=id=>document.getElementById(id);
 const COLORS=['#ec8068','#e9b842','#64aaca','#68ad89','#ae8fc9','#db9c63'];
@@ -20,7 +21,7 @@ const SYMBOLS=['●','▲','◆','■','✦','⬟'];
 const NAMES=['珊瑚红','奶油黄','天空蓝','薄荷绿','丁香紫','焦糖棕'];
 const pref=(key,fallback)=>{try{return JSON.parse(localStorage.getItem('color-clear.'+key))??fallback;}catch{return fallback;}};
 const save=(key,value)=>{try{localStorage.setItem('color-clear.'+key,JSON.stringify(value));}catch{/* Private mode may disable storage; play stays available. */}};
-let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Number(pref('unlocked',1))||1));
+let unlocked=normalizeRescueOrder(pref(CAMPAIGN_PROGRESS_KEY,1));
 const localStorageAdapter={getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},audioPrefs=new AudioPreferences(localStorageAdapter),campState=new CampState(localStorageAdapter),campAudio=new CampAudio(audioPrefs);
 let muted=!audioPrefs.effects,haptic=pref('haptic',false);
 let studioLevel=null,studioError='',shuffleBase=null,shuffleVariants=[],shuffleIndex=-1;
@@ -36,16 +37,24 @@ if(new URLSearchParams(location.search).get('studio')==='1'){
  }catch(error){studioError='制作关卡未加载：'+error.message;studioLevel=null;shuffleBase=null;shuffleVariants=[];shuffleIndex=-1;}
 }
 const fixtureMode=!!studioLevel||new URLSearchParams(location.search).get('fixture')==='rescue';
-const levelFor=n=>studioLevel?structuredClone(studioLevel):fixtureMode?makeRescueFixture():makeLevel(n);
+function levelFor(order) {
+ if (studioLevel) return studioLevel;
+ if (fixtureMode) return makeRescueFixture();
+ if (order === 2) {
+  shuffleIndex = chooseVariant(WIZARD_QUEUE_COUNT, shuffleIndex);
+  return makeCampaignLevel(order, shuffleIndex);
+ }
+ return makeCampaignLevel(order);
+}
 let settings=normalizePresentation(pref('presentation',{})),rewardSession=null,reserveOpen=false;
-const requestedLevel=Math.min(unlocked,Math.max(1,Math.floor(Number(new URLSearchParams(location.search).get('level')))||1));
+let rescueOrder=Math.min(unlocked,normalizeRescueOrder(new URLSearchParams(location.search).get('level')));
 const requestedTier = new URLSearchParams(location.search).get('difficulty');
 function newRun(number) {
  const tier = studioLevel && ['warmup','planning','challenge'].includes(requestedTier)
-  ? requestedTier : getDifficultyProfile(number).tier;
+  ? requestedTier : studioLevel ? 'warmup' : RESCUES[number-1].tier;
  return new ColorClearGame(levelFor(number), fixtureMode && !studioLevel ? undefined : tier);
 }
-let model=newRun(requestedLevel);
+let model=newRun(rescueOrder);
 const orbit=new ModelOrbit(),openingSpin=new URLSearchParams(location.search).get('autospin')!=='0';orbit.reset(openingSpin);
 let renderer,meshes=[],pieces=[],coreMarks=[],viewScale=9,frameId,drag=null,lastTime=performance.now(),uiStamp='',shownPhase='',comboUntil=0,bonusUntil=0,lastTone=0,audio,rotationVelocity=0,lastDragTime=0,rangeStamp='';
 let particles=[],bullets=[];
@@ -68,20 +77,12 @@ let domColors=COLORS.map(c=>new THREE.Color(c));
 try{renderer=new THREE.WebGLRenderer({canvas:$('world'),alpha:true,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;}
 catch(error){$('webgl-error').hidden=false;throw error;}
 
-function animalDetails(cells,id){
- if(studioLevel)return createModelDetails(cells);
- const details=[],duck=(id-1)%3===0;
- for(const c of cells){
-  const eye=duck?c.x===3&&c.y===3&&Math.abs(c.z)===2:Math.abs(c.x)===1&&c.y===3&&Math.abs(c.z)===2;
-  if(!eye)continue;const side=Math.sign(c.z);
-  for(const [radius,color,dx,dy,depth] of [[.22,0xfff9e6,.03,.13,.40],[.135,0x263d37,.07,.14,.55],[.047,0xffffff,.04,.19,.665],[.12,0xed997b,-.17,-.2,.47]]){
-   const mark=new THREE.Mesh(new THREE.SphereGeometry(radius,12,10),new THREE.MeshBasicMaterial({color}));
-   mark.position.set(c.x+dx,c.y+dy,c.z+depth*side);mark.userData.id=c.id;details.push(mark);
-  }
- }
- return details;
-}
 function buildModel(){
+ if(!fixtureMode){
+  const rescue=RESCUES[rescueOrder-1];
+  rescue.palette.forEach((color,index)=>{COLORS[index]=color;NAMES[index]=rescue.colors[index];});
+  domColors=COLORS.map(color=>new THREE.Color(color));
+ }
  for(const m of meshes){root.remove(m);m.dispose();}meshes=[];pieces=[];
  for(const m of coreMarks){root.remove(m);m.geometry.dispose();m.material.dispose();}coreMarks=[];
  for(const shape of new Set(model.cells.map(c=>c.shape||'box'))){const cells=model.cells.filter(c=>(c.shape||'box')===shape),m=new THREE.InstancedMesh(shapeGeometries[shape],material,cells.length);m.frustumCulled=false;root.add(m);meshes.push(m);cells.forEach((c,index)=>pieces[c.id]={mesh:m,index});}
@@ -90,7 +91,7 @@ function buildModel(){
   if(c.core){const mark=new THREE.Mesh(new THREE.TorusGeometry(.20,.032,5,12),new THREE.MeshBasicMaterial({color:0xfff8d7}));mark.position.set(c.x,c.y,c.z+.49);mark.userData.id=c.id;root.add(mark);coreMarks.push(mark);}
  }
  // Every detail belongs to a removable cell, including in the collection thumbnail.
- for(const mark of animalDetails(model.cells,model.level.id)){root.add(mark);coreMarks.push(mark);}
+ for(const mark of createModelDetails(model.cells)){root.add(mark);coreMarks.push(mark);}
  const maxY=Math.max(...model.cells.map(c=>Math.abs(c.y))),maxX=Math.max(...model.cells.map(c=>Math.hypot(c.x,c.z)));
  viewScale=Math.max(maxY*2+4.8,maxX*2+2.6);
  $('projectiles').replaceChildren();bullets=[];particles=[];
@@ -143,7 +144,7 @@ function syncUI(force=false){
  const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,4)),model.phase,model.remaining,muted,model.reserve,settings,orbit.automatic,...(model.slots.some(Boolean)?[model.yaw.toFixed(2),model.pitch.toFixed(2)]:[])]);
  if(!force&&signature===uiStamp)return;uiStamp=signature;
  applyPresentation();
- $('level-name').textContent=`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
+ $('level-name').textContent=`第 ${String(rescueOrder).padStart(2,'0')} 关 · ${model.level.name}`;
  $('level-dots').textContent=Array.from({length:5},(_,i)=>i<(model.level.id-1)%5+1?'●':'○').join(' ');
  $('remaining').textContent=`剩余 ${model.remaining} 块`;$('percent').textContent=`${Math.round(model.progress*100)}%`;$('progress').style.width=model.progress*100+'%';
  const visibleColors=new Set(model.visibleTargets().map(c=>c.color));
@@ -206,7 +207,7 @@ function processEvents(){
   }
   if(e.type==='chain'){ $('combo').textContent='漂亮命中 ✧'; $('world').dataset.chainEvents=String(Number($('world').dataset.chainEvents||0)+1); }
   if(e.type==='won'){campAudio.setActive(false);}
-  if(e.type==='won'&&!fixtureMode){albumUI.record(model.level.id);unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,model.level.id+1));save('unlocked',unlocked);}
+  if(e.type==='won'&&!fixtureMode){albumUI.record(model.level.id);unlocked=Math.max(unlocked,Math.min(RESCUE_COUNT,rescueOrder+1));save(CAMPAIGN_PROGRESS_KEY,unlocked);}
  }
  if(changed)syncBlocks();
 }
@@ -217,18 +218,18 @@ function openDialog(mode='phase'){
  $('dialog-symbol').classList.toggle('rescued-duck',won);
  $('dialog-symbol').textContent=won?'🦆':lost?'↻':'Ⅱ';$('dialog-kicker').textContent=won?'RESCUE COMPLETE':lost?'TRY A DIFFERENT ORDER':'TAKE YOUR TIME';
  $('dialog-title').textContent=mode==='help'?'两种操作，就会玩':won?'安全抵达！':lost?'差一点，换个顺序':'休息一下';
- $('dialog-text').textContent=mode==='help'?`${getDifficultyProfile(model.level.id).label}：点前排胶囊进入发射槽，自动消除同色积木。上下左右拖动寻找目标。${model.level.id<4?'同色弹药与积木数相等，每发清除一块。':'每发清除一块；注意留槽位给能打开外层的颜色。'}`:won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${model.level.id===LEVEL_COUNT?'十关体验完成，也可以回头试试另一种顺序。':'封印解开了，伙伴已安全抵达营地。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
+ $('dialog-text').textContent=mode==='help'?`${model.rescueTier==='challenge'?'多面挑战':'轻松上手'}：点前排胶囊进入发射槽，自动消除同色积木。上下左右拖动寻找目标。${model.rescueTier!=='challenge'?'同色弹药与积木数相等，每发清除一块。':'每发清除一块；注意留槽位给能打开外层的颜色。'}`:won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${!fixtureMode&&rescueOrder===RESCUE_COUNT?'两次救援完成，可以在图鉴查看鸭鸭。':'封印解开了，伙伴已安全抵达营地。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
  if(mode==='help'&&model.rescueTier){
   $('dialog-text').textContent += ' 同色连续消掉 5 块触发奖励。';
   if(model.rescueTier!=='warmup')$('dialog-text').textContent += ' 问号胶囊升到第二行才揭晓弹量。';
   if(model.rescueTier==='challenge')$('dialog-text').textContent += ' 攒到一次奖励后，符合条件的满槽死局可暂存最左一颗胶囊，每局一次。';
  }
  if(won&&model.bonusCount)$('dialog-text').textContent+=' 同色奖励 × '+model.bonusCount+'。';
- $('primary').textContent=studioLevel&&won?'再玩这关':lost&&model.canContinue?'模拟广告 · 暂存续关':won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
- $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(model.level.id);}else{model.resume();campAudio.setActive(true);$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
+ $('primary').textContent=studioLevel&&won?'再玩这关':lost&&model.canContinue?'模拟广告 · 暂存续关':won?(fixtureMode||rescueOrder===RESCUE_COUNT?'再玩这关':'下一关 →'):lost?'换个顺序再试':'继续游戏';
+ $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(fixtureMode?rescueOrder:Math.min(RESCUE_COUNT,rescueOrder+1));else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(rescueOrder);}else{model.resume();campAudio.setActive(true);$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
 }
 function pause(){campAudio.setActive(false);if(drag)orbit.release(true,0);drag=null;rotationVelocity=0;if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
-function loadLevel(n){campAudio.setActive(true);if(shuffleVariants.length){try{const index=chooseVariant(shuffleVariants.length,shuffleIndex);const next=decodeLevel(variantData(shuffleBase,shuffleVariants[index]));studioLevel=next;shuffleIndex=index;try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}}catch{toast('随机队列未通过校验，保留当前排列');}}if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=newRun(n);orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;bonusUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
+function loadLevel(n){campAudio.setActive(true);if(shuffleVariants.length){try{const index=chooseVariant(shuffleVariants.length,shuffleIndex);const next=decodeLevel(variantData(shuffleBase,shuffleVariants[index]));studioLevel=next;shuffleIndex=index;try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}}catch{toast('随机队列未通过校验，保留当前排列');}}if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;rescueOrder=normalizeRescueOrder(n);model=newRun(rescueOrder);orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;bonusUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
 $('emergency-reserve').onclick=()=>{
  ensureAudio();
  if(!model.useEmergencyReserve())return;
@@ -239,16 +240,16 @@ $('emergency-reserve').onclick=()=>{
  syncUI(true);
  toast('已腾出一槽，剩余弹药保存在暂存区');
 };
-$('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(model.level.id);};
+$('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(rescueOrder);};
 function toggleSound(){muted=!muted;audioPrefs.setEffects(!muted);campAudio.sync();if(!muted){ensureAudio();tone();}syncUI(true);}
 $('dialog-music').onclick=()=>{audioPrefs.setMusic(!audioPrefs.music);ensureAudio();campAudio.sync();syncUI(true);};
 $('sound').onclick=toggleSound;$('dialog-sound').onclick=toggleSound;
 $('dialog-haptic').onclick=()=>{haptic=!haptic;save('haptic',haptic);syncUI(true);vibrate();};
 $('help').onclick=()=>{pause();openDialog('help');};
 $('level-select').onclick=()=>{
- $('dialog-title').textContent='选择一份颜色';$('dialog-text').textContent=`已解锁 ${unlocked} / ${LEVEL_COUNT} 关`;
- const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:14px 0';
- for(let i=1;i<=LEVEL_COUNT;i++){const b=document.createElement('button');b.textContent=String(i);b.disabled=i>unlocked;b.style.cssText=`padding:10px 0;background:${i<=unlocked?'#deedda':'#eff0e9'};opacity:${i<=unlocked?1:.4}`;b.onclick=()=>loadLevel(i);grid.append(b);}
+ $('dialog-title').textContent='选择一份颜色';$('dialog-text').textContent=`已解锁 ${unlocked} / ${RESCUE_COUNT} 关`;
+ const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:14px 0';
+ for(let i=1;i<=RESCUE_COUNT;i++){const b=document.createElement('button');b.textContent=RESCUES[i-1].name;b.disabled=i>unlocked;b.style.cssText=`padding:10px 0;background:${i<=unlocked?'#deedda':'#eff0e9'};opacity:${i<=unlocked?1:.4}`;b.onclick=()=>loadLevel(i);grid.append(b);}
  $('dialog-text').append(grid);
 };
 $('stage').addEventListener('pointerdown',e=>{if(model.phase!=='playing'||drag)return;ensureAudio();drag={id:e.pointerId,x:e.clientX,y:e.clientY};rotationVelocity=0;orbit.beginDrag();lastDragTime=performance.now();$('stage').setPointerCapture(e.pointerId);});
@@ -285,7 +286,7 @@ function frame(time){
  }
  renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
 }
-window.__colorClear={snapshot:()=>({rescueTier:model.rescueTier,bonusCount:model.bonusCount,visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:levelEliminationPace(model.level,model.remaining,model.cells.length),shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,autoEnabled:orbit.enabled,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
+window.__colorClear={snapshot:()=>({rescueTier:model.rescueTier,bonusCount:model.bonusCount,visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:levelEliminationPace(model.level,model.remaining,model.cells.length),shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,rescueOrder,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,autoEnabled:orbit.enabled,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
 window.addEventListener('pagehide',()=>{cancelAnimationFrame(frameId);audio?.suspend();campAudio.setActive(false);});
 window.addEventListener('pageshow',e=>{if(e.persisted){lastTime=performance.now();frameId=requestAnimationFrame(frame);}});
 
@@ -293,7 +294,7 @@ function applyPresentation(){
  if($('auto-rotate'))$('auto-rotate').textContent=`自动旋转：${orbit.enabled?'开':'关'}`;
  document.querySelector('.game-shell').classList.toggle('minimal-copy',!settings.labels);
  document.querySelector('.progress-track').hidden=!settings.progress;$('remaining').hidden=!settings.remaining;$('percent').hidden=!settings.progress;document.querySelector('.background-art').hidden=!settings.background;
- document.querySelector('.heading h1').textContent=studioLevel?`制作试玩 · ${model.level.name}`:settings.labels?'鸭鸭脱困':`第 ${String(model.level.id).padStart(2,'0')} 关 · ${model.level.name}`;
+ document.querySelector('.heading h1').textContent=studioLevel?`制作试玩 · ${model.level.name}`:settings.labels?'鸭鸭脱困':`第 ${String(rescueOrder).padStart(2,'0')} 关 · ${model.level.name}`;
  for(const b of document.querySelectorAll('[data-display]')){const key=b.dataset.display,names={progress:'进度条',remaining:'剩余块数',labels:'说明文字',background:'背景'};b.textContent=`${names[key]}：${settings[key]?'开':'关'}`;b.setAttribute('aria-pressed',String(settings[key]));}
 }
 $('auto-rotate').onclick=()=>{orbit.reset(!orbit.enabled);syncUI(true);};
@@ -314,13 +315,13 @@ const thumbnailCache=new Map();let thumbnailRenderer;
 function modelThumbnail(id){
  if(thumbnailCache.has(id))return thumbnailCache.get(id);
  if(!thumbnailRenderer){thumbnailRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true});thumbnailRenderer.setSize(160,160);thumbnailRenderer.outputColorSpace=THREE.SRGBColorSpace;thumbnailRenderer.toneMapping=THREE.ACESFilmicToneMapping;}
- const miniature=new THREE.Scene(),group=new THREE.Group(),level=makeLevel(id);miniature.add(group);group.rotation.set(.28,.55,0);
+ const miniature=new THREE.Scene(),group=new THREE.Group(),{level,palette}=campaignModel(id);miniature.add(group);group.rotation.set(.28,.55,0);
  miniature.add(new THREE.HemisphereLight(0xfffff5,0x697f78,1.25));const lamp=new THREE.DirectionalLight(0xfff5df,2.5);lamp.position.set(-6,11,10);miniature.add(lamp);
- const parts=[];for(const shape of new Set(level.cells.map(c=>c.shape||'box'))){const cells=level.cells.filter(c=>(c.shape||'box')===shape),m=new THREE.InstancedMesh(shapeGeometries[shape],material,cells.length);m.frustumCulled=false;cells.forEach((c,i)=>{dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(1);dummy.rotation.set(0,0,0);dummy.updateMatrix();m.setMatrixAt(i,dummy.matrix);m.setColorAt(i,cellDisplayColor(c,COLORS));});parts.push(m);group.add(m);}
- const details=animalDetails(level.cells,id);details.forEach(p=>group.add(p));
+ const parts=[];for(const shape of new Set(level.cells.map(c=>c.shape||'box'))){const cells=level.cells.filter(c=>(c.shape||'box')===shape),m=new THREE.InstancedMesh(shapeGeometries[shape],material,cells.length);m.frustumCulled=false;cells.forEach((c,i)=>{dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(1);dummy.rotation.set(0,0,0);dummy.updateMatrix();m.setMatrixAt(i,dummy.matrix);m.setColorAt(i,cellDisplayColor(c,palette));});parts.push(m);group.add(m);}
+ const details=createModelDetails(level.cells);details.forEach(p=>group.add(p));
  const extent=new THREE.Box3().setFromObject(group),centre=extent.getCenter(new THREE.Vector3()),size=extent.getSize(new THREE.Vector3());group.position.sub(centre);const half=Math.max(size.x,size.y)*.6,cam=new THREE.OrthographicCamera(-half,half,half,-half,.1,100);cam.position.set(0,0,25);cam.lookAt(0,0,0);thumbnailRenderer.render(miniature,cam);const image=thumbnailRenderer.domElement.toDataURL('image/png');parts.forEach(p=>p.dispose());details.forEach(p=>{p.geometry.dispose();p.material.dispose();});thumbnailCache.set(id,image);return image;
 }
-const albumUI=createAlbumUI({fixtureMode,thumbnail:modelThumbnail,toast,inspect:id=>openModelInspector(makeLevel(id)),pause(){
+const albumUI=createAlbumUI({fixtureMode,thumbnail:modelThumbnail,toast,inspect:id=>{const {level,palette}=campaignModel(id);openModelInspector(level,palette);},pause(){
  campAudio.setActive(false);
  const playing=model.phase==='playing',overlayWasHidden=$('overlay').hidden;if(playing)model.pause();if(drag)orbit.release(true,0);drag=null;rotationVelocity=0;$('overlay').hidden=true;
  return()=>{if(playing&&model.phase==='paused'){model.resume();shownPhase='playing';}else $('overlay').hidden=overlayWasHidden;campAudio.setActive(model.phase==='playing');lastTime=performance.now();};

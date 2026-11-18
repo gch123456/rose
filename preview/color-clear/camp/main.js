@@ -1,15 +1,15 @@
 import {CampState,AudioPreferences} from '../camp-state.js';
 import {CampAudio} from '../camp-audio.js';
 import {createAlbumUI,albumMarkup} from '../album.js';
-import {makeLevel,LEVEL_COUNT} from '../../../assets/scripts/color-clear/ColorClearLevels.ts';
+import {RESCUES, CAMPAIGN_PROGRESS_KEY, campaignModel, normalizeRescueOrder} from '../campaign.js';
 import {openModelInspector,renderModelThumbnail} from '../model-inspector.js';
 const $=id=>document.getElementById(id),storage={getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},camp=new CampState(storage),preferences=new AudioPreferences(storage),audio=new CampAudio(preferences);
 $('manual-root').innerHTML=albumMarkup();
 let playing=false,loaded=false,visible=true,toastTimer,settingsFocus,dailyFocus;
 function toast(text){$('toast').textContent=text;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2200);}
-const album=createAlbumUI({fixtureMode:false,toast,thumbnail:id=>thumbnail(id),inspect:id=>openModelInspector(makeLevel(id)),pause(){return()=>{};}});
-const thumbCache=new Map();function thumbnail(id){if(!thumbCache.has(id))thumbCache.set(id,renderModelThumbnail(makeLevel(id)));return thumbCache.get(id);}
-function sync(){const daily=camp.daily();$('daily-dot').hidden=!daily.canClaim;$('claim-daily').disabled=!daily.canClaim;$('claim-daily').textContent=daily.claimed?'今日补给已领取':'收下补给';$('daily-status').textContent='重排库存 '+daily.reorderTokens+' · '+(daily.persistent?'仅此设备保存':'当前浏览会话保存');$('music-toggle').setAttribute('aria-checked',String(preferences.music));$('effects-toggle').setAttribute('aria-checked',String(preferences.effects));let unlocked=1;try{unlocked=Math.min(LEVEL_COUNT,Math.max(1,Number(JSON.parse(localStorage.getItem('color-clear.unlocked')))||1));}catch{}$('mission-title').textContent='第 '+String(unlocked).padStart(2,'0')+' 次 · '+makeLevel(unlocked).name;return unlocked;}
+const album=createAlbumUI({fixtureMode:false,toast,thumbnail:id=>thumbnail(id),inspect:id=>{const {level,palette}=campaignModel(id);openModelInspector(level,palette);},pause(){return()=>{};}});
+const thumbCache=new Map();function thumbnail(id){if(!thumbCache.has(id)){const {level,palette}=campaignModel(id);thumbCache.set(id,renderModelThumbnail(level,palette));}return thumbCache.get(id);}
+function sync(){const daily=camp.daily();$('daily-dot').hidden=!daily.canClaim;$('claim-daily').disabled=!daily.canClaim;$('claim-daily').textContent=daily.claimed?'今日补给已领取':'收下补给';$('daily-status').textContent='重排库存 '+daily.reorderTokens+' · '+(daily.persistent?'仅此设备保存':'当前浏览会话保存');$('music-toggle').setAttribute('aria-checked',String(preferences.music));$('effects-toggle').setAttribute('aria-checked',String(preferences.effects));let unlocked=1;try{unlocked=normalizeRescueOrder(JSON.parse(localStorage.getItem('color-clear.'+CAMPAIGN_PROGRESS_KEY)));}catch{}$('mission-title').textContent='第 '+String(unlocked).padStart(2,'0')+' 次 · '+RESCUES[unlocked-1].name;return unlocked;}
 function daily(){dailyFocus=document.activeElement;sync();$('daily-overlay').hidden=false;$('daily-close').focus();}
 function closeDaily(){$('daily-overlay').hidden=true;dailyFocus?.focus();}
 $('daily-open').onclick=daily;$('daily-close').onclick=closeDaily;

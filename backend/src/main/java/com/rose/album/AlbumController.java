@@ -36,7 +36,7 @@ public class AlbumController {
         service.logout(auth); return ResponseEntity.noContent().build();
     }
     private static int levelId(Object value) {
-        if(!(value instanceof Integer id) || id<1 || id>10) throw invalid();
+        if(!(value instanceof Integer id) || id<1 || id>12) throw invalid();
         return id;
     }
     private static ApiFailure invalid() { return new ApiFailure(400,"invalid_request"); }
