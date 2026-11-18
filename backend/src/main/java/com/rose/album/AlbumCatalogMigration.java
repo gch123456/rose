@@ -19,7 +19,7 @@ class AlbumCatalogMigration {
               USING (CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME)
             WHERE t.TABLE_SCHEMA = CURRENT_SCHEMA()
               AND t.TABLE_NAME = 'ALBUM_ENTRIES'
-              AND REPLACE(c.CHECK_CLAUSE, '"', '') = 'LEVEL_ID BETWEEN 1 AND 10'
+              AND REPLACE(c.CHECK_CLAUSE, '"', '') IN ('LEVEL_ID BETWEEN 1 AND 10', 'LEVEL_ID BETWEEN 1 AND 12')
             """, String.class);
         for (String name : legacy) {
             String identifier = "\"" + name.replace("\"", "\"\"") + "\"";

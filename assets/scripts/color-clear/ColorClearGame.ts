@@ -157,12 +157,16 @@ export class ColorClearGame {
     readonly rescueTier?: RescueTier;
     private readonly random: () => number;
     private readonly freeStallRescue: boolean;
+    private readonly exitIds: ReadonlySet<number>;
+    private exitLeft = 0;
+    private caughtByChase = false;
 
-    constructor(level: Level, rescueTier?: RescueTier, random = Math.random, options: {freeStallRescue?: boolean} = {}) {
+    constructor(level: Level, rescueTier?: RescueTier, random = Math.random, options: {freeStallRescue?: boolean; exitIds?: ReadonlySet<number>} = {}) {
         this.level = level;
         this.rescueTier = rescueTier;
         this.random = random;
         this.freeStallRescue = options.freeStallRescue === true;
+        this.exitIds = new Set(options.exitIds);
         this.restart();
     }
 
@@ -186,7 +190,7 @@ export class ColorClearGame {
 
     get canUseEmergencyReserve(): boolean {
         if (this.rescueTier !== 'challenge' || (!this.freeStallRescue && this.bonusCount === 0) || this.emergencyUsed
-            || this.phase !== 'lost' || this.reward || this.flights.length
+            || this.phase !== 'lost' || this.caughtByChase || this.reward || this.flights.length
             || this.slots.some(slot => !slot) || this.reserve.length >= 6) return false;
         const reachable = this.reach ??= reachableColors(this.cells);
         return [...this.supply.map(queue => queue[0]), ...this.reserve]
@@ -204,12 +208,16 @@ export class ColorClearGame {
         this.phase = 'playing';
         return true;
     }
+    get exitRemaining(): number { return this.exitLeft; }
+    get hasExit(): boolean { return this.exitIds.size > 0; }
     get remaining(): number { return this.cells.reduce((n, c) => n + Number(c.alive), 0); }
     get progress(): number { return 1 - this.remaining / Math.max(1, this.cells.length); }
-    get canContinue(): boolean { return this.phase === 'lost' && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
+    get canContinue(): boolean { return this.phase === 'lost' && !this.caughtByChase && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
         this.bonusCount = 0;
+        this.exitLeft = this.exitIds.size;
+        this.caughtByChase = false;
         this.streakColor = null;
         this.streak = 0;
         this.emergencyUsed = false;
@@ -344,6 +352,7 @@ export class ColorClearGame {
     drainEvents(): ClearEvent[] { const out = this.events; this.events = []; return out; }
     private clear(cell: Voxel): void {
         if (!cell.alive) return; cell.alive = false; this.combo++; this.reach = null;
+        if (this.exitIds.has(cell.id)) this.exitLeft--;
         this.events.push({ type: 'clear', cell: { ...cell }, color: cell.color, core: cell.core });
         if (this.rescueTier) {
             this.streak = cell.color === this.streakColor ? this.streak + 1 : 1;
@@ -356,9 +365,65 @@ export class ColorClearGame {
         }
         if (cell.core) this.events.push({ type: 'chain', cell: { ...cell }, color: cell.color });
     }
+    get escapeReady(): boolean { return this.hasExit && this.exitLeft === 0; }
+
+    caughtByCook(): void {
+        if (this.phase !== 'playing' || this.escapeReady) return;
+        this.caughtByChase = true;
+        this.reason = '烤鸭师傅追上了';
+        this.phase = 'lost';
+        this.events.push({type:'lost'});
+    }
+
+    /** Use matching unspent ammo for each skill clear; never take an in-flight target. */
+    openShellWithWater(limit: number): number {
+        if (this.phase !== 'playing' || !this.hasExit || !Number.isSafeInteger(limit) || limit <= 0) return 0;
+        const claimed = new Set(this.flights.flatMap(flight => flight.claimed));
+        const visible = this.visibleTargets().filter(cell => !claimed.has(cell.id));
+        visible.sort((left, right) => Number(this.exitIds.has(right.id)) - Number(this.exitIds.has(left.id)));
+        let cleared = 0;
+        for (const cell of visible) {
+            if (cleared >= limit || this.escapeReady) break;
+            if (!this.spendWaterAmmo(cell.color)) continue;
+            this.clear(cell);
+            cleared++;
+        }
+        this.releaseEmptySlots();
+        this.settle(this.remaining);
+        return cleared;
+    }
+
+    private spendWaterAmmo(color: number): boolean {
+        // Back of supply first so the four choices already on screen stay stable.
+        const lanes = this.supply;
+        for (let depth = Math.max(...lanes.map(lane => lane.length)) - 1; depth >= 0; depth--) {
+            for (const lane of lanes) {
+                const capsule = lane[depth];
+                if (!capsule || capsule.color !== color || capsule.ammo <= 0) continue;
+                if (--capsule.ammo === 0) lane.splice(depth, 1);
+                return true;
+            }
+        }
+        const reserve = this.reserve.findIndex(capsule => capsule.color === color && capsule.ammo > 0);
+        if (reserve >= 0) {
+            if (--this.reserve[reserve].ammo === 0) this.reserve.splice(reserve, 1);
+            return true;
+        }
+        const slot = this.slots.find(capsule => capsule && capsule.color === color && capsule.ammo > 0);
+        if (!slot) return false;
+        slot.ammo--;
+        return true;
+    }
+    private releaseEmptySlots(): void {
+        for (const [index, capsule] of this.slots.entries()) {
+            if (!capsule || capsule.ammo > 0 || this.flights.some(flight => flight.capsuleId === capsule.id)) continue;
+            this.slots[index] = null;
+            this.events.push({type:'empty', slot:index, color:capsule.color});
+        }
+    }
     private settle(remaining: number): void {
         if (this.flights.length) return;
-        if (!remaining) { this.phase = 'won'; this.events.push({ type: 'won' }); return; }
+        if (!remaining || this.escapeReady) { this.phase = 'won'; this.events.push({ type: 'won' }); return; }
         const active = this.slots.filter((s): s is Capsule => !!s), supplied = this.supply.some(c => c.length) || this.reserve.length > 0;
         if (!active.length && !supplied) this.reason = '弹药已用完，还有积木没有清除';
         else if (active.length === this.slots.length || !supplied) {
@@ -375,9 +440,10 @@ export class ColorClearGame {
             this.flights.splice(this.flights.indexOf(f), 1); const target = this.cellsById.get(f.target);
             if (target?.alive) { this.events.push({ type: 'hit', cell: { ...target }, slot: f.slot, color: f.color, flightId: f.id }); this.clear(target); }
         }
-        this.slots.forEach((s, i) => { if (s && s.ammo <= 0 && !this.flights.some(f => f.capsuleId === s.id)) { this.slots[i] = null; this.events.push({ type: 'empty', slot: i, color: s.color }); } });
+        this.releaseEmptySlots();
         this.cooldown -= step;
         const remaining = this.remaining;
+        if (this.escapeReady) { this.settle(remaining); return; }
         let reserved: Set<number> | undefined;
         while (this.cooldown <= 0 && remaining) {
             const pace = levelEliminationPace(this.level, remaining, this.cells.length);

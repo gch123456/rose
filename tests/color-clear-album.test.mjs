@@ -3,7 +3,7 @@ import {AlbumBook,AlbumService} from '../assets/scripts/color-clear/ColorClearAl
 const storage=()=>{const m=new Map();return{getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)};};
 const time=()=> '2026-11-16T08:00:00.000Z';
 test('guest unlocks persist uniquely and malformed storage never grants unknown models',()=>{
- const s=storage(),book=new AlbumBook(s,time);assert.equal(book.unlock(1),true);assert.equal(book.unlock(1),false);assert.equal(new AlbumBook(s,time).entries.length,1);assert.throws(()=>book.unlock(13));
+ const s=storage(),book=new AlbumBook(s,time);assert.equal(book.unlock(1),true);assert.equal(book.unlock(1),false);assert.equal(new AlbumBook(s,time).entries.length,1);assert.equal(book.unlock(13),true);assert.equal(new AlbumBook(s,time).entries.length,2);assert.throws(()=>book.unlock(14));
  s.setItem('color-clear.album.v1','bad json');assert.equal(new AlbumBook(s,time).entries.length,0);
 });
 test('guest/account books and pending uploads stay isolated; cloud union never discards local unlocks',()=>{

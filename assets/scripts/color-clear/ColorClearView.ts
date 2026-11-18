@@ -5,14 +5,18 @@ import {BLOCK_INDEX_CAPACITY, BLOCK_VERTEX_CAPACITY, BlockMeshIndex} from './Col
 import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Rect, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
 import { ColorClearGame, FLIGHT_SECONDS } from './ColorClearGame';
 import type { Voxel, RewardTicket, PieceShape } from './ColorClearGame';
-import { makeReleaseLevel, RELEASE_LEVELS, chooseReleaseQueue } from './ColorClearRelease';
+import {makeReleaseLevel, chooseReleaseQueue} from './ColorClearRelease';
+import {HARBOR_STAGES, makeHarborStage} from './ColorClearHarborLevels';
+import {HarborChase} from './ColorClearHarborChase';
+import {createHarborDuck} from './ColorClearHarborDuck';
+import {drawHarborChase, drawHarborDeck} from './ColorClearHarborHud';
 import {ModelOrbit} from './ColorClearOrbit';
 import {AlbumService} from './ColorClearAlbum';
 import {wechatAlbumTransport} from './ColorClearWechat';
 import {specialPieceGeometry} from './ColorClearGeometry';
 const { ccclass, property } = _decorator;
-const FIRST_RESCUE = RELEASE_LEVELS[0].id;
-const LAST_RESCUE = RELEASE_LEVELS[1].id;
+const FIRST_RESCUE = HARBOR_STAGES[0].id;
+const LAST_RESCUE = HARBOR_STAGES[HARBOR_STAGES.length - 1].id;
 const STAGE_LAYER = 1 << 18;
 const CREAM = '#f9f6ec';
 const TEAL = '#245d51';
@@ -21,7 +25,8 @@ const FRONT_Y = -304;
 const ORBIT_SECONDS = .76;
 const MUSIC_KEY = 'color-clear.music';
 const EFFECTS_KEY = 'color-clear.muted';
-const PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
+const PROGRESS_KEY = 'color-clear.campaign.unlocked.v2';
+const OLD_PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
 const SYMBOLS = ['●', '▲', '◆', '■', '✦', '⬟'];
 type Card = { node: Node; pen: Graphics; label: Label; paintKey?: string };
 type BlockBatch = { node: Node; renderer: MeshRenderer; mesh: Mesh };
@@ -38,12 +43,22 @@ export class ColorClearView extends Component {
     @property showLabels = false;
     @property showBackground = true;
     private model = new ColorClearGame(makeReleaseLevel(FIRST_RESCUE), 'warmup');
-    private colors: readonly string[] = RELEASE_LEVELS[0].palette;
+    private colors: readonly string[] = HARBOR_STAGES[0].palette;
     private wizardPayload: unknown;
     private wizardQueue = -1;
     private wizardLoading = false;
     private camp!: Node;
     private campTitle!: Label;
+    private chase = new HarborChase('tutorial');
+    private chasePen!: Graphics;
+    private chaseLabel!: Label;
+    private chasePaintTime = -Infinity;
+    private skillButton!: Card;
+    private skillUsed = false;
+    private harborBackdrop!: Sprite;
+    private wholeDuck: Node | null = null;
+    private escapeShowUntil = 0;
+    private wonDialogPending = false;
     private campStatus!: Label;
     private continueButton!: Card;
     private emergencyButton!: Card;
@@ -129,7 +144,9 @@ export class ColorClearView extends Component {
         this.album=new AlbumService(sys.localStorage,wechatAlbumTransport(this.albumApiOrigin));
         view.setDesignResolutionSize(640, 1120, ResolutionPolicy.SHOW_ALL);
         try {
-            this.unlocked = Number(sys.localStorage.getItem(PROGRESS_KEY)) === 2 ? 2 : 1;
+            const saved = Number(sys.localStorage.getItem(PROGRESS_KEY));
+            const old = Number(sys.localStorage.getItem(OLD_PROGRESS_KEY));
+            this.unlocked = saved === 2 || saved === 3 ? saved : old === 2 ? 2 : 1;
             this.effectsMuted = sys.localStorage.getItem(EFFECTS_KEY) === 'true';
             this.musicEnabled = sys.localStorage.getItem(MUSIC_KEY) !== 'false';
         } catch { /* storage optional */ }
@@ -162,12 +179,18 @@ export class ColorClearView extends Component {
         this.uiCamera = uiCamera;
         this.title = this.text(this.ui, '', 34, 0, 482, 414, '#204d42');
         this.title.isBold = true;
-        this.bonusLabel = this.text(this.ui, '', 30, 0, 400, 400, '#fff0a1');
+        const chaseTrack = this.child(this.ui, 'HarborChase', true);
+        chaseTrack.setPosition(0, 405);
+        this.chasePen = chaseTrack.addComponent(Graphics);
+        this.panel(this.ui, 'RescueGoal', 0, 366, 314, 29, '#132d36da', '#304952', 12);
+        this.chaseLabel = this.text(this.ui, '', 18, 0, 366, 304, '#fff9e7');
+        this.chaseLabel.isBold = true;
+        this.bonusLabel = this.text(this.ui, '', 25, 0, -85, 365, '#fff0a1');
         this.bonusLabel.isBold = true;
         this.bonusLabel.node.active = false;
         this.settingsButton(this.ui, -266, 515);
-        this.remaining = this.text(this.ui, '', 18, 0, 366, 540, '#486a61');
-        this.text(this.ui, '拖动转面', 18, 0, -89, 160, '#fff7e4');
+        this.remaining = this.text(this.ui, '', 16, 0, 335, 540, '#486a61');
+        this.text(this.ui, '拖动转面', 16, -213, -86, 142, '#fff7e4');
         this.text(this.ui, '发射台', 17, -250, -124, 110, '#42675d');
         this.loadHint = this.text(this.ui, '点前排装填', 17, -205, -238, 190, '#42675d');
         this.status = this.text(this.ui, '', 16, 90, -124, 360, '#486a61');
@@ -204,7 +227,7 @@ export class ColorClearView extends Component {
         this.resultText = this.text(this.dialog, '', 22, 0, 70, 530, '#718678');
         this.continueButton = this.button(this.dialog, '继续', 0, -40, 440, 82, () => {
             if (this.model.phase === 'paused') this.model.resume();
-            else this.load(this.model.phase === 'won' ? LAST_RESCUE : this.model.level.id);
+            else this.load(this.model.phase === 'won' ? this.nextStageId() : this.model.level.id);
             this.refresh(true);
         }, '#acd6c2');
         this.emergencyButton = this.button(this.dialog, '免费暂存一颗', 0, -130, 440, 64, () => {
@@ -224,13 +247,13 @@ export class ColorClearView extends Component {
         this.drawModal(this.albumPanel, 574, 590);
         this.text(this.albumPanel, '救援图鉴', 41, 0, 221, 450, TEAL).isBold = true;
         this.albumText = this.text(this.albumPanel, '', 23, 0, 159, 440, '#46683e');
-        this.albumCards = RELEASE_LEVELS.map((rescue, index) => {
-            const card = this.button(this.albumPanel, rescue.name, -134 + index * 268, -19, 242, 272, () => {}, '#eeeade');
+        this.albumCards = HARBOR_STAGES.map((rescue, index) => {
+            const card = this.button(this.albumPanel, rescue.name, (index - 1) * 172, -19, 158, 272, () => this.replayStage(index), '#eeeade');
             card.label.node.setPosition(0, -97);
             card.label.isBold = true;
-            this.text(card.node, String(index + 1).padStart(2, '0'), 17, -88, 104, 50, '#4c6c61');
+            this.text(card.node, String(index + 1).padStart(2, '0'), 17, -53, 104, 50, '#4c6c61');
             this.albumMarks.push(this.text(card.node, '?', 54, 0, 14, 130, '#617d6c'));
-            const portrait = this.loadPicture(card.node, index === 0 ? 'raincoat-card' : 'wizard-card', 172, 172, 0, 15);
+            const portrait = this.loadPicture(card.node, index === 2 ? 'wizard-card' : 'raincoat-card', 142, 142, 0, 15);
             portrait.node.active = false;
             this.albumPortraits.push(portrait);
             return card;
@@ -239,6 +262,8 @@ export class ColorClearView extends Component {
         this.albumPanel.active = false;
         this.button(this.ui, '图鉴', 220, -520, 144, 56, () => this.openAlbum(), '#dcece0');
         this.button(this.ui, '营地', -220, -520, 144, 56, () => this.openCamp(), '#dcece0');
+        this.skillButton = this.button(this.ui, '', 0, -520, 172, 56, () => this.useHarborSkill(), '#ffd37c');
+        this.skillButton.label.isBold = true;
         this.button(this.dialog, '回救援营地', 0, -310, 440, 64, () => this.openCamp());
         this.createCamp();
         this.createSettings();
@@ -304,6 +329,24 @@ export class ColorClearView extends Component {
         this.stageRoot.layer = STAGE_LAYER;
         this.stagePen = this.panel(this.stageRoot, 'ModelStage', 0, 167, 600, 562, '#edf8f3', '#bfd8cc', 38);
         this.paintStage(false);
+        this.harborBackdrop = this.loadPicture(this.stageRoot, 'harbor-diorama', 598, 560, 0, 167);
+        this.harborBackdrop.node.layer = STAGE_LAYER;
+        this.harborBackdrop.node.active = this.showBackground;
+        const trim = this.child(this.stageRoot, 'HarborDeck', false);
+        trim.layer = STAGE_LAYER;
+        trim.setPosition(0, 167);
+        const deck = trim.addComponent(Graphics);
+        if (this.showBackground) {
+            drawHarborDeck(deck);
+            deck.fillColor = new Color(CREAM);
+            for (const dx of [-1, 1]) for (const dy of [-1, 1]) {
+                deck.moveTo(dx * 301, dy * 282);
+                deck.lineTo(dx * 262, dy * 282);
+                deck.quadraticCurveTo(dx * 299, dy * 280, dx * 301, dy * 243);
+                deck.close();
+            }
+            deck.fill();
+        }
         const motion = this.child(this.stageRoot, 'HarborMotion', false);
         motion.layer = STAGE_LAYER;
         motion.setPosition(0, 167);
@@ -419,8 +462,9 @@ export class ColorClearView extends Component {
         let next: ColorClearGame;
         try {
             if (id === LAST_RESCUE) this.wizardQueue = chooseReleaseQueue(this.wizardQueue);
-            next = new ColorClearGame(makeReleaseLevel(id, this.wizardPayload, this.wizardQueue),
-                id === LAST_RESCUE ? 'challenge' : 'warmup', Math.random, {freeStallRescue: true});
+            const stage = makeHarborStage(id, this.wizardPayload, this.wizardQueue);
+            const tier = HARBOR_STAGES.find(rescue => rescue.id === id)!.tier;
+            next = new ColorClearGame(stage.level, tier, Math.random, {freeStallRescue: true, exitIds: stage.exitIds});
         } catch (error) {
             this.campStatus.string = '关卡数据无法加载';
             this.resultText.string = '关卡数据无法加载';
@@ -431,7 +475,12 @@ export class ColorClearView extends Component {
         this.pendingReward = null;
         this.rewardPanel.active = false;
         this.model = next;
-        this.colors = RELEASE_LEVELS[id === FIRST_RESCUE ? 0 : 1].palette;
+        this.colors = HARBOR_STAGES[this.stageIndex()].palette;
+        this.chase = new HarborChase(id === FIRST_RESCUE ? 'tutorial' : id === LAST_RESCUE ? 'long' : 'bridge');
+        this.chasePaintTime = -Infinity;
+        this.skillUsed = false;
+        this.escapeShowUntil = 0;
+        this.wonDialogPending = false;
         this.paintStage(id === LAST_RESCUE);
         this.orbit.reset();
         this.dragId = -1;
@@ -448,6 +497,9 @@ export class ColorClearView extends Component {
         this.runStarted = true;
         this.camp.active = false;
         this.clearBatches();
+        if (this.wholeDuck) this.wholeDuck.destroy();
+        this.wholeDuck = createHarborDuck(this.world, color => this.blockMaterial(color, false), this.meshCache.get('sphere')!, id);
+        this.wholeDuck.active = id !== LAST_RESCUE;
         this.fragments = [];
         this.hitMarkers = [];
         this.projectilePen.clear();
@@ -505,7 +557,7 @@ export class ColorClearView extends Component {
         if (this.bonusLabel.node.active) {
             this.bonusLabel.string = `${count} 连消${this.clock < this.sameColorUntil ? ' · 同色 ×5' : ''}`;
         }
-        if (this.showBackground && this.clock - this.ambientTick >= 1 / 15) {
+        if (this.showBackground && !this.harborBackdrop.spriteFrame && this.clock - this.ambientTick >= 1 / 15) {
             this.ambientTick = this.clock;
             drawHarborMotion(this.harborMotion, this.clock, this.model.level.id === LAST_RESCUE);
         }
@@ -519,6 +571,56 @@ export class ColorClearView extends Component {
         }
         drawOrbitTrail(this.backTrail, progress, this.orbitTier, false);
         drawOrbitTrail(this.frontTrail, progress, this.orbitTier, true);
+    }
+    private stageIndex(): number {
+        return HARBOR_STAGES.findIndex(rescue => rescue.id === this.model.level.id);
+    }
+    private nextStageId(): number {
+        return HARBOR_STAGES[Math.min(this.stageIndex() + 1, HARBOR_STAGES.length - 1)].id;
+    }
+    private replayStage(index: number): void {
+        if (index >= this.unlocked) return;
+        this.albumPanel.active = false;
+        this.load(HARBOR_STAGES[index].id);
+    }
+    private useHarborSkill(): void {
+        if (this.skillUsed || this.model.phase !== 'playing' || this.camp.active || this.settingsPanel.active || this.albumPanel.active) return;
+        if (this.model.level.id === LAST_RESCUE) {
+            this.chase.freeze(5);
+        } else {
+            const cleared = this.model.openShellWithWater(this.unlocked >= 2 ? 20 : 10);
+            if (!cleared) return;
+            this.orbitStarted = this.clock;
+            this.orbitTier = 3;
+        }
+        this.skillUsed = true;
+        this.chasePaintTime = -Infinity;
+        this.soundFor('surge');
+        if (this.model.phase === 'playing') this.refresh();
+    }
+    private showDuckEscape(): void {
+        const duck = this.wholeDuck;
+        if (!duck) return;
+        duck.active = true;
+        tween(duck)
+            .to(.34, {position: new Vec3(0, .75, 7)}, {easing: 'quadOut'})
+            .to(.54, {position: new Vec3(5.2, 1.4, 10)}, {easing: 'quadInOut'})
+            .start();
+        this.escapeShowUntil = this.clock + .95;
+        this.wonDialogPending = true;
+    }
+    private drawChaseTrack(): void {
+        if (this.clock - this.chasePaintTime < 1 / 15) return;
+        this.chasePaintTime = this.clock;
+        const escaped = this.model.phase === 'won';
+        drawHarborChase(this.chasePen, escaped ? 1 : this.chase.separation,
+            this.clock, this.chase.frozen > 0, escaped || this.chase.caught);
+        const label = escaped ? '鸭鸭已安全上船' : this.chase.caught ? '被追上了'
+            : this.chase.frozen > 0 ? '追兵冻结'
+            : this.chase.separation < .18 ? '追兵靠近 · 消除就能拉开'
+            : this.model.hasExit ? `清掉金色门闩 · 还差 ${this.model.exitRemaining} 块`
+            : '连消拉开追兵';
+        if (this.chaseLabel.string !== label) this.chaseLabel.string = label;
     }
     private updateLoadHint(): void {
         const waiting = this.model.phase === 'playing' && !this.model.flights.length && this.model.slots.every(Boolean);
@@ -584,7 +686,7 @@ export class ColorClearView extends Component {
             vy: 40 + Math.random() * 44, life: .28, color: this.fragmentColors[cell.color]});
     }
     private refresh(_force = false): void {
-        this.title.string = `第 ${this.model.level.id === FIRST_RESCUE ? '01' : '02'} 关 · ${this.model.level.name}`;
+        this.title.string = `第 ${String(this.stageIndex() + 1).padStart(2, '0')} 关 · ${this.model.level.name}`;
         this.remaining.node.active=this.showRemaining||this.showProgress;this.remaining.string=[this.showRemaining?`剩余 ${this.model.remaining} 块`:'',this.showProgress?`已清除 ${Math.round(this.model.progress*100)}%`:''].filter(Boolean).join(' · ');this.status.node.active=this.showLabels;
         this.status.string = this.model.flights.length ? '同色消除中' : '↔ 转一转找同色';
         this.slots.forEach((card, i) => {
@@ -629,9 +731,17 @@ export class ColorClearView extends Component {
             }
             card.label.string = SYMBOLS[capsule.color] + ' ' + capsule.ammo;
         });
-        this.dialog.active = !this.camp.active && this.model.phase !== 'playing';
+        this.skillButton.label.string = this.skillUsed ? '技能已使用'
+            : this.model.level.id === LAST_RESCUE ? '冻结追兵'
+            : `水花 · ${this.unlocked >= 2 ? 20 : 10}`;
+        const skillKey = this.skillUsed ? 'spent' : 'ready';
+        if (this.skillButton.paintKey !== skillKey) {
+            this.skillButton.paintKey = skillKey;
+            this.paint(this.skillButton.pen, 172, 56, this.skillUsed ? '#e4e5da' : '#ffd37c', 18);
+        }
+        this.dialog.active = !this.camp.active && this.model.phase !== 'playing' && this.clock >= this.escapeShowUntil;
         this.continueButton.label.string = this.model.phase === 'won'
-            ? this.model.level.id === FIRST_RESCUE ? '下一关 · 法师鸭' : '再救一次'
+            ? this.model.level.id !== LAST_RESCUE ? `下一关 · ${HARBOR_STAGES[this.stageIndex() + 1].name}` : '再救一次'
             : this.model.phase === 'paused' ? '继续救援' : '再试一次';
         const canRescue = this.model.canUseEmergencyReserve;
         this.emergencyButton.node.active = canRescue;
@@ -670,7 +780,7 @@ export class ColorClearView extends Component {
     }
     private drawProjectiles(dt: number): void {
         const pen = this.projectilePen;
-        const flights = this.model.flights;
+        const flights = this.chase.caught ? [] : this.model.flights;
         for (let i = this.hitMarkers.length - 1; i >= 0; i--) {
             this.hitMarkers[i].life -= dt;
             if (this.hitMarkers[i].life <= 0) this.hitMarkers.splice(i, 1);
@@ -768,7 +878,7 @@ export class ColorClearView extends Component {
                 this.refresh(true);
                 return;
             }
-            this.load(this.unlocked === 2 ? LAST_RESCUE : FIRST_RESCUE);
+            this.load(HARBOR_STAGES[this.unlocked - 1].id);
         }, '#ffcc70');
         go.label.fontSize = 33;
         go.label.isBold = true;
@@ -845,7 +955,7 @@ export class ColorClearView extends Component {
     }
     private openCamp(): void {
         this.pause();
-        this.campTitle.string = this.unlocked === 2 ? '第 02 关 · 法师鸭' : '第 01 关 · 雨衣鸭';
+        this.campTitle.string = `第 ${String(this.unlocked).padStart(2, '0')} 关 · ${HARBOR_STAGES[this.unlocked - 1].name}`;
         this.campStatus.string = this.runStarted && this.model.phase === 'paused' ? '保留本局进度' : '';
         this.camp.setSiblingIndex(this.ui.children.length - 1);
         this.camp.active = true;
@@ -858,15 +968,15 @@ export class ColorClearView extends Component {
         this.pause();
         this.album.refresh();
         const owned = new Set(this.album.book.entries.map(entry => entry.levelId));
-        const count = RELEASE_LEVELS.filter(rescue => owned.has(rescue.id)).length;
-        this.albumText.string = '已救援 ' + count + ' / ' + RELEASE_LEVELS.length;
+        const count = HARBOR_STAGES.filter(rescue => owned.has(rescue.id)).length;
+        this.albumText.string = '已救援 ' + count + ' / ' + HARBOR_STAGES.length;
         this.albumCards.forEach((card, index) => {
-            const rescue = RELEASE_LEVELS[index], unlocked = owned.has(rescue.id);
+            const rescue = HARBOR_STAGES[index], unlocked = owned.has(rescue.id);
             card.label.string = rescue.name;
             this.albumMarks[index].node.active = !unlocked;
             this.albumPortraits[index].node.active = unlocked;
-            this.paint(card.pen, 242, 272, unlocked ? '#fdf9ec' : '#eeeade', 19);
-            this.outline(card.pen, 242, 272, unlocked ? '#9bbca8' : '#d4c8ad', 19);
+            this.paint(card.pen, 158, 272, unlocked ? '#fdf9ec' : '#eeeade', 19);
+            this.outline(card.pen, 158, 272, unlocked ? '#9bbca8' : '#d4c8ad', 19);
         });
         this.albumPanel.setSiblingIndex(this.ui.children.length - 1);
         this.albumPanel.active = true;
@@ -916,9 +1026,11 @@ export class ColorClearView extends Component {
         for (const event of events) {
             if (event.type === 'won') {
                 this.album.book.unlock(this.model.level.id);
-                this.unlocked = 2;
-                try { sys.localStorage.setItem(PROGRESS_KEY, '2'); } catch { /* storage optional */ }
+                this.unlocked = Math.max(this.unlocked, Math.min(HARBOR_STAGES.length, this.stageIndex() + 2));
+                try { sys.localStorage.setItem(PROGRESS_KEY, String(this.unlocked)); } catch { /* storage optional */ }
+                this.showDuckEscape();
             } else if (event.type === 'clear' && event.cell) {
+                this.chase.hit();
                 if (this.hitMarkers.length >= 9) this.hitMarkers.shift();
                 this.hitMarkers.push({id: event.cell.id, life: .18, fresh: true});
                 const detail = this.details.get(event.cell.id);
@@ -933,6 +1045,15 @@ export class ColorClearView extends Component {
                 this.soundFor(event.type);
             }
         }
+        if (this.model.phase === 'playing' && !this.model.escapeReady) {
+            this.chase.tick(Math.min(.25, dt));
+            if (this.chase.caught) this.model.caughtByCook();
+        }
+        if (this.wonDialogPending && this.clock >= this.escapeShowUntil) {
+            this.wonDialogPending = false;
+            this.refresh();
+        }
+        this.drawChaseTrack();
         for (const key of this.dirtyBatches) this.updateBatch(key);
         this.dirtyBatches.clear();
         if (events.length) this.refresh();

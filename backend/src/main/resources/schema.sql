@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS album_entries (
   PRIMARY KEY (user_id, level_id)
 );
 
-ALTER TABLE album_entries ADD CONSTRAINT IF NOT EXISTS album_catalog_range CHECK (level_id BETWEEN 1 AND 12);
+ALTER TABLE album_entries ADD CONSTRAINT IF NOT EXISTS album_catalog_range_v2 CHECK (level_id BETWEEN 1 AND 13);

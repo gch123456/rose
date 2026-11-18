@@ -36,14 +36,15 @@ class PersistenceTest {
         var user = login.user().id();
         var legacyEntry = first.merge(user, List.of(1)).entries().getFirst();
         var jdbc = new JdbcTemplate(new DriverManagerDataSource(url, "sa", ""));
-        jdbc.execute("ALTER TABLE album_entries DROP CONSTRAINT album_catalog_range");
+        jdbc.execute("ALTER TABLE album_entries DROP CONSTRAINT album_catalog_range_v2");
         jdbc.execute("ALTER TABLE album_entries ADD CHECK (level_id BETWEEN 1 AND 10)");
+        jdbc.execute("ALTER TABLE album_entries ADD CONSTRAINT album_catalog_range CHECK (level_id BETWEEN 1 AND 12)");
 
         var reopened = service(url);
         AlbumCatalogMigration.extendLevelRange(jdbc);
         AlbumCatalogMigration.extendLevelRange(jdbc);
-        assertThat(reopened.merge(user, List.of(11, 12)).entries())
-            .extracting(AlbumService.Entry::levelId).containsExactly(1, 11, 12);
+        assertThat(reopened.merge(user, List.of(11, 12, 13)).entries())
+            .extracting(AlbumService.Entry::levelId).containsExactly(1, 11, 12, 13);
         assertThat(reopened.album(user).entries().getFirst()).isEqualTo(legacyEntry);
     }
     @Test void concurrentCompletionsPreserveOneEntryAndFirstTimestamp() throws Exception {
