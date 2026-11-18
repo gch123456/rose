@@ -1,4 +1,5 @@
 import {Color, Graphics} from 'cc';
+import type {HarborDelivery} from './ColorClearHarborDelivery';
 
 function paint(pen: Graphics, hex: string, shape: () => void): void {
     pen.fillColor = new Color(hex);
@@ -152,19 +153,18 @@ function drawRunningCook(pen: Graphics, x: number, phase: number, running: boole
 }
 
 /** A miniature side-scrolling dock, 524 × 72, centered on the HUD node. */
-export function drawHarborChase(pen: Graphics, gap: number, clock: number, frozen: boolean, ended: boolean, caught = false): void {
+export function drawHarborChase(pen: Graphics, gap: number, clock: number, frozen: boolean, ended: boolean,
+    caught: boolean, motion: HarborDelivery): void {
     pen.clear();
     const distance = Math.min(1, Math.max(0, gap));
     const running = !ended;
-    const scroll = running ? (clock * 66) % 41 : 0;
-    drawDock(pen, scroll);
-    const swing = running ? Math.sin(clock * 4) * 4 : 0;
-    const cookX = -146 + (1 - distance) * 92;
-    const duckX = caught ? cookX + 30 : ended ? 178 : cookX + 39 + distance * 238 + swing;
+    drawDock(pen, motion.scroll);
+    const duckX = motion.duckX;
+    const cookX = Math.max(-207, duckX - (caught ? 29 : 37 + distance * 250));
 
-    if (running && distance > .26) {
+    if (running && motion.speed > 0) {
         outline(pen, '#fff8c89d', 1.7, () => {
-            pen.moveTo(duckX - 58, 9);
+            pen.moveTo(duckX - 50 - motion.speed * 5, 9);
             pen.lineTo(duckX - 37, 9);
             pen.moveTo(duckX - 50, 2);
             pen.lineTo(duckX - 35, 2);
@@ -173,7 +173,7 @@ export function drawHarborChase(pen: Graphics, gap: number, clock: number, froze
         });
     }
     drawRunningCook(pen, cookX, clock * 14, running && !frozen, frozen);
-    drawRunningDuck(pen, duckX, clock * 19, running, caught);
+    drawRunningDuck(pen, duckX, motion.stride * 19, running, caught);
 }
 
 export function drawHarborDeck(pen: Graphics): void {

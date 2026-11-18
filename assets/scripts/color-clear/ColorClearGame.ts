@@ -40,6 +40,16 @@ type Visibility = {
     byCell: Map<Voxel, boolean>;
     all?: Voxel[];
 };
+type CapsuleRhythm = { fired: number };
+const WARMUP_ROUNDS = 3;
+const LARGE_CAPSULE_ROUNDS = 35;
+
+function capsuleFlightSeconds(fired: number, remaining: number, original: number): number {
+    if (fired < WARMUP_ROUNDS) return original;
+    const acceleration = Math.min(1, (fired - WARMUP_ROUNDS + 1) / 12);
+    const slowdown = Math.min(1, Math.max(0, (11 - remaining) / 10));
+    return original - .044 * acceleration * (1 - .8 * slowdown);
+}
 let nextRun = 0;
 export const aimY = (c: Voxel): number => c.y + (c.shape === 'hemisphere' ? .23 : 0);
 const normalize = (a: number) => (a % TAU + TAU) % TAU;
@@ -157,15 +167,20 @@ export class ColorClearGame {
     readonly rescueTier?: RescueTier;
     private readonly random: () => number;
     private readonly freeStallRescue: boolean;
+    private readonly ammoRhythm: boolean;
+    private capsuleRhythm = new WeakMap<Capsule, CapsuleRhythm>();
     private readonly exitIds: ReadonlySet<number>;
     private exitLeft = 0;
     private caughtByChase = false;
 
-    constructor(level: Level, rescueTier?: RescueTier, random = Math.random, options: {freeStallRescue?: boolean; exitIds?: ReadonlySet<number>} = {}) {
+    constructor(level: Level, rescueTier?: RescueTier, random = Math.random, options: {
+        freeStallRescue?: boolean; exitIds?: ReadonlySet<number>; ammoRhythm?: boolean;
+    } = {}) {
         this.level = level;
         this.rescueTier = rescueTier;
         this.random = random;
         this.freeStallRescue = options.freeStallRescue === true;
+        this.ammoRhythm = options.ammoRhythm === true;
         this.exitIds = new Set(options.exitIds);
         this.restart();
     }
@@ -215,6 +230,7 @@ export class ColorClearGame {
     get canContinue(): boolean { return this.phase === 'lost' && !this.caughtByChase && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
+        this.capsuleRhythm = new WeakMap();
         this.bonusCount = 0;
         this.exitLeft = this.exitIds.size;
         this.caughtByChase = false;
@@ -244,11 +260,21 @@ export class ColorClearGame {
     select(column: number): boolean {
         if (this.phase !== 'playing' || !Number.isInteger(column)) return false;
         const slot = this.slots.indexOf(null), next = this.supply[column]?.[0]; if (slot < 0 || !next) return false;
-        this.slots[slot] = this.supply[column].shift()!; this.events.push({ type: 'load', slot, color: next.color }); return true;
+        this.loadCapsule(slot, this.supply[column].shift()!);
+        return true;
     }
     takeReserve(index: number): boolean {
         const slot = this.slots.indexOf(null); if (this.phase !== 'playing' || slot < 0 || !Number.isInteger(index) || !this.reserve[index]) return false;
-        const capsule = this.reserve.splice(index, 1)[0]; this.slots[slot] = capsule; this.events.push({ type: 'load', slot, color: capsule.color }); return true;
+        this.loadCapsule(slot, this.reserve.splice(index, 1)[0]);
+        return true;
+    }
+    private loadCapsule(slot: number, capsule: Capsule): void {
+        this.slots[slot] = capsule;
+        if (this.ammoRhythm && this.level.pacing === 'fast' && capsule.ammo >= LARGE_CAPSULE_ROUNDS
+            && !this.capsuleRhythm.has(capsule)) {
+            this.capsuleRhythm.set(capsule, {fired: 0});
+        }
+        this.events.push({type: 'load', slot, color: capsule.color});
     }
     beginReward(kind: 'slot' | 'continue'): RewardTicket | null {
         if (this.reward || (kind !== 'slot' && kind !== 'continue')) return null;
@@ -444,27 +470,38 @@ export class ColorClearGame {
         this.cooldown -= step;
         const remaining = this.remaining;
         if (this.escapeReady) { this.settle(remaining); return; }
-        let reserved: Set<number> | undefined;
-        while (this.cooldown <= 0 && remaining) {
+        const launchWindow = this.cooldown <= 0;
+        if (remaining && (launchWindow || this.ammoRhythm)) {
             const pace = levelEliminationPace(this.level, remaining, this.cells.length);
-            this.cooldown += pace.interval;
-            for (let i = 0; i < this.slots.length; i++) {
-                const capsule = this.slots[i];
-                if (!capsule || capsule.ammo <= 0 || this.flights.some(f => f.capsuleId === capsule.id)) continue;
-                reserved ??= new Set(this.flights.flatMap(f => f.claimed));
-                const visibility = this.visibilityAtPose(remaining);
-                const target = this.targetsByColor.get(capsule.color)?.find(cell =>
-                    !reserved!.has(cell.id) && this.isVisible(cell, visibility));
-                if (!target) continue;
-                reserved.add(target.id);
-                capsule.ammo--;
-                this.shots++;
-                const id = ++this.flightSerial;
-                this.flights.push({id, target:target.id, capsuleId:capsule.id, slot:i, color:capsule.color,
-                    time:pace.flightSeconds, duration:pace.flightSeconds, claimed:[target.id]});
-                this.events.push({type:'fire', cell:{...target}, slot:i, color:capsule.color, flightId:id});
-            }
+            while (this.cooldown <= 0) this.cooldown += pace.interval;
+            this.launchReadyCapsules(remaining, pace.flightSeconds, launchWindow);
         }
         this.settle(remaining);
+    }
+    private launchReadyCapsules(remaining: number, originalFlightSeconds: number, launchWindow: boolean): void {
+        let reserved: Set<number> | undefined;
+        for (let slot = 0; slot < this.slots.length; slot++) {
+            const capsule = this.slots[slot];
+            if (!capsule || capsule.ammo <= 0) continue;
+            const rhythm = this.capsuleRhythm.get(capsule);
+            const accelerated = rhythm && rhythm.fired >= WARMUP_ROUNDS;
+            // Large capsules keep their warm-up on the original launch clock,
+            // then dispatch when their own last round lands. Small capsules stay synchronized.
+            if (!launchWindow && !accelerated) continue;
+            if (this.flights.some(f => f.capsuleId === capsule.id)) continue;
+            reserved ??= new Set(this.flights.flatMap(f => f.claimed));
+            const visibility = this.visibilityAtPose(remaining);
+            const target = this.targetsByColor.get(capsule.color)?.find(cell =>
+                !reserved!.has(cell.id) && this.isVisible(cell, visibility));
+            if (!target) continue;
+            const duration = rhythm ? capsuleFlightSeconds(rhythm.fired++, capsule.ammo, originalFlightSeconds) : originalFlightSeconds;
+            reserved.add(target.id);
+            capsule.ammo--;
+            this.shots++;
+            const id = ++this.flightSerial;
+            this.flights.push({id, target:target.id, capsuleId:capsule.id, slot, color:capsule.color,
+                time:duration, duration, claimed:[target.id]});
+            this.events.push({type:'fire', cell:{...target}, slot, color:capsule.color, flightId:id});
+        }
     }
 }

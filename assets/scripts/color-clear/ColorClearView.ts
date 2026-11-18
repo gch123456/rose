@@ -8,6 +8,7 @@ import type { Voxel, RewardTicket, PieceShape } from './ColorClearGame';
 import {makeReleaseLevel, chooseReleaseQueue} from './ColorClearRelease';
 import {HARBOR_STAGES, makeHarborStage} from './ColorClearHarborLevels';
 import {HarborChase} from './ColorClearHarborChase';
+import {HarborDelivery} from './ColorClearHarborDelivery';
 import {createHarborDuck} from './ColorClearHarborDuck';
 import {drawHarborChase, drawHarborDeck} from './ColorClearHarborHud';
 import {ModelOrbit} from './ColorClearOrbit';
@@ -23,6 +24,7 @@ const TEAL = '#245d51';
 const SLOT_Y = -178;
 const FRONT_Y = -304;
 const ORBIT_SECONDS = .76;
+const CHASE_Y = 404;
 const MUSIC_KEY = 'color-clear.music';
 const EFFECTS_KEY = 'color-clear.muted';
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v2';
@@ -54,6 +56,10 @@ export class ColorClearView extends Component {
     private chasePaintTime = -Infinity;
     private chaseShownGap = .63;
     private chaseRunTime = 0;
+    private delivery = new HarborDelivery();
+    private deliveryPen!: Graphics;
+    private deliveryFlash = 0;
+    private hasDeliveryPaint = false;
     private skillButton!: Card;
     private skillUsed = false;
     private harborBackdrop!: Sprite;
@@ -180,13 +186,14 @@ export class ColorClearView extends Component {
         this.title = this.text(this.ui, '', 34, 0, 482, 414, '#204d42');
         this.title.isBold = true;
         const chaseTrack = this.child(this.ui, 'HarborChase', true);
-        chaseTrack.setPosition(0, 404);
+        chaseTrack.setPosition(0, CHASE_Y);
         this.chasePen = chaseTrack.addComponent(Graphics);
         this.chaseLabel = this.text(this.ui, '', 17, 0, 363, 260, '#fff7d5');
         this.chaseLabel.isBold = true;
         this.chaseLabel.enableOutline = true;
         this.chaseLabel.outlineColor = new Color('#183b42');
         this.chaseLabel.outlineWidth = 2;
+        this.deliveryPen = this.child(this.ui, 'DockDeliveries', true).addComponent(Graphics);
         this.bonusLabel = this.text(this.ui, '', 25, 0, -85, 365, '#fff0a1');
         this.bonusLabel.isBold = true;
         this.bonusLabel.node.active = false;
@@ -205,7 +212,7 @@ export class ColorClearView extends Component {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
                     const flight = this.button(this.ui, '', -222 + col * 148, FRONT_Y, 134, 76, () => {});
                     drawRescueModule(flight.pen, 134, 76, this.colors[capsule.color]);
-                    flight.label.node.setPosition(25, -5);
+                    flight.label.node.setPosition(31, -3);
                     flight.label.isBold = true;
                     flight.label.string = String(capsule.ammo);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
@@ -214,7 +221,7 @@ export class ColorClearView extends Component {
             } });
             card.label.fontSize = row ? 23 : 25;
             card.label.isBold = !row;
-            card.label.node.setPosition(row ? 15 : 24, row ? 0 : -5);
+            card.label.node.setPosition(row ? 16 : 31, row ? 0 : -3);
             this.supplies.push(card);
         }
         this.dialog = this.child(this.ui, 'ColorClearDialog', true);this.dialog.addComponent(BlockInputEvents);
@@ -461,7 +468,7 @@ export class ColorClearView extends Component {
             if (id === LAST_RESCUE) this.wizardQueue = chooseReleaseQueue(this.wizardQueue);
             const stage = makeHarborStage(id, this.wizardPayload, this.wizardQueue);
             const tier = HARBOR_STAGES.find(rescue => rescue.id === id)!.tier;
-            next = new ColorClearGame(stage.level, tier, Math.random, {freeStallRescue: true, exitIds: stage.exitIds});
+            next = new ColorClearGame(stage.level, tier, Math.random, {freeStallRescue: true, exitIds: stage.exitIds, ammoRhythm: true});
         } catch (error) {
             this.campStatus.string = '关卡数据无法加载';
             this.resultText.string = '关卡数据无法加载';
@@ -477,6 +484,10 @@ export class ColorClearView extends Component {
         this.chasePaintTime = -Infinity;
         this.chaseShownGap = this.chase.separation;
         this.chaseRunTime = 0;
+        this.delivery = new HarborDelivery();
+        this.deliveryPen.clear();
+        this.deliveryFlash = 0;
+        this.hasDeliveryPaint = false;
         this.skillUsed = false;
         this.escapeShowUntil = 0;
         this.wonDialogPending = false;
@@ -617,17 +628,71 @@ export class ColorClearView extends Component {
         const target = escaped ? 1 : this.chase.separation;
         this.chaseShownGap += (target - this.chaseShownGap) * (1 - Math.exp(-Math.min(dt, .25) * 6));
         if (this.model.phase === 'playing' || (escaped && this.wonDialogPending)) {
-            this.chaseRunTime += dt * (this.clock - this.feedback.lastHit < .2 ? 1.38 : 1);
+            this.chaseRunTime += dt;
         }
         if (this.clock - this.chasePaintTime < 1 / 24) return;
         this.chasePaintTime = this.clock;
         drawHarborChase(this.chasePen, this.chaseShownGap, this.chaseRunTime,
-            this.chase.frozen > 0, caught || (escaped && !this.wonDialogPending), caught);
+            this.chase.frozen > 0, caught || (escaped && !this.wonDialogPending), caught, this.delivery);
         const label = escaped ? '鸭鸭已安全上船' : caught ? '被烤鸭师傅追上了'
             : this.chase.frozen > 0 ? '追兵冻结'
             : this.chase.separation < .18 ? '追兵靠近'
             : `还剩 ${this.model.cells.length - this.model.combo} 块`;
         if (this.chaseLabel.string !== label) this.chaseLabel.string = label;
+    }
+    private queueDockDelivery(cell: Voxel): void {
+        const point = this.projectCell(cell);
+        this.delivery.queue(point.x, point.y, cell.color);
+    }
+    private updateDockDeliveries(dt: number): void {
+        if (this.model.phase === 'playing' || this.wonDialogPending) {
+            const arrived = this.delivery.step(Math.min(.25, dt));
+            if (arrived) {
+                this.chase.hit(arrived);
+                this.deliveryFlash = .14;
+            } else {
+                this.deliveryFlash = Math.max(0, this.deliveryFlash - dt);
+            }
+        } else {
+            this.deliveryFlash = 0;
+        }
+        const visible = (this.model.phase === 'playing' || this.wonDialogPending)
+            && (this.delivery.flights.length > 0 || this.deliveryFlash > 0);
+        if (!visible && !this.hasDeliveryPaint) return;
+        this.hasDeliveryPaint = visible;
+        const pen = this.deliveryPen;
+        pen.clear();
+        if (!visible) return;
+        const endX = this.delivery.duckX + 10, endY = CHASE_Y + 3;
+        for (const flight of this.delivery.flights) {
+            const time = flight.age / flight.duration;
+            const travel = time * time * (3 - 2 * time);
+            const swing = Math.sin(time * Math.PI);
+            const x = flight.x + (endX - flight.x) * travel + swing * (flight.x < endX ? -21 : 23);
+            const y = flight.y + (endY - flight.y) * travel + swing * 31;
+            const size = flight.blocks > 1 ? 8 : 6;
+            pen.strokeColor = this.shotColors[flight.color];
+            pen.lineWidth = 2;
+            pen.moveTo(x - (endX - flight.x) * .035, y - 14);
+            pen.lineTo(x, y);
+            pen.stroke();
+            pen.fillColor = this.reticleInk;
+            pen.roundRect(x - size, y - size, size * 2, size * 2, 3);
+            pen.fill();
+            pen.fillColor = this.fragmentColors[flight.color];
+            pen.roundRect(x - size + 2, y - size + 2, size * 2 - 4, size * 2 - 4, 2);
+            pen.fill();
+            pen.fillColor = this.reticleWhite;
+            pen.roundRect(x - size + 3, y + size - 5, size, 2, 1);
+            pen.fill();
+        }
+        if (this.deliveryFlash > 0) {
+            const radius = 7 + (.14 - this.deliveryFlash) * 76;
+            pen.strokeColor = this.reticleGold;
+            pen.lineWidth = 2.5;
+            pen.circle(endX, endY, radius);
+            pen.stroke();
+        }
     }
     private updateLoadHint(): void {
         const waiting = this.model.phase === 'playing' && !this.model.flights.length && this.model.slots.every(Boolean);
@@ -704,7 +769,7 @@ export class ColorClearView extends Component {
             if (card.paintKey !== key) {
                 card.paintKey = key;
                 drawLauncher(card.pen, fill, locked);
-                card.label.color = new Color('#284149');
+                card.label.color = new Color(locked ? '#fff9e8' : '#284149');
                 card.label.fontSize = locked ? 19 : 20;
                 card.label.isBold = true;
                 card.label.node.setPosition(0, locked ? -1 : 2);
@@ -720,7 +785,7 @@ export class ColorClearView extends Component {
                 card.paintKey = key;
                 if (!row && capsule) drawRescueModule(card.pen, 134, 76, swatch);
                 else drawSpareAmmo(card.pen, swatch, mystery);
-                card.label.color = new Color('#233e45');
+                card.label.color = new Color(row ? '#fff8e9' : '#233e45');
             }
             card.label.string = capsule ? mystery ? '?' : String(capsule.ammo) : '';
         });
@@ -1036,7 +1101,7 @@ export class ColorClearView extends Component {
                 try { sys.localStorage.setItem(PROGRESS_KEY, String(this.unlocked)); } catch { /* storage optional */ }
                 this.showDuckEscape();
             } else if (event.type === 'clear' && event.cell) {
-                this.chase.hit();
+                this.queueDockDelivery(event.cell);
                 if (this.hitMarkers.length >= 9) this.hitMarkers.shift();
                 this.hitMarkers.push({id: event.cell.id, life: .18, fresh: true});
                 const detail = this.details.get(event.cell.id);
@@ -1051,6 +1116,7 @@ export class ColorClearView extends Component {
                 this.soundFor(event.type);
             }
         }
+        this.updateDockDeliveries(dt);
         if (this.model.phase === 'playing' && !this.model.escapeReady) {
             this.chase.tick(Math.min(.25, dt));
             if (this.chase.caught) this.model.caughtByCook();
