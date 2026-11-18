@@ -9,6 +9,11 @@ import {specialPieceGeometry} from './ColorClearGeometry';
 const { ccclass, property } = _decorator;
 const FIRST_RESCUE = RELEASE_LEVELS[0].id;
 const LAST_RESCUE = RELEASE_LEVELS[1].id;
+const STAGE_LAYER = 1 << 18;
+const CREAM = '#fff7e7';
+const TEAL = '#245d51';
+const SLOT_Y = -199;
+const FRONT_Y = -319;
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
 const SYMBOLS = ['●', '▲', '◆', '■', '✦', '⬟'];
 type Card = { node: Node; pen: Graphics; label: Label };
@@ -35,6 +40,9 @@ export class ColorClearView extends Component {
     private continueButton!: Card;
     private emergencyButton!: Card;
     private albumCards: Card[] = [];
+    private albumPortraits: Sprite[] = [];
+    private albumMarks: Label[] = [];
+    private ownedPictures: {texture: Texture2D; frame: SpriteFrame}[] = [];
     private albumFromCamp = false;
     private runStarted = false;
     private materialsByColor = new Map<string, Material>();
@@ -92,8 +100,7 @@ export class ColorClearView extends Component {
         this.meshCache.set('sphere',utils.MeshUtils.createMesh(primitives.sphere(.5)));
         this.meshCache.set('cylinder',utils.MeshUtils.createMesh(primitives.cylinder(.5,.5,1)));
         for(const kind of ['hemisphere','wedge'] as const)this.meshCache.set(kind,utils.MeshUtils.createMesh(specialPieceGeometry(kind)));
-        const backdrop = this.child(this.node, 'ColorClearBackground', false).addComponent(Camera);
-        backdrop.priority = -10; backdrop.visibility = 0; backdrop.clearFlags = Camera.ClearFlag.SOLID_COLOR; backdrop.clearColor = new Color(this.showBackground?'#edf3e4':'#fafaf2');
+        this.createStageBackground();
         this.camera = this.child(this.node, 'ColorClearCamera', false).addComponent(Camera);
         this.camera.node.setPosition(0, 0, 30); this.camera.projection = Camera.ProjectionType.ORTHO; this.camera.near = .1; this.camera.far = 100;
         this.camera.visibility = Layers.Enum.DEFAULT; this.camera.clearFlags = Camera.ClearFlag.DEPTH_ONLY; this.camera.priority = 0;
@@ -103,40 +110,43 @@ export class ColorClearView extends Component {
         const uiCamera = this.child(this.node, 'ColorClearUICamera', false).addComponent(Camera);
         uiCamera.node.setPosition(0, 0, 1000); uiCamera.projection = Camera.ProjectionType.ORTHO; uiCamera.orthoHeight = 560; uiCamera.near = 1; uiCamera.far = 2000;
         uiCamera.visibility = Layers.Enum.UI_2D; uiCamera.clearFlags = Camera.ClearFlag.DEPTH_ONLY; uiCamera.priority = 10; canvas.cameraComponent = uiCamera;this.uiCamera=uiCamera;
-        this.title = this.text(this.ui, '', 24, 0, 490, 440, '#294d45');
+        this.title = this.text(this.ui, '', 29, 0, 502, 435, '#204d42');
+        this.title.isBold = true;
         this.bonusLabel = this.text(this.ui, '✦ 同色 5 连消', 28, 0, 386, 400, '#8a5018');
         this.bonusLabel.node.active = false;
         this.button(this.ui, 'Ⅱ', -260, 490, 60, 60, () => this.pause());
         this.remaining = this.text(this.ui, '', 18, 0, 393, 540, '#8a9991');
-        this.text(this.ui, '↔ 上下左右拖动，发现另一面', 17, 0, -95, 550, '#8aa28d');
-        this.text(this.ui, '发射台', 20, -210, -150, 160);
+        this.text(this.ui, '拖动查看另一面', 17, 0, -108, 550, '#486a61');
+        this.text(this.ui, '发射台', 19, -240, -148, 105, '#365b51');
+        this.text(this.ui, '点前排装填', 19, -213, -267, 150, '#365b51');
         this.status = this.text(this.ui, '', 16, 90, -150, 360, '#8a9991');
-        for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, -220, 86, 90, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
-        for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-291,86,48,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
-        this.text(this.ui, '下一批颜色 · 点前排入槽', 20, 0, -310, 550);
+        for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, SLOT_Y, 86, 90, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
+        for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-259,86,40,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
         for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
-            const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? -354 : -366 - row * 45), 124, row ? 40 : 66, () => { if (row === 0 && this.model.phase === 'playing') {
+            const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? FRONT_Y : -337 - row * 48), 134, row ? 39 : 74, () => { if (row === 0 && this.model.phase === 'playing') {
                 const slot = this.model.slots.indexOf(null);
                 if (this.model.select(col)) {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
-                    const flight = this.button(this.ui, `${SYMBOLS[capsule.color]} ${capsule.ammo}`, -222 + col * 148, -354, 104, 60, () => {}, this.colors[capsule.color]);
+                    const flight = this.button(this.ui, `${SYMBOLS[capsule.color]} ${capsule.ammo}`, -222 + col * 148, FRONT_Y, 104, 60, () => {}, this.colors[capsule.color]);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
-                    tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, -220, 0) }).call(() => flight.node.destroy()).start();
+                    tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0) }).call(() => flight.node.destroy()).start();
                 }
             } });
+            card.label.fontSize = row ? 24 : 30;
+            card.label.isBold = !row;
             this.supplies.push(card);
         }
         this.text(this.ui, '没有倒计时，想好了再点 · 同色弹药匹配', 16, 0, -530, 590, '#8a9991');
         this.dialog = this.child(this.ui, 'ColorClearDialog', true);this.dialog.addComponent(BlockInputEvents);
         this.dialog.addComponent(UITransform).setContentSize(640, 1120);
-        this.paint(this.dialog.addComponent(Graphics), 640, 1120, '#eef2e0', 0);
+        this.drawModal(this.dialog, 570, 740, -63);
         this.phaseText = this.text(this.dialog, '', 38, 0, 170, 560);
         this.resultText = this.text(this.dialog, '', 22, 0, 70, 530, '#718678');
         this.continueButton = this.button(this.dialog, '继续', 0, -40, 440, 82, () => {
             if (this.model.phase === 'paused') this.model.resume();
             else this.load(this.model.phase === 'won' ? LAST_RESCUE : this.model.level.id);
             this.refresh(true);
-        }, '#68ad89');
+        }, '#acd6c2');
         this.emergencyButton = this.button(this.dialog, '✦ 应急暂存一颗', 0, -130, 440, 64, () => {
             if (this.model.useEmergencyReserve()) this.refresh(true);
         }, '#f9d590');
@@ -148,15 +158,27 @@ export class ColorClearView extends Component {
         this.button(this.rewardPanel,'模拟看完并领取',0,-30,440,82,()=>this.finishReward(true),'#68ad89');
         this.button(this.rewardPanel,'取消，不领取',0,-145,440,72,()=>this.finishReward(false));this.rewardPanel.active=false;
         this.projectilePen=this.child(this.ui,'ProjectileOverlay',true).addComponent(Graphics);
-        this.albumPanel=this.child(this.ui,'Album',true);this.albumPanel.addComponent(BlockInputEvents);this.albumPanel.addComponent(UITransform).setContentSize(640,1120);this.paint(this.albumPanel.addComponent(Graphics),640,1120,'#fafaf2',0);
-        this.text(this.albumPanel,'救援图鉴',40,0,255,560);
-        this.albumText=this.text(this.albumPanel,'',20,0,180,550);
-        this.albumCards = RELEASE_LEVELS.map((rescue, index) =>
-            this.button(this.albumPanel, rescue.name, -142 + index * 284, -15, 250, 260, () => {}, '#eeeade'));
-        this.button(this.albumPanel,'返回',0,-270,360,64,()=>this.closeAlbum());
-        this.albumPanel.active=false;
-        this.button(this.ui,'图鉴',220,-530,110,48,()=>this.openAlbum());
-        this.button(this.ui,'营地',-220,-530,110,48,()=>this.openCamp());
+        this.albumPanel = this.child(this.ui, 'Album', true);
+        this.albumPanel.addComponent(BlockInputEvents);
+        this.albumPanel.addComponent(UITransform).setContentSize(640, 1120);
+        this.drawModal(this.albumPanel, 574, 590);
+        this.text(this.albumPanel, '救援图鉴', 41, 0, 221, 450, TEAL).isBold = true;
+        this.albumText = this.text(this.albumPanel, '', 23, 0, 159, 440, '#46683e');
+        this.albumCards = RELEASE_LEVELS.map((rescue, index) => {
+            const card = this.button(this.albumPanel, rescue.name, -134 + index * 268, -19, 242, 272, () => {}, '#eeeade');
+            card.label.node.setPosition(0, -97);
+            card.label.isBold = true;
+            this.text(card.node, String(index + 1).padStart(2, '0'), 17, -88, 104, 50, '#4c6c61');
+            this.albumMarks.push(this.text(card.node, '?', 54, 0, 14, 130, '#617d6c'));
+            const portrait = this.loadPicture(card.node, index === 0 ? 'raincoat-card' : 'wizard-card', 172, 172, 0, 15);
+            portrait.node.active = false;
+            this.albumPortraits.push(portrait);
+            return card;
+        });
+        this.button(this.albumPanel, '返回', 0, -225, 330, 62, () => this.closeAlbum(), '#dcece0');
+        this.albumPanel.active = false;
+        this.button(this.ui, '图鉴', 220, -535, 116, 43, () => this.openAlbum(), '#dcece0');
+        this.button(this.ui, '营地', -220, -535, 116, 43, () => this.openCamp(), '#dcece0');
         this.button(this.dialog, '回救援营地', 0, -393, 440, 64, () => this.openCamp());
         this.createCamp();
         this.sound = this.node.addComponent(AudioSource);
@@ -172,6 +194,79 @@ export class ColorClearView extends Component {
         const l = n.addComponent(Label); l.string = value; l.fontSize = size; l.lineHeight = size * 1.45; l.color = new Color(color); l.horizontalAlign = Label.HorizontalAlign.CENTER; l.verticalAlign = Label.VerticalAlign.CENTER; l.overflow = Label.Overflow.SHRINK; if(!this.showLabels&&['A LITTLE COLOR BREAK','转转积木','↔ 上下左右拖动，发现另一面','发射台','下一批颜色 · 点前排入槽','没有倒计时，想好了再点 · 同色弹药匹配'].includes(value))n.active=false;return l;
     }
     private paint(g: Graphics, w: number, h: number, hex: string, radius = 20): void { g.clear(); g.fillColor = new Color(hex); g.roundRect(-w / 2, -h / 2, w, h, radius); g.fill(); }
+    private outline(g: Graphics, width: number, height: number, hex: string, radius: number): void {
+        g.strokeColor = new Color(hex);
+        g.lineWidth = 2;
+        g.roundRect(-width / 2, -height / 2, width, height, radius);
+        g.stroke();
+    }
+    private panel(parent: Node, name: string, x: number, y: number, w: number, h: number,
+        fill: string, edge: string, radius: number): Graphics {
+        const node = this.child(parent, name, true);
+        node.layer = parent.layer;
+        node.setPosition(x, y);
+        node.addComponent(UITransform).setContentSize(w, h);
+        const pen = node.addComponent(Graphics);
+        this.paint(pen, w, h, fill, radius);
+        this.outline(pen, w, h, edge, radius);
+        return pen;
+    }
+    private createStageBackground(): void {
+        const node = this.child(this.node, 'BackdropCanvas', false);
+        node.layer = STAGE_LAYER;
+        node.addComponent(UITransform).setContentSize(640, 1120);
+        const canvas = node.addComponent(Canvas);
+        const camera = this.child(this.node, 'BackdropCamera', false).addComponent(Camera);
+        camera.node.setPosition(0, 0, 1000);
+        camera.projection = Camera.ProjectionType.ORTHO;
+        camera.orthoHeight = 560;
+        camera.near = 1;
+        camera.far = 2000;
+        camera.priority = -10;
+        camera.visibility = STAGE_LAYER;
+        camera.clearColor = new Color(CREAM);
+        camera.clearFlags = Camera.ClearFlag.SOLID_COLOR;
+        canvas.cameraComponent = camera;
+        const pen = this.panel(node, 'ModelStage', 0, 167, 596, 570,
+            this.showBackground ? '#deeee5' : '#f6f4e8', '#cbddd0', 38);
+        if (this.showBackground) {
+            pen.fillColor = new Color('#f0e1bf');
+            pen.ellipse(0, -225, 174, 27);
+            pen.fill();
+            pen.fillColor = new Color('#fcf2d9');
+            pen.ellipse(0, -216, 174, 22);
+            pen.fill();
+            pen.fillColor = new Color('#ffffff88');
+            pen.roundRect(-269, 163, 120, 25, 13);
+            pen.roundRect(165, 113, 92, 19, 10);
+            pen.fill();
+        }
+        this.panel(node, 'AmmoPanel', 0, -393, 596, 249, '#fffaf0', '#e3d8bb', 28);
+    }
+    private drawModal(node: Node, width: number, height: number, y = 0): void {
+        const pen = node.addComponent(Graphics);
+        pen.fillColor = new Color('#183c35a6');
+        pen.rect(-1100, -1100, 2200, 2200);
+        pen.fill();
+        this.panel(node, 'ModalCard', 0, y, width, height, CREAM, '#dec89e', 31);
+    }
+    private loadPicture(parent: Node, name: string, w: number, h: number, x: number, y: number): Sprite {
+        const art = this.child(parent, 'Artwork', true);
+        art.setPosition(x, y);
+        art.addComponent(UITransform).setContentSize(w, h);
+        const sprite = art.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        resources.load('color-clear-release/' + name, ImageAsset, (error, asset) => {
+            if (error || !asset || !isValid(art)) return;
+            const texture = new Texture2D();
+            texture.image = asset;
+            const frame = new SpriteFrame();
+            frame.texture = texture;
+            sprite.spriteFrame = frame;
+            this.ownedPictures.push({texture, frame});
+        });
+        return sprite;
+    }
     private button(parent: Node, label: string, x: number, y: number, w: number, h: number, click: () => void, color = '#edf1e5'): Card {
         const n = this.child(parent, 'Button', true); n.setPosition(x, y); n.addComponent(UITransform).setContentSize(w, h); const pen = n.addComponent(Graphics); this.paint(pen, w, h, color);
         const l = this.text(n, label, 23, 0, 0, w - 10);
@@ -262,8 +357,8 @@ export class ColorClearView extends Component {
             }
         }
         const radius = Math.max(...this.model.cells.map(cell => Math.hypot(cell.x, cell.y, cell.z)));
-        this.camera.orthoHeight = radius * 2.18 + 1.25;
-        this.camera.node.setPosition(0, -this.camera.orthoHeight * .27, 30);
+        this.camera.orthoHeight = radius * 2.48 + 1.5;
+        this.camera.node.setPosition(0, -this.camera.orthoHeight * .23, 30);
         this.world.active = true;
         this.refresh(true);
     }
@@ -284,13 +379,17 @@ export class ColorClearView extends Component {
         this.status.string = this.model.slots.some(s => s && visible.has(s.color)) ? '同色消除中' : '↔ 转一转找同色';
         this.slots.forEach((card, i) => {
             const capsule = this.model.slots[i];
-            this.paint(card.pen, 86, 90, capsule ? this.colors[capsule.color] : '#f0f2e9');
+            this.paint(card.pen, 86, 90, capsule ? this.colors[capsule.color] : '#e5ede3');
+            this.outline(card.pen, 86, 90, '#c5d9c8', 19);
             card.label.color = new Color(capsule ? this.ink(this.colors[capsule.color]) : '#526c60');
-            card.label.string = i >= this.model.slots.length ? '▣' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
+            card.label.string = i >= this.model.slots.length ? '扩槽' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
         });
         this.supplies.forEach((card, i) => {
             const row = Math.floor(i / 4), column = i % 4, capsule = this.model.supply[column][row];
-            this.paint(card.pen, 124, row ? 40 : 66, capsule && !row ? this.colors[capsule.color] : '#edf1e7');
+            const mystery = this.model.isAmmoHidden(column, row);
+            const color = capsule && !row ? this.colors[capsule.color] : mystery ? '#fbefd7' : '#f6f4e9';
+            this.paint(card.pen, 134, row ? 39 : 74, color, row ? 12 : 19);
+            this.outline(card.pen, 134, row ? 39 : 74, mystery ? '#ad8e62' : '#ccd9cc', row ? 12 : 19);
             if (capsule && row) {
                 card.pen.fillColor = new Color(this.colors[capsule.color]);
                 card.pen.roundRect(-52, -11, 22, 22, 6);
@@ -298,7 +397,7 @@ export class ColorClearView extends Component {
             }
             card.label.color = new Color(!row && capsule ? this.ink(this.colors[capsule.color]) : '#26463c');
             card.label.string = capsule ? (row ? '    ' : SYMBOLS[capsule.color] + ' ') +
-                (this.model.isAmmoHidden(column, row) ? '?' : capsule.ammo) : '·';
+                (mystery ? '?' : capsule.ammo) : '·';
         });
         this.reserveCards.forEach((card,i)=>{const c=this.model.reserve[i];card.node.active=!!c;if(c){this.paint(card.pen,86,48,this.colors[c.color]);card.label.string=`${SYMBOLS[c.color]} ${c.ammo}`;}});
         this.dialog.active = !this.camp.active && this.model.phase !== 'playing';
@@ -320,7 +419,7 @@ export class ColorClearView extends Component {
         const g=this.projectilePen;g.clear();
         for(let i=this.visualShots.length-1;i>=0;i--){const shot=this.visualShots[i],flight=this.model.flights.find(f=>f.id===shot.flightId);if(!flight){this.visualShots.splice(i,1);continue;}
             const target=this.voxels[shot.id];if(!target)continue;const aim=new Vec3(0,this.model.cells[shot.id].shape==='hemisphere'?.23:0,0);Vec3.transformMat4(aim,aim,target.worldMatrix);const screen=this.camera.worldToScreen(aim),world=this.uiCamera.screenToWorld(screen),end=this.ui.getComponent(UITransform)!.convertToNodeSpaceAR(world);
-            const x=-245+shot.slot*98,y=-175,t=Math.max(0,Math.min(1,1-flight.time/(flight.duration??FLIGHT_SECONDS))),cx=(x+end.x)/2,cy=Math.max(y,end.y)+30;
+            const x=-245+shot.slot*98,y=SLOT_Y+45,t=Math.max(0,Math.min(1,1-flight.time/(flight.duration??FLIGHT_SECONDS))),cx=(x+end.x)/2,cy=Math.max(y,end.y)+30;
             const px=(1-t)*(1-t)*x+2*(1-t)*t*cx+t*t*end.x,py=(1-t)*(1-t)*y+2*(1-t)*t*cy+t*t*end.y;
             g.strokeColor=new Color('#a9d9cf');g.lineWidth=3;g.moveTo(x,y);g.lineTo(px,py);g.stroke();g.fillColor=new Color('#ffffed');g.circle(px,py,6);g.fill();
         }
@@ -334,7 +433,7 @@ export class ColorClearView extends Component {
         this.camp = this.child(this.ui, 'RescueCamp', true);
         this.camp.addComponent(BlockInputEvents);
         this.camp.addComponent(UITransform).setContentSize(640, 1120);
-        this.paint(this.camp.addComponent(Graphics), 640, 1120, '#fff3dc', 0);
+        this.paint(this.camp.addComponent(Graphics), 640, 1120, CREAM, 0);
         const art = this.child(this.camp, 'CampArtwork', true);
         art.setPosition(0, 56);
         art.addComponent(UITransform).setContentSize(640, 960);
@@ -348,10 +447,14 @@ export class ColorClearView extends Component {
             this.campFrame.texture = this.campImage;
             sprite.spriteFrame = this.campFrame;
         });
-        this.text(this.camp, '鸭命要紧', 54, 0, 460, 500, '#17493e');
-        this.campTitle = this.text(this.camp, '', 27, 0, -321, 500, '#17493e');
-        this.campStatus = this.text(this.camp, '', 17, 0, -367, 530, '#345a50');
-        const go = this.button(this.camp, '出发救鸭', 0, -428, 465, 74, () => {
+        this.text(this.camp, '鸭命要紧', 64, 0, 460, 500, '#17493e').isBold = true;
+        this.text(this.camp, '今日也要平安上岸', 21, 0, 410, 470, '#32584d');
+        this.panel(this.camp, 'Mission', 0, -316, 385, 90, '#fff8e8', '#d9bc86', 21);
+        this.text(this.camp, '救援任务', 16, 0, -287, 260, '#786341');
+        this.campTitle = this.text(this.camp, '', 29, 0, -327, 360, '#17493e');
+        this.campTitle.isBold = true;
+        this.campStatus = this.text(this.camp, '', 17, 0, -379, 530, '#345a50');
+        const go = this.button(this.camp, '出发救鸭', 0, -430, 536, 78, () => {
             if (this.runStarted && this.model.phase === 'paused') {
                 this.camp.active = false;
                 this.world.active = true;
@@ -361,13 +464,15 @@ export class ColorClearView extends Component {
             }
             this.load(this.unlocked === 2 ? LAST_RESCUE : FIRST_RESCUE);
         }, '#f5af61');
-        go.label.fontSize = 29;
-        this.button(this.camp, '图鉴', 146, -512, 250, 57, () => this.openAlbum(), '#dfece1');
-        this.button(this.camp, '音效开关', -146, -512, 250, 57, () => {
+        go.label.fontSize = 33;
+        go.label.isBold = true;
+        this.panel(this.camp, 'CampNav', 0, -517, 550, 66, TEAL, '#1a4a40', 21);
+        this.button(this.camp, '图鉴', 137, -517, 237, 54, () => this.openAlbum(), TEAL).label.color = new Color(CREAM);
+        this.button(this.camp, '音效开关', -137, -517, 237, 54, () => {
             this.muted = !this.muted;
             try { sys.localStorage.setItem('color-clear.muted', String(this.muted)); } catch {}
             this.campStatus.string = this.muted ? '音效已关' : '音效已开';
-        }, '#dfece1');
+        }, TEAL).label.color = new Color(CREAM);
     }
     private openCamp(): void {
         this.pause();
@@ -388,8 +493,11 @@ export class ColorClearView extends Component {
         this.albumText.string = '已救援 ' + count + ' / ' + RELEASE_LEVELS.length;
         this.albumCards.forEach((card, index) => {
             const rescue = RELEASE_LEVELS[index], unlocked = owned.has(rescue.id);
-            card.label.string = (unlocked ? '✓' : '?') + '\n' + rescue.name;
-            this.paint(card.pen, 250, 260, unlocked ? '#dcecdf' : '#eeeade');
+            card.label.string = rescue.name;
+            this.albumMarks[index].node.active = !unlocked;
+            this.albumPortraits[index].node.active = unlocked;
+            this.paint(card.pen, 242, 272, unlocked ? '#fdf9ec' : '#eeeade', 19);
+            this.outline(card.pen, 242, 272, unlocked ? '#9bbca8' : '#d4c8ad', 19);
         });
         this.albumPanel.setSiblingIndex(this.ui.children.length - 1);
         this.albumPanel.active = true;
@@ -432,6 +540,7 @@ export class ColorClearView extends Component {
     }
     onDestroy(): void {
         input.off(Input.EventType.TOUCH_START, this.touchStart, this); input.off(Input.EventType.TOUCH_MOVE, this.touchMove, this); input.off(Input.EventType.TOUCH_END, this.touchEnd, this); input.off(Input.EventType.TOUCH_CANCEL, this.touchEnd, this); game.off(Game.EVENT_HIDE, this.pause, this);
+        for (const picture of this.ownedPictures) { picture.frame.destroy(); picture.texture.destroy(); }
         this.campFrame?.destroy();this.campImage?.destroy();for (const m of this.materialsByColor.values()) m.destroy();for(const m of this.meshCache.values())m.destroy();
     }
 }

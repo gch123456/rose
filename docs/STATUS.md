@@ -1,5 +1,9 @@
 # 当前状态与接续入口
 
+## 微信界面精修预览（2026-11-18）
+
+原生对局、营地和图鉴已补齐层次，包位于 build/wechat-rescue-ui。221 项测试与 Cocos 浏览器、微信预览编译通过。公众平台 0.1.0 保留旧画面。见[实施记录](archive/2026-11-18-wechat-ui-polish-session.md)。
+
 ## 微信小游戏已构建并生成预览码（2026-11-18）
 
 Cocos 3.8.8 产出 build/wechat-rescue，包含营地、雨衣鸭、法师鸭、图鉴和音效。微信工具预览编译通过，约 2.5 MB。Cocos 浏览器运行已验收，两关真机扫码与设置平台体验版待完成。见[构建记录](archive/2026-11-18-wechat-rescue-preview-session.md)。
