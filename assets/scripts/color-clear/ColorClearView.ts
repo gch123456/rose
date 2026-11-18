@@ -1,5 +1,7 @@
-import { BlockMeshIndex } from './ColorClearBlockMesh';
-import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
+import {drawCampCorners, drawDuckCapsule, drawGear, drawPond} from './ColorClearRescueArt';
+import {fitRescueScreen, RESCUE_STAGE} from './ColorClearNativeStyle';
+import {BLOCK_INDEX_CAPACITY, BLOCK_VERTEX_CAPACITY, BlockMeshIndex} from './ColorClearBlockMesh';
+import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Rect, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
 import { ColorClearGame, FLIGHT_SECONDS } from './ColorClearGame';
 import type { Voxel, RewardTicket, PieceShape } from './ColorClearGame';
 import { makeReleaseLevel, RELEASE_LEVELS, chooseReleaseQueue } from './ColorClearRelease';
@@ -11,10 +13,12 @@ const { ccclass, property } = _decorator;
 const FIRST_RESCUE = RELEASE_LEVELS[0].id;
 const LAST_RESCUE = RELEASE_LEVELS[1].id;
 const STAGE_LAYER = 1 << 18;
-const CREAM = '#fff7e7';
+const CREAM = '#f9f6ec';
 const TEAL = '#245d51';
-const SLOT_Y = -199;
-const FRONT_Y = -319;
+const SLOT_Y = -178;
+const FRONT_Y = -304;
+const MUSIC_KEY = 'color-clear.music';
+const EFFECTS_KEY = 'color-clear.muted';
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
 const SYMBOLS = ['●', '▲', '◆', '■', '✦', '⬟'];
 type Card = { node: Node; pen: Graphics; label: Label; paintKey?: string };
@@ -50,8 +54,6 @@ export class ColorClearView extends Component {
     private materialsByColor = new Map<string, Material>();
     private bonusUntil = 0;
     private bonusLabel!: Label;
-    private campImage: Texture2D | null = null;
-    private campFrame: SpriteFrame | null = null;
     private world!: Node;
     private ui!: Node;
     private dialog!: Node;
@@ -91,7 +93,17 @@ export class ColorClearView extends Component {
     private dragId = -1;
     private sound!: AudioSource;
     private clips = new Map<string, AudioClip>();
-    private muted = false;
+    private effectsMuted = false;
+    private musicEnabled = true;
+    private audioReady = false;
+    private inForeground = true;
+    private music!: AudioSource;
+    private settingsPanel!: Node;
+    private musicButton!: Card;
+    private effectsButton!: Card;
+    private stageRoot!: Node;
+    private stagePen!: Graphics;
+    private screenFit = {x: 0, y: 0, scale: 1};
     private lastHitSound = 0;
     private clock = 0;
     private unlocked = 1;
@@ -99,14 +111,12 @@ export class ColorClearView extends Component {
     onLoad(): void {
         this.album=new AlbumService(sys.localStorage,wechatAlbumTransport(this.albumApiOrigin));
         view.setDesignResolutionSize(640, 1120, ResolutionPolicy.SHOW_ALL);
-        try { this.unlocked = Number(sys.localStorage.getItem(PROGRESS_KEY)) === 2 ? 2 : 1; this.muted = sys.localStorage.getItem('color-clear.muted') === 'true'; } catch { /* storage optional */ }
+        try {
+            this.unlocked = Number(sys.localStorage.getItem(PROGRESS_KEY)) === 2 ? 2 : 1;
+            this.effectsMuted = sys.localStorage.getItem(EFFECTS_KEY) === 'true';
+            this.musicEnabled = sys.localStorage.getItem(MUSIC_KEY) !== 'false';
+        } catch { /* storage optional */ }
         const box = primitives.box();
-        const normals = box.normals ?? [];
-        box.colors = [];
-        for (let i = 0; i < normals.length; i += 3) {
-            const shade = normals[i + 1] > .5 ? 1 : normals[i + 1] < -.5 ? .71 : normals[i + 2] > .5 ? .94 : .83;
-            box.colors.push(shade, shade, shade, 1);
-        }
         this.cube = utils.MeshUtils.createMesh(box);
         this.meshCache.set('box', this.cube);
         this.meshCache.set('sphere',utils.MeshUtils.createMesh(primitives.sphere(.5)));
@@ -117,38 +127,52 @@ export class ColorClearView extends Component {
         this.camera.node.setPosition(0, 0, 30); this.camera.projection = Camera.ProjectionType.ORTHO; this.camera.near = .1; this.camera.far = 100;
         this.camera.visibility = Layers.Enum.DEFAULT; this.camera.clearFlags = Camera.ClearFlag.DEPTH_ONLY; this.camera.priority = 0;
         this.world = this.child(this.node, 'ColorClearModel', false);
-        this.ui = this.child(this.node, 'ColorClearUI', true); this.ui.addComponent(UITransform).setContentSize(640, 1120);
-        const canvas = this.ui.addComponent(Canvas);
+        const canvasNode = this.child(this.node, 'ColorClearCanvas', true);
+        canvasNode.addComponent(UITransform).setContentSize(640, 1120);
+        const canvas = canvasNode.addComponent(Canvas);
+        this.ui = this.child(canvasNode, 'ColorClearUI', true);
+        this.ui.addComponent(UITransform).setContentSize(640, 1120);
         const uiCamera = this.child(this.node, 'ColorClearUICamera', false).addComponent(Camera);
-        uiCamera.node.setPosition(0, 0, 1000); uiCamera.projection = Camera.ProjectionType.ORTHO; uiCamera.orthoHeight = 560; uiCamera.near = 1; uiCamera.far = 2000;
-        uiCamera.visibility = Layers.Enum.UI_2D; uiCamera.clearFlags = Camera.ClearFlag.DEPTH_ONLY; uiCamera.priority = 10; canvas.cameraComponent = uiCamera;this.uiCamera=uiCamera;
-        this.title = this.text(this.ui, '', 29, 0, 502, 435, '#204d42');
+        uiCamera.node.setPosition(0, 0, 1000);
+        uiCamera.projection = Camera.ProjectionType.ORTHO;
+        uiCamera.orthoHeight = 560;
+        uiCamera.near = 1;
+        uiCamera.far = 2000;
+        uiCamera.visibility = Layers.Enum.UI_2D;
+        uiCamera.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
+        uiCamera.priority = 10;
+        canvas.cameraComponent = uiCamera;
+        this.uiCamera = uiCamera;
+        this.title = this.text(this.ui, '', 34, 0, 482, 414, '#204d42');
         this.title.isBold = true;
-        this.bonusLabel = this.text(this.ui, '✦ 同色 5 连消', 28, 0, 386, 400, '#8a5018');
+        this.bonusLabel = this.text(this.ui, '✦ 同色 5 连消', 28, 0, 398, 400, '#8a5018');
         this.bonusLabel.node.active = false;
-        this.button(this.ui, 'Ⅱ', -260, 490, 60, 60, () => this.pause());
-        this.remaining = this.text(this.ui, '', 18, 0, 393, 540, '#8a9991');
-        this.text(this.ui, '拖动查看另一面', 17, 0, -108, 550, '#486a61');
-        this.text(this.ui, '发射台', 19, -240, -148, 105, '#365b51');
-        this.text(this.ui, '点前排装填', 19, -213, -267, 150, '#365b51');
-        this.status = this.text(this.ui, '', 16, 90, -150, 360, '#8a9991');
-        for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, SLOT_Y, 86, 90, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
-        for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-259,86,40,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
+        this.settingsButton(this.ui, -266, 493);
+        this.remaining = this.text(this.ui, '', 18, 0, 366, 540, '#486a61');
+        this.text(this.ui, '拖动转面', 18, 0, -87, 160, '#385e53');
+        this.text(this.ui, '发射台', 17, -250, -124, 110, '#42675d');
+        this.text(this.ui, '点前排装填', 17, -229, -250, 140, '#42675d');
+        this.status = this.text(this.ui, '', 16, 90, -124, 360, '#486a61');
+        for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, SLOT_Y, 88, 76, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
+        for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-231,86,30,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
         for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
-            const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? FRONT_Y : -337 - row * 48), 134, row ? 39 : 74, () => { if (row === 0 && this.model.phase === 'playing') {
+            const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? FRONT_Y : -340 - row * 44), 134, row ? 38 : 76, () => { if (row === 0 && this.model.phase === 'playing') {
                 const slot = this.model.slots.indexOf(null);
                 if (this.model.select(col)) {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
-                    const flight = this.button(this.ui, `${SYMBOLS[capsule.color]} ${capsule.ammo}`, -222 + col * 148, FRONT_Y, 104, 60, () => {}, this.colors[capsule.color]);
+                    const flight = this.button(this.ui, '', -222 + col * 148, FRONT_Y, 104, 60, () => {});
+                    drawDuckCapsule(flight.pen, 104, 60, this.colors[capsule.color], false);
+                    flight.label.node.setPosition(14, 1);
+                    flight.label.string = String(capsule.ammo);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
                     tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0) }).call(() => flight.node.destroy()).start();
                 }
             } });
             card.label.fontSize = row ? 24 : 30;
             card.label.isBold = !row;
+            card.label.node.setPosition(row ? 16 : 18, 1);
             this.supplies.push(card);
         }
-        this.text(this.ui, '没有倒计时，想好了再点 · 同色弹药匹配', 16, 0, -530, 590, '#8a9991');
         this.dialog = this.child(this.ui, 'ColorClearDialog', true);this.dialog.addComponent(BlockInputEvents);
         this.dialog.addComponent(UITransform).setContentSize(640, 1120);
         this.drawModal(this.dialog, 570, 740, -63);
@@ -163,7 +187,6 @@ export class ColorClearView extends Component {
             if (this.model.useEmergencyReserve()) this.refresh(true);
         }, '#f9d590');
         this.button(this.dialog, '重新开始这一关', 0, -222, 440, 64, () => this.load(this.model.level.id));
-        this.button(this.dialog, '声音开关', 0, -308, 440, 64, () => { this.muted = !this.muted; try { sys.localStorage.setItem('color-clear.muted', String(this.muted)); } catch { /* optional */ } this.refresh(true); });
         this.rewardPanel=this.child(this.ui,'SimulatedReward',true);this.rewardPanel.addComponent(BlockInputEvents);this.rewardPanel.addComponent(UITransform).setContentSize(640,1120);this.paint(this.rewardPanel.addComponent(Graphics),640,1120,'#eef2e0',0);
         this.rewardTitle=this.text(this.rewardPanel,'开发测试 · 模拟广告',28,0,160,560);
         this.text(this.rewardPanel,'没有接入真实微信广告',21,0,80,520,'#718678');
@@ -189,15 +212,28 @@ export class ColorClearView extends Component {
         });
         this.button(this.albumPanel, '返回', 0, -225, 330, 62, () => this.closeAlbum(), '#dcece0');
         this.albumPanel.active = false;
-        this.button(this.ui, '图鉴', 220, -535, 116, 43, () => this.openAlbum(), '#dcece0');
-        this.button(this.ui, '营地', -220, -535, 116, 43, () => this.openCamp(), '#dcece0');
-        this.button(this.dialog, '回救援营地', 0, -393, 440, 64, () => this.openCamp());
+        this.button(this.ui, '图鉴', 220, -520, 144, 56, () => this.openAlbum(), '#dcece0');
+        this.button(this.ui, '营地', -220, -520, 144, 56, () => this.openCamp(), '#dcece0');
+        this.button(this.dialog, '回救援营地', 0, -310, 440, 64, () => this.openCamp());
         this.createCamp();
+        this.createSettings();
         this.sound = this.node.addComponent(AudioSource);
         for (const name of ['load', 'hit', 'chain', 'won', 'lost']) resources.load(`color-clear-audio/${name}`, AudioClip, (error, clip) => { if (!error && clip && isValid(this.node)) this.clips.set(name, clip); });
+        this.music = this.node.addComponent(AudioSource);
+        this.music.loop = true;
+        this.music.volume = .22;
+        resources.load('color-clear-audio/camp', AudioClip, (error, clip) => {
+            if (error || !clip || !isValid(this.node)) return;
+            this.music.clip = clip;
+            this.syncMusic();
+        });
+        this.layoutScreen();
+        view.on('canvas-resize', this.layoutScreen, this);
+        view.on('design-resolution-changed', this.layoutScreen, this);
         input.on(Input.EventType.TOUCH_START, this.touchStart, this); input.on(Input.EventType.TOUCH_MOVE, this.touchMove, this);
         input.on(Input.EventType.TOUCH_END, this.touchEnd, this); input.on(Input.EventType.TOUCH_CANCEL, this.touchEnd, this);
-        game.on(Game.EVENT_HIDE, this.pause, this);
+        game.on(Game.EVENT_HIDE, this.onGameHide, this);
+        game.on(Game.EVENT_SHOW, this.onGameShow, this);
         this.openCamp();
     }
     private child(parent: Node, name: string, ui: boolean): Node { const n = new Node(name); n.layer = ui ? Layers.Enum.UI_2D : Layers.Enum.DEFAULT; parent.addChild(n); return n; }
@@ -239,21 +275,35 @@ export class ColorClearView extends Component {
         camera.clearColor = new Color(CREAM);
         camera.clearFlags = Camera.ClearFlag.SOLID_COLOR;
         canvas.cameraComponent = camera;
-        const pen = this.panel(node, 'ModelStage', 0, 167, 596, 570,
-            this.showBackground ? '#deeee5' : '#f6f4e8', '#cbddd0', 38);
-        if (this.showBackground) {
-            pen.fillColor = new Color('#f0e1bf');
-            pen.ellipse(0, -225, 174, 27);
-            pen.fill();
-            pen.fillColor = new Color('#fcf2d9');
-            pen.ellipse(0, -216, 174, 22);
-            pen.fill();
-            pen.fillColor = new Color('#ffffff88');
-            pen.roundRect(-269, 163, 120, 25, 13);
-            pen.roundRect(165, 113, 92, 19, 10);
-            pen.fill();
-        }
-        this.panel(node, 'AmmoPanel', 0, -393, 596, 249, '#fffaf0', '#e3d8bb', 28);
+        this.stageRoot = this.child(node, 'RescueLayout', false);
+        this.stageRoot.layer = STAGE_LAYER;
+        this.stagePen = this.panel(this.stageRoot, 'ModelStage', 0, 167, 600, 562, '#edf8f3', '#bfd8cc', 38);
+        this.paintStage(false);
+        this.panel(this.stageRoot, 'AmmoPanel', 0, -372, 600, 238, '#f1eee2', '#e4dbc7', 29);
+    }
+    private paintStage(wizard: boolean): void {
+        this.paint(this.stagePen, 600, 562, '#edf8f3', 38);
+        if (this.showBackground) drawPond(this.stagePen, wizard);
+        this.outline(this.stagePen, 600, 562, '#c5d8cc', 38);
+    }
+    private layoutScreen(): void {
+        const safe = sys.getSafeAreaRect(false);
+        const visible = view.getVisibleSize();
+        const fit = safe.width > 30 && safe.height > 30 ? safe
+            : {x: (640 - visible.width) / 2, y: (1120 - visible.height) / 2, width: visible.width, height: visible.height};
+        this.screenFit = fitRescueScreen(fit);
+        const {x, y, scale} = this.screenFit;
+        this.ui.setPosition(x, y);
+        this.ui.setScale(scale, scale, 1);
+        this.stageRoot.setPosition(x, y);
+        this.stageRoot.setScale(scale, scale, 1);
+        this.layoutModel();
+    }
+    private layoutModel(): void {
+        const {x, y, scale} = this.screenFit;
+        const ratio = ((this.meshRadius - 1) * 2.13 + 1.5) / (560 * scale);
+        this.camera.orthoHeight = this.uiCamera.orthoHeight * ratio;
+        this.camera.node.setPosition(-x * ratio, -(y + RESCUE_STAGE.modelY * scale) * ratio, 30);
     }
     private drawModal(node: Node, width: number, height: number, y = 0): void {
         const pen = node.addComponent(Graphics);
@@ -262,7 +312,7 @@ export class ColorClearView extends Component {
         pen.fill();
         this.panel(node, 'ModalCard', 0, y, width, height, CREAM, '#dec89e', 31);
     }
-    private loadPicture(parent: Node, name: string, w: number, h: number, x: number, y: number): Sprite {
+    private loadPicture(parent: Node, name: string, w: number, h: number, x: number, y: number, crop = false): Sprite {
         const art = this.child(parent, 'Artwork', true);
         art.setPosition(x, y);
         art.addComponent(UITransform).setContentSize(w, h);
@@ -274,6 +324,10 @@ export class ColorClearView extends Component {
             texture.image = asset;
             const frame = new SpriteFrame();
             frame.texture = texture;
+            if (crop) {
+                const cropHeight = texture.width * h / w;
+                frame.rect = new Rect(0, texture.height * .19, texture.width, cropHeight);
+            }
             sprite.spriteFrame = frame;
             this.ownedPictures.push({texture, frame});
         });
@@ -282,14 +336,19 @@ export class ColorClearView extends Component {
     private button(parent: Node, label: string, x: number, y: number, w: number, h: number, click: () => void, color = '#edf1e5'): Card {
         const n = this.child(parent, 'Button', true); n.setPosition(x, y); n.addComponent(UITransform).setContentSize(w, h); const pen = n.addComponent(Graphics); this.paint(pen, w, h, color);
         const l = this.text(n, label, 23, 0, 0, w - 10);
-        n.on(Node.EventType.TOUCH_END, () => { if (isValid(this.node)) click(); }); return { node: n, pen, label: l };
+        n.on(Node.EventType.TOUCH_END, () => {
+            if (!isValid(this.node)) return;
+            click();
+            this.unlockAudio();
+        });
+        return {node: n, pen, label: l};
     }
-    private blockMaterial(hex: string, faceShading: boolean): Material {
-        const key = hex + (faceShading ? ':faces' : '');
+    private blockMaterial(hex: string, vertexColors: boolean): Material {
+        const key = hex + (vertexColors ? ':vertex' : '');
         let material = this.materialsByColor.get(key);
         if (!material) {
             material = new Material();
-            material.initialize({ effectName: 'builtin-unlit', defines: { USE_INSTANCING: true, USE_VERTEX_COLOR: faceShading } });
+            material.initialize({ effectName: 'builtin-unlit', defines: { USE_INSTANCING: true, USE_VERTEX_COLOR: vertexColors } });
             material.setProperty('mainColor', new Color(hex));
             this.materialsByColor.set(key, material);
         }
@@ -299,7 +358,7 @@ export class ColorClearView extends Component {
         const node = this.child(parent, name, false);
         const renderer = node.addComponent(MeshRenderer);
         renderer.mesh = this.meshCache.get(shape)!;
-        renderer.setMaterial(this.blockMaterial(tint ?? this.colors[color], shape === 'box'), 0);
+        renderer.setMaterial(this.blockMaterial(tint ?? this.colors[color], false), 0);
         return node;
     }
     private load(id: number): void {
@@ -337,6 +396,7 @@ export class ColorClearView extends Component {
         this.rewardPanel.active = false;
         this.model = next;
         this.colors = RELEASE_LEVELS[id === FIRST_RESCUE ? 0 : 1].palette;
+        this.paintStage(id === LAST_RESCUE);
         this.orbit.reset();
         this.dragId = -1;
         this.bonusUntil = 0;
@@ -372,12 +432,11 @@ export class ColorClearView extends Component {
                 seam.setScale(.73, .07, .07);
             }
         }
-        this.camera.orthoHeight = (this.meshRadius - 1) * 2.48 + 1.5;
-        this.camera.node.setPosition(0, -this.camera.orthoHeight * .23, 30);
+        this.layoutModel();
         this.world.active = true;
         this.refresh(true);
     }
-    private soundFor(name: string): void { const clip = this.clips.get(name); if (!this.muted && clip) this.sound.playOneShot(clip, name === 'hit' ? .2 : .45); }
+    private soundFor(name: string): void { const clip = this.clips.get(name); if (!this.effectsMuted && clip) this.sound.playOneShot(clip, name === 'hit' ? .2 : .45); }
     private clearBatches(): void {
         for (const {node, mesh} of this.batches.values()) {
             node.active = false;
@@ -414,7 +473,7 @@ export class ColorClearView extends Component {
             ...geometry,
             minPos: {x: -edge, y: -edge, z: -edge},
             maxPos: {x: edge, y: edge, z: edge},
-        }, undefined, { maxSubMeshes: 1, maxSubMeshVertices: cells * 24, maxSubMeshIndices: cells * 36 });
+        }, undefined, { maxSubMeshes: 1, maxSubMeshVertices: cells * BLOCK_VERTEX_CAPACITY, maxSubMeshIndices: cells * BLOCK_INDEX_CAPACITY });
         const node = this.child(this.world, 'BlockBatch', false);
         const renderer = node.addComponent(MeshRenderer);
         renderer.mesh = mesh;
@@ -440,34 +499,43 @@ export class ColorClearView extends Component {
         this.status.string = this.model.flights.length ? '同色消除中' : '↔ 转一转找同色';
         this.slots.forEach((card, i) => {
             const capsule = this.model.slots[i];
-            const fill = capsule ? this.colors[capsule.color] : '#e5ede3';
+            const locked = i >= this.model.slots.length;
+            const fill = capsule ? this.colors[capsule.color] : locked ? '#eee8d9' : '#dfece3';
             if (card.paintKey !== fill) {
                 card.paintKey = fill;
-                this.paint(card.pen, 86, 90, fill);
-                this.outline(card.pen, 86, 90, '#c5d9c8', 19);
-                card.label.color = new Color(capsule ? this.ink(fill) : '#526c60');
+                if (capsule) drawDuckCapsule(card.pen, 88, 76, fill, true);
+                else {
+                    this.paint(card.pen, 88, 76, fill, 28);
+                    this.outline(card.pen, 88, 76, locked ? '#ded5bf' : '#cbded2', 28);
+                }
+                card.label.color = new Color('#285249');
             }
-            card.label.string = i >= this.model.slots.length ? '扩槽' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
+            card.label.string = locked ? '扩槽' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
         });
         this.supplies.forEach((card, i) => {
             const row = Math.floor(i / 4), column = i % 4, capsule = this.model.supply[column][row];
             const mystery = this.model.isAmmoHidden(column, row);
-            const color = capsule && !row ? this.colors[capsule.color] : mystery ? '#fbefd7' : '#f6f4e9';
             const swatch = capsule ? this.colors[capsule.color] : '';
-            const key = color + ':' + swatch + ':' + mystery;
+            const key = swatch + ':' + mystery;
             if (card.paintKey !== key) {
                 card.paintKey = key;
-                this.paint(card.pen, 134, row ? 39 : 74, color, row ? 12 : 19);
-                this.outline(card.pen, 134, row ? 39 : 74, mystery ? '#ad8e62' : '#ccd9cc', row ? 12 : 19);
-                if (swatch && row) {
-                    card.pen.fillColor = new Color(swatch);
-                    card.pen.roundRect(-52, -11, 22, 22, 6);
-                    card.pen.fill();
+                if (capsule && !row) {
+                    drawDuckCapsule(card.pen, 134, 76, swatch, false);
+                } else {
+                    this.paint(card.pen, 134, row ? 38 : 76, mystery ? '#fff3d7' : '#fbf9f0', row ? 16 : 27);
+                    if (capsule) {
+                        card.pen.fillColor = new Color(swatch);
+                        card.pen.circle(-43, 0, 11);
+                        card.pen.fill();
+                        card.pen.strokeColor = new Color('#2d4e4960');
+                        card.pen.lineWidth = 1.4;
+                        card.pen.circle(-43, 0, 11);
+                        card.pen.stroke();
+                    }
                 }
-                card.label.color = new Color(!row && capsule ? this.ink(color) : '#26463c');
+                card.label.color = new Color('#203f37');
             }
-            card.label.string = capsule ? (row ? '    ' : SYMBOLS[capsule.color] + ' ') +
-                (mystery ? '?' : capsule.ammo) : '·';
+            card.label.string = capsule ? `${SYMBOLS[capsule.color]} ${mystery ? '?' : capsule.ammo}` : '·';
         });
         this.reserveCards.forEach((card, index) => {
             const capsule = this.model.reserve[index];
@@ -476,7 +544,7 @@ export class ColorClearView extends Component {
             const fill = this.colors[capsule.color];
             if (card.paintKey !== fill) {
                 card.paintKey = fill;
-                this.paint(card.pen, 86, 40, fill);
+                drawDuckCapsule(card.pen, 86, 30, fill, true);
                 card.label.color = new Color(this.ink(fill));
             }
             card.label.string = SYMBOLS[capsule.color] + ' ' + capsule.ammo;
@@ -487,7 +555,7 @@ export class ColorClearView extends Component {
             : this.model.phase === 'paused' ? '继续救援' : '再试一次';
         this.emergencyButton.node.active = this.model.canUseEmergencyReserve;
         this.phaseText.string = this.model.phase === 'won' ? '安全抵达！' : this.model.phase === 'lost' ? '换个顺序再来' : '休息一下';
-        this.resultText.string = this.model.phase === 'lost' ? this.model.reason : `已清除 ${this.model.cells.length - this.model.remaining} 块\n声音：${this.muted ? '关' : '开'}`;
+        this.resultText.string = this.model.phase === 'lost' ? this.model.reason : `已清除 ${this.model.cells.length - this.model.remaining} 块`;
     }
     private startReward(kind:'slot'|'continue'):void {
         const owner=this.model,ticket=owner.beginReward(kind);if(!ticket)return;this.pendingReward={owner,ticket};if(this.dragId>=0)this.orbit.release(true,0);this.dragId=-1;
@@ -509,7 +577,7 @@ export class ColorClearView extends Component {
             const target = this.cellsById.get(flight.target);
             if (!target) continue;
             const end = this.projectCell(target);
-            const x = -245 + flight.slot * 98, y = SLOT_Y + 45;
+            const x = -245 + flight.slot * 98, y = SLOT_Y + 38;
             const t = Math.max(0, Math.min(1, 1 - flight.time / (flight.duration ?? FLIGHT_SECONDS)));
             const lift = 60 * (1 - t) * t;
             const px = x + (end.x - x) * t, py = y + (end.y - y) * t + lift;
@@ -541,28 +609,21 @@ export class ColorClearView extends Component {
         this.camp = this.child(this.ui, 'RescueCamp', true);
         this.camp.addComponent(BlockInputEvents);
         this.camp.addComponent(UITransform).setContentSize(640, 1120);
-        this.paint(this.camp.addComponent(Graphics), 640, 1120, CREAM, 0);
-        const art = this.child(this.camp, 'CampArtwork', true);
-        art.setPosition(0, 56);
-        art.addComponent(UITransform).setContentSize(640, 960);
-        const sprite = art.addComponent(Sprite);
-        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        resources.load('color-clear-release/camp', ImageAsset, (error, asset) => {
-            if (error || !asset || !isValid(art)) return;
-            this.campImage = new Texture2D();
-            this.campImage.image = asset;
-            this.campFrame = new SpriteFrame();
-            this.campFrame.texture = this.campImage;
-            sprite.spriteFrame = this.campFrame;
-        });
-        this.text(this.camp, '鸭命要紧', 64, 0, 460, 500, '#17493e').isBold = true;
-        this.text(this.camp, '今日也要平安上岸', 21, 0, 410, 470, '#32584d');
-        this.panel(this.camp, 'Mission', 0, -316, 385, 90, '#fff8e8', '#d9bc86', 21);
-        this.text(this.camp, '救援任务', 16, 0, -287, 260, '#786341');
-        this.campTitle = this.text(this.camp, '', 29, 0, -327, 360, '#17493e');
+        const ground = this.camp.addComponent(Graphics);
+        this.paint(ground, 2400, 2600, '#f4f8ef', 0);
+        this.panel(this.camp, 'CampArtFrame', 0, 94, 604, 550, '#e6efde', '#c4d5bc', 42);
+        this.loadPicture(this.camp, 'camp', 594, 540, 0, 94, true);
+        const corners = this.child(this.camp, 'ArtworkCorners', true);
+        corners.setPosition(0, 94);
+        drawCampCorners(corners.addComponent(Graphics));
+        this.settingsButton(this.camp, -266, 493);
+        this.text(this.camp, '鸭命要紧', 66, 0, 477, 420, '#17493e').isBold = true;
+        this.panel(this.camp, 'Mission', 0, -272, 598, 140, '#fff9e9', '#e7d3aa', 29);
+        this.text(this.camp, '救援任务', 19, -185, -230, 160, '#76552e').isBold = true;
+        this.campTitle = this.text(this.camp, '', 32, 0, -276, 550, '#17493e');
         this.campTitle.isBold = true;
-        this.campStatus = this.text(this.camp, '', 17, 0, -379, 530, '#345a50');
-        const go = this.button(this.camp, '出发救鸭', 0, -430, 536, 78, () => {
+        this.campStatus = this.text(this.camp, '', 18, 0, -313, 530, '#345a50');
+        const go = this.button(this.camp, '出发救鸭', 0, -406, 596, 86, () => {
             if (this.runStarted && this.model.phase === 'paused') {
                 this.camp.active = false;
                 this.world.active = true;
@@ -571,16 +632,79 @@ export class ColorClearView extends Component {
                 return;
             }
             this.load(this.unlocked === 2 ? LAST_RESCUE : FIRST_RESCUE);
-        }, '#f5af61');
+        }, '#ffcc70');
         go.label.fontSize = 33;
         go.label.isBold = true;
-        this.panel(this.camp, 'CampNav', 0, -517, 550, 66, TEAL, '#1a4a40', 21);
-        this.button(this.camp, '图鉴', 137, -517, 237, 54, () => this.openAlbum(), TEAL).label.color = new Color(CREAM);
-        this.button(this.camp, '音效开关', -137, -517, 237, 54, () => {
-            this.muted = !this.muted;
-            try { sys.localStorage.setItem('color-clear.muted', String(this.muted)); } catch {}
-            this.campStatus.string = this.muted ? '音效已关' : '音效已开';
-        }, TEAL).label.color = new Color(CREAM);
+        const album = this.button(this.camp, '救援图鉴', 0, -508, 335, 64, () => this.openAlbum(), '#e2eee4');
+        album.label.isBold = true;
+    }
+    private settingsButton(parent: Node, x: number, y: number): void {
+        const gear = this.button(parent, '', x, y, 69, 69, () => this.openSettings(), '#e3efe5');
+        this.outline(gear.pen, 69, 69, '#c7dacd', 20);
+        drawGear(gear.pen);
+    }
+    private createSettings(): void {
+        this.settingsPanel = this.child(this.ui, 'Settings', true);
+        this.settingsPanel.addComponent(BlockInputEvents);
+        this.settingsPanel.addComponent(UITransform).setContentSize(2600, 2600);
+        this.drawModal(this.settingsPanel, 530, 490);
+        this.text(this.settingsPanel, '设置', 42, 0, 174, 390, TEAL).isBold = true;
+        this.musicButton = this.button(this.settingsPanel, '', 0, 65, 408, 79, () => {
+            this.musicEnabled = !this.musicEnabled;
+            try { sys.localStorage.setItem(MUSIC_KEY, String(this.musicEnabled)); } catch { /* storage optional */ }
+            this.syncMusic();
+            this.refreshSettings();
+        });
+        this.effectsButton = this.button(this.settingsPanel, '', 0, -36, 408, 79, () => {
+            this.effectsMuted = !this.effectsMuted;
+            try { sys.localStorage.setItem(EFFECTS_KEY, String(this.effectsMuted)); } catch { /* storage optional */ }
+            this.refreshSettings();
+            this.soundFor('load');
+        });
+        this.button(this.settingsPanel, '完成', 0, -161, 408, 70, () => {
+            this.settingsPanel.active = false;
+        }, '#ffcf78').label.isBold = true;
+        this.settingsPanel.active = false;
+    }
+    private openSettings(): void {
+        if (this.dragId >= 0) this.orbit.release(true, 0);
+        this.dragId = -1;
+        this.refreshSettings();
+        this.settingsPanel.setSiblingIndex(this.ui.children.length - 1);
+        this.settingsPanel.active = true;
+    }
+    private refreshSettings(): void {
+        const toggles = [
+            {card: this.musicButton, label: '音乐', enabled: this.musicEnabled},
+            {card: this.effectsButton, label: '音效', enabled: !this.effectsMuted},
+        ];
+        for (const {card, label, enabled} of toggles) {
+            this.paint(card.pen, 408, 79, enabled ? '#dcecdf' : '#eee9df', 23);
+            card.label.string = `${label}    ${enabled ? '开启' : '关闭'}`;
+            card.label.isBold = true;
+        }
+    }
+    private unlockAudio(): void {
+        if (this.audioReady) return;
+        this.audioReady = true;
+        this.syncMusic();
+    }
+    private syncMusic(): void {
+        if (!this.audioReady || !this.music.clip || !this.inForeground || !this.musicEnabled) {
+            if (this.music.playing) this.music.pause();
+        } else if (!this.music.playing) {
+            this.music.play();
+        }
+    }
+    private onGameHide(): void {
+        this.inForeground = false;
+        this.syncMusic();
+        this.pause();
+    }
+    private onGameShow(): void {
+        this.inForeground = true;
+        this.layoutScreen();
+        this.syncMusic();
     }
     private openCamp(): void {
         this.pause();
@@ -618,18 +742,29 @@ export class ColorClearView extends Component {
     private pause(): void { if(this.dragId>=0)this.orbit.release(true,0);this.dragId = -1; this.model.pause(); this.refresh(true); }
     private touchStart(event: EventTouch): void {
         const id = event.getID();
-        const y = event.getUILocation().y;
-        if (id === null || this.camp.active || this.albumPanel.active || this.model.phase !== 'playing'
-            || this.dragId >= 0 || y <= 450 || y >= 970) return;
+        const point = event.getUILocation();
+        const {x, y, scale} = this.screenFit;
+        const localX = (point.x - 320 - x) / scale, localY = (point.y - 560 - y) / scale;
+        if (id === null || this.camp.active || this.albumPanel.active || this.settingsPanel.active
+            || this.model.phase !== 'playing' || this.dragId >= 0
+            || localX < RESCUE_STAGE.left || localX > RESCUE_STAGE.right
+            || localY < RESCUE_STAGE.bottom || localY > RESCUE_STAGE.top) return;
         this.dragId = id;
         this.orbit.beginDrag();
         this.lastDrag = this.clock;
     }
     private touchMove(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.drag(this.model,e.getUIDelta().x*.67,-e.getUIDelta().y*.67,this.clock-this.lastDrag);this.lastDrag=this.clock; } }
-    private touchEnd(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.release(e.type===Input.EventType.TOUCH_CANCEL,this.clock-this.lastDrag); this.dragId = -1; } }
+    private touchEnd(e: EventTouch): void {
+        const cancelled = e.type === Input.EventType.TOUCH_CANCEL;
+        if (!cancelled) this.unlockAudio();
+        if (e.getID() === this.dragId) {
+            this.orbit.release(cancelled, this.clock - this.lastDrag);
+            this.dragId = -1;
+        }
+    }
     update(dt: number): void {
         this.clock += dt;
-        if (this.camp.active || this.albumPanel.active) return;
+        if (this.camp.active || this.albumPanel.active || this.settingsPanel.active) return;
         this.bonusLabel.node.active = this.clock < this.bonusUntil;
         this.orbit.step(this.model, dt, this.dragId >= 0);
         this.model.tick(dt);
@@ -670,8 +805,11 @@ export class ColorClearView extends Component {
     }
     onDestroy(): void {
         this.clearBatches();
-        input.off(Input.EventType.TOUCH_START, this.touchStart, this); input.off(Input.EventType.TOUCH_MOVE, this.touchMove, this); input.off(Input.EventType.TOUCH_END, this.touchEnd, this); input.off(Input.EventType.TOUCH_CANCEL, this.touchEnd, this); game.off(Game.EVENT_HIDE, this.pause, this);
+        input.off(Input.EventType.TOUCH_START, this.touchStart, this); input.off(Input.EventType.TOUCH_MOVE, this.touchMove, this); input.off(Input.EventType.TOUCH_END, this.touchEnd, this); input.off(Input.EventType.TOUCH_CANCEL, this.touchEnd, this); game.off(Game.EVENT_HIDE, this.onGameHide, this);
+        game.off(Game.EVENT_SHOW, this.onGameShow, this);
+        view.off('canvas-resize', this.layoutScreen, this);
+        view.off('design-resolution-changed', this.layoutScreen, this);
         for (const picture of this.ownedPictures) { picture.frame.destroy(); picture.texture.destroy(); }
-        this.campFrame?.destroy();this.campImage?.destroy();for (const m of this.materialsByColor.values()) m.destroy();for(const m of this.meshCache.values())m.destroy();
+        for (const m of this.materialsByColor.values()) m.destroy();for(const m of this.meshCache.values())m.destroy();
     }
 }

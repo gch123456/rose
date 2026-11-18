@@ -1,4 +1,5 @@
 import type {Voxel} from './ColorClearGame.ts';
+import {mixRescueColors, rescueBlockTint} from './ColorClearNativeStyle.ts';
 
 type Point = readonly [number, number, number];
 type Position = Pick<Voxel, 'x' | 'y' | 'z'>;
@@ -7,16 +8,19 @@ type CellRecord = {
     voxel: Voxel;
     chunk: string;
     neighbors: (CellRecord | undefined)[];
-    faceColors: readonly Point[];
+    rgb: Point;
+    edgeRgb: Point;
 };
 
 const CHUNK_WIDTH = 8;
-const HALF_BLOCK = .485;
+const HALF_BLOCK = .5;
+export const BLOCK_VERTEX_CAPACITY = 48;
+export const BLOCK_INDEX_CAPACITY = 72;
 const FACE_DELTAS: Point[] = [
     [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
 ];
-// Counterclockwise from outside each cube. Faces of the same cell stay slightly
-// inside its logical grid bounds so that adjacent exposed cells retain a seam.
+// Counterclockwise from outside each cube. Adjacent faces meet at their
+// grid edges so there are no gaps when seen from steep angles.
 const FACE_CORNERS: readonly Point[][] = [
     [[1,-1,1], [1,-1,-1], [1,1,-1], [1,1,1]],
     [[-1,-1,-1], [-1,-1,1], [-1,1,1], [-1,1,-1]],
@@ -25,29 +29,15 @@ const FACE_CORNERS: readonly Point[][] = [
     [[-1,-1,1], [1,-1,1], [1,1,1], [-1,1,1]],
     [[1,-1,-1], [-1,-1,-1], [-1,1,-1], [1,1,-1]],
 ];
-const FACE_SHADE = [.83, .83, 1, .71, .94, .83];
 
 const gridKey = (x: number, y: number, z: number): string => x + ',' + y + ',' + z;
 const chunkKey = ({x, y, z}: Position): string =>
     gridKey(Math.floor(x / CHUNK_WIDTH), Math.floor(y / CHUNK_WIDTH), Math.floor(z / CHUNK_WIDTH));
 
-function toLinear(channel: number): number {
-    return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
-}
-function toSRGB(channel: number): number {
-    return channel <= .0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - .055;
-}
-
-function faceColors(tint: string): Point[] {
-    const r = toLinear(parseInt(tint.slice(1, 3), 16) / 255);
-    const g = toLinear(parseInt(tint.slice(3, 5), 16) / 255);
-    const b = toLinear(parseInt(tint.slice(5, 7), 16) / 255);
-    // Cocos builtin-unlit reads vertex RGB as sRGB. Bake the former material
-    // tint × face-light product in linear space, then encode it for the shader.
-    return FACE_SHADE.map(value => {
-        const shade = toLinear(value);
-        return [toSRGB(r * shade), toSRGB(g * shade), toSRGB(b * shade)];
-    });
+function vertexColor(hex: string): Point {
+    // The Cocos unlit shader reads vertex RGB as sRGB.
+    const read = (index: number): number => parseInt(hex.slice(index, index + 2), 16) / 255;
+    return [read(1), read(3), read(5)];
 }
 
 /** Native catalog blocks are unit grid boxes. Rotation transforms the whole
@@ -58,16 +48,16 @@ export class BlockMeshIndex {
     private readonly chunks = new Map<string, CellRecord[]>();
 
     constructor(cells: readonly Voxel[], palette: readonly string[]) {
-        const byTint = new Map<string, readonly Point[]>();
+        const byTint = new Map<string, {rgb: Point; edgeRgb: Point}>();
         for (const voxel of cells) {
             const chunk = chunkKey(voxel);
-            const tint = voxel.visualTint ?? palette[voxel.color];
-            let shades = byTint.get(tint);
-            if (!shades) {
-                shades = faceColors(tint);
-                byTint.set(tint, shades);
+            const tint = rescueBlockTint(voxel, palette);
+            let colors = byTint.get(tint);
+            if (!colors) {
+                colors = {rgb: vertexColor(tint), edgeRgb: vertexColor(mixRescueColors(tint, '#26433f', .23))};
+                byTint.set(tint, colors);
             }
-            const entry: CellRecord = {voxel, chunk, neighbors: [], faceColors: shades};
+            const entry: CellRecord = {voxel, chunk, neighbors: [], ...colors};
             this.cells.set(gridKey(voxel.x, voxel.y, voxel.z), entry);
             let entries = this.chunks.get(chunk);
             if (!entries) {
@@ -102,21 +92,35 @@ export class BlockMeshIndex {
         const geometry: ChunkGeometry = {positions: [], colors: [], indices: []};
         const entries = this.chunks.get(key);
         if (!entries) return geometry;
-        const {positions, colors, indices} = geometry;
         for (const entry of entries) {
             const {alive, x, y, z} = entry.voxel;
             if (!alive) continue;
             for (let face = 0; face < FACE_DELTAS.length; face++) {
                 if (entry.neighbors[face]?.voxel.alive) continue;
-                const vertex = positions.length / 3;
-                const [r, g, b] = entry.faceColors[face];
-                for (const [dx, dy, dz] of FACE_CORNERS[face]) {
-                    positions.push(x + dx * HALF_BLOCK, y + dy * HALF_BLOCK, z + dz * HALF_BLOCK);
-                    colors.push(r, g, b, 1);
-                }
-                indices.push(vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3);
+                this.addFace(geometry, entry, face);
             }
         }
         return geometry;
+    }
+    private addFace({positions, colors, indices}: ChunkGeometry, entry: CellRecord, face: number): void {
+        const {x, y, z} = entry.voxel;
+        const [nx, ny, nz] = FACE_DELTAS[face];
+        // A narrow rim on every face gives the cells a visible boundary without
+        // the holes of shrunken cubes or the color shift of directional light.
+        for (let layer = 0; layer < 2; layer++) {
+            const edge = layer ? HALF_BLOCK - .038 : HALF_BLOCK;
+            const offset = layer ? .039 : 0;
+            const [r, g, b] = layer ? entry.rgb : entry.edgeRgb;
+            const vertex = positions.length / 3;
+            for (const [dx, dy, dz] of FACE_CORNERS[face]) {
+                positions.push(
+                    x + dx * edge + nx * offset,
+                    y + dy * edge + ny * offset,
+                    z + dz * edge + nz * offset,
+                );
+                colors.push(r, g, b, 1);
+            }
+            indices.push(vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3);
+        }
     }
 }

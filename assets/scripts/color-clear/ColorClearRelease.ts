@@ -1,13 +1,13 @@
 import type { Capsule, Level, RescueTier, Voxel } from './ColorClearGame.ts';
 import { validateLevelCells } from './ColorClearLevels.ts';
-import { makeRaincoatDuck, RAINCOAT_DUCK_ID, RAINCOAT_PALETTE, WIZARD_RESCUE_ID } from './ColorClearStarter.ts';
+import { makeRaincoatDuck, RAINCOAT_DUCK_ID, WIZARD_RESCUE_ID } from './ColorClearStarter.ts';
 
 export const WIZARD_QUEUE_COUNT = 4;
 type ReleaseStage = { id: number; name: string; palette: readonly string[]; tier: RescueTier };
 
 export const RELEASE_LEVELS: readonly ReleaseStage[] = [
-    { id: RAINCOAT_DUCK_ID, name: '雨衣鸭', palette: RAINCOAT_PALETTE, tier: 'warmup' },
-    { id: WIZARD_RESCUE_ID, name: '法师鸭', palette: ['#e8ebe4', '#174d8b', '#69b8d2', '#e7b74c', '#795536', '#273438'], tier: 'challenge' },
+    { id: RAINCOAT_DUCK_ID, name: '雨衣鸭', palette: ['#57C6AD', '#FFD063', '#F48770'], tier: 'warmup' },
+    { id: WIZARD_RESCUE_ID, name: '法师鸭', palette: ['#F8F1DE', '#7397F0', '#4BC9AD', '#FFD056', '#F8816B', '#C298E6'], tier: 'challenge' },
 ];
 
 export function chooseReleaseQueue(previous: number, random = Math.random): number {
