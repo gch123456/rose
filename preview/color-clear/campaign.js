@@ -5,7 +5,7 @@ import {variantData} from './supply-variants.js';
 
 export const RESCUES = [
     {id: RAINCOAT_DUCK_ID, name: '雨衣鸭', tier: 'warmup', palette: RAINCOAT_PALETTE,
-        colors: ['薄荷绿', '暖黄', '橘橙']},
+        colors: ['薄荷绿', '暖黄', '珊瑚橙']},
     {id: WIZARD_RESCUE_ID, name: '法师鸭', tier: 'challenge', palette: wizard.palette,
         colors: ['羽白', '深蓝', '冰蓝', '亮金', '木棕', '墨灰']},
 ];

@@ -91,3 +91,9 @@
 }
 .album-card strong { color: #36594d; font-size: 14px; }
 .album-card small { color: #586d5f; font-size: 10px; }
+
+.album-dialog { background: #fff7e7; border-color: #e2cea3; }
+.album-account span { padding: 5px 9px; border-radius: 8px; background: #e4ede0; color: #315548; }
+.album-card.collected .album-picture { border-radius: 11px; background: radial-gradient(ellipse, #e3eee3, transparent 72%); }
+.album-card.locked { background: #eeeade; border-color: #d5cdb4; }
+.locked-mark { background: #dfdfd0; color: #4a6257; }

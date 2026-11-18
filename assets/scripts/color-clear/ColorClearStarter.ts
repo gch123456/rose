@@ -3,7 +3,7 @@ import { makeLevelFromCells } from './ColorClearLevels.ts';
 
 export const RAINCOAT_DUCK_ID = 11;
 export const WIZARD_RESCUE_ID = 12;
-export const RAINCOAT_PALETTE = ['#5fb79f', '#ffca54', '#f28545'];
+export const RAINCOAT_PALETTE = ['#5fb79f', '#ffca54', '#eb684a'];
 
 type Shape = [number, number, number, number, number, number];
 function inside(x: number, y: number, z: number, [cx, cy, cz, rx, ry, rz]: Shape) {
@@ -26,7 +26,7 @@ export function makeRaincoatDuck() {
         const shades = [
             ['#85cdb0', '#5fb79f', '#48a88c'],
             ['#ffdd75', '#ffcc56', '#efb947'],
-            ['#ff9f54', '#f28545', '#e1733c'],
+            ['#fa8a61', '#eb684a', '#d75642'],
         ];
         const accent = color === 0 && (wing || y >= 4) ? 0 : y < -2 ? 2 : 1;
         const detail = color === 1 && Math.abs(x) === 2 && y === 3 && z === 3 ? 'eye'

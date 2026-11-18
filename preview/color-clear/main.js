@@ -1,3 +1,4 @@
+import {capsuleInk} from './capsule-color.js';
 import {CampState,AudioPreferences} from './camp-state.js';
 import {CampAudio} from './camp-audio.js';
 import {reorderRemainingSupply} from './camp-reorder.js';
@@ -66,15 +67,15 @@ const edgePositions=new THREE.EdgesGeometry(new THREE.BoxGeometry(1.015,1.015,1.
 const camera=new THREE.OrthographicCamera(-8,8,10,-10,.1,100);
 // Model Euler XYZ = Rx(pitch) Ry(yaw), matching shared viewDirection exactly.
 camera.position.set(0,0,25);camera.lookAt(0,0,0);
-scene.add(new THREE.HemisphereLight(0xfffff5,0x697f78,1.25));
-const key=new THREE.DirectionalLight(0xfff5df,2.5);key.position.set(-6,11,10);scene.add(key);
-const fill=new THREE.DirectionalLight(0xb9dfed,.85);fill.position.set(7,0,3);scene.add(fill);
+scene.add(new THREE.HemisphereLight(0xffffff,0x829794,1.65));
+const key=new THREE.DirectionalLight(0xfff8eb,2.35);key.position.set(-6,11,10);scene.add(key);
+const fill=new THREE.DirectionalLight(0xe1f1ff,.65);fill.position.set(7,0,3);scene.add(fill);
 const shapeGeometries=makePieceGeometries();
-const material=new THREE.MeshPhysicalMaterial({roughness:.34,metalness:0,clearcoat:.45,clearcoatRoughness:.3});
+const material=new THREE.MeshPhysicalMaterial({roughness:.48,metalness:0,clearcoat:.22,clearcoatRoughness:.34});
 const particleMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.18,.18,.18),material,120);particleMesh.count=0;particleMesh.frustumCulled=false;scene.add(particleMesh);
 const dummy=new THREE.Object3D();
 let domColors=COLORS.map(c=>new THREE.Color(c));
-try{renderer=new THREE.WebGLRenderer({canvas:$('world'),alpha:true,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;}
+try{renderer=new THREE.WebGLRenderer({canvas:$('world'),alpha:true,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.NeutralToneMapping;renderer.toneMappingExposure=1;}
 catch(error){$('webgl-error').hidden=false;throw error;}
 
 function buildModel(){
@@ -138,7 +139,11 @@ function soundEvent(e){
  else if(e.type==='lost')tone(250,.22,.04);
 }
 function toast(text){$('toast').textContent=text;$('toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').classList.remove('show'),1600);}
-function paintCapsule(node,color){const hex=COLORS[color];node.style.setProperty('--color',hex);const n=parseInt(hex.slice(1),16),luminance=((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000;node.style.setProperty('--capsule-ink',luminance>175?'#354139':'#fff');}
+function paintCapsule(node, color) {
+ const hex = COLORS[color];
+ node.style.setProperty('--color', hex);
+ node.style.setProperty('--capsule-ink', capsuleInk(hex));
+}
 function capsuleMarkup(c,hidden=false){return `<span class="symbol">${SYMBOLS[c.color]}</span><strong>${hidden?'?':c.ammo}</strong>`;}
 function syncUI(force=false){
  const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,4)),model.phase,model.remaining,muted,model.reserve,settings,orbit.automatic,...(model.slots.some(Boolean)?[model.yaw.toFixed(2),model.pitch.toFixed(2)]:[])]);
@@ -314,9 +319,9 @@ $('reward-complete').onclick=()=>finishReward(true);$('reward-cancel').onclick=(
 const thumbnailCache=new Map();let thumbnailRenderer;
 function modelThumbnail(id){
  if(thumbnailCache.has(id))return thumbnailCache.get(id);
- if(!thumbnailRenderer){thumbnailRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true});thumbnailRenderer.setSize(160,160);thumbnailRenderer.outputColorSpace=THREE.SRGBColorSpace;thumbnailRenderer.toneMapping=THREE.ACESFilmicToneMapping;}
+ if(!thumbnailRenderer){thumbnailRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true});thumbnailRenderer.setSize(160,160);thumbnailRenderer.outputColorSpace=THREE.SRGBColorSpace;thumbnailRenderer.toneMapping=THREE.NeutralToneMapping;}
  const miniature=new THREE.Scene(),group=new THREE.Group(),{level,palette}=campaignModel(id);miniature.add(group);group.rotation.set(.28,.55,0);
- miniature.add(new THREE.HemisphereLight(0xfffff5,0x697f78,1.25));const lamp=new THREE.DirectionalLight(0xfff5df,2.5);lamp.position.set(-6,11,10);miniature.add(lamp);
+ miniature.add(new THREE.HemisphereLight(0xffffff,0x829794,1.65));const lamp=new THREE.DirectionalLight(0xfff8eb,2.35);lamp.position.set(-6,11,10);miniature.add(lamp);
  const parts=[];for(const shape of new Set(level.cells.map(c=>c.shape||'box'))){const cells=level.cells.filter(c=>(c.shape||'box')===shape),m=new THREE.InstancedMesh(shapeGeometries[shape],material,cells.length);m.frustumCulled=false;cells.forEach((c,i)=>{dummy.position.set(c.x,c.y,c.z);dummy.scale.setScalar(1);dummy.rotation.set(0,0,0);dummy.updateMatrix();m.setMatrixAt(i,dummy.matrix);m.setColorAt(i,cellDisplayColor(c,palette));});parts.push(m);group.add(m);}
  const details=createModelDetails(level.cells);details.forEach(p=>group.add(p));
  const extent=new THREE.Box3().setFromObject(group),centre=extent.getCenter(new THREE.Vector3()),size=extent.getSize(new THREE.Vector3());group.position.sub(centre);const half=Math.max(size.x,size.y)*.6,cam=new THREE.OrthographicCamera(-half,half,half,-half,.1,100);cam.position.set(0,0,25);cam.lookAt(0,0,0);thumbnailRenderer.render(miniature,cam);const image=thumbnailRenderer.domElement.toDataURL('image/png');parts.forEach(p=>p.dispose());details.forEach(p=>{p.geometry.dispose();p.material.dispose();});thumbnailCache.set(id,image);return image;

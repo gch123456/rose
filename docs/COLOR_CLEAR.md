@@ -52,15 +52,17 @@
 - 本机预览服务把`/api/*`转发到 `COLOR_CLEAR_API_ORIGIN`（默认`http://127.0.0.1:8080`）。可用`COLOR_CLEAR_PORT=4180 COLOR_CLEAR_API_ORIGIN=http://127.0.0.1:18081 npm run preview:serve`联调；没有配置微信凭据时登录503，访客仍能玩。
 - 开局自动旋转暂停和图册弹窗互不穿透。连续点击保留按钮节点，飞入动画不拦截输入；物理按下/松开跨越发射刷新也能正常装填。
 
-## Cocos 3.8.8 接续步骤（尚未执行）
+## 微信小游戏本机构建
 
-这台设备未发现Creator/MCP，不能完成 `.scene`、`.meta` 的安全编辑、引擎类型诊断和真实构建。因此没有手工写场景或meta，没有冒称已发布微信小游戏。
+```bash
+COCOS_CREATOR=/path/to/CocosCreator \
+WECHAT_PROJECT_CONFIG=/path/to/local/project.config.json \
+tools/build-wechat-rescue.sh
+```
 
-1. 在已安装Creator 3.8.8的设备拉取最新仓库，打开工程等待脚本和WAV自动导入，保存自动生成的meta。
-2. 已新增名为 `colorClear` 的引擎配置，开启3D和primitive、关闭重物理；旧 `defaultConfig` 内容与当前选中状态保持不变。可用 `node tools/prepare-color-clear-cocos.mjs --check` 核查；若新设备缺配置，`--apply` 只添加，不切换。
-3. 在Creator项目设置/引擎配置中选择 `Color Clear 3D 原型`，新建独立空场景，使用编辑器命名保存为 `ColorClear.scene`。移除新场景默认相机与灯光以免覆盖组件自建相机；不要改Home场景。
-4. 新建空节点，挂 `ColorClearView`，组件会建立模型、相机、灯光与2D UI。用Creator确认类型/API、相机合成、触摸区、合批、音频导入与完整关卡；本机只做了脚本语法转译检查，不等同于这一步。
-5. 以新场景为入口构建独立微信小游戏产物，竖屏；核查包体与微信限制，实际iPhone真机试玩并测帧率、温度与输入。旧Home继续使用旧2D引擎配置；不要把新配置作为旧基线性能优化已验证结果。
+也可由本地环境变量 `WECHAT_APPID` 提供 AppID。用具开发权限的小游戏账号，不把账号配置提交到 Git。脚本在隔离副本选用 3D 引擎配置，并让现有启动场景进入救援组件。源码场景和原割草入口保持原样。导入微信开发者工具的目录为 `build/wechat-rescue`，目录同级含 `game.json`、`game.js`、`project.config.json`。不要选择源码根目录。
+
+首个小游戏构建包含离线营地、雨衣鸭与法师鸭、单层本机图鉴和音效。法师鸭压缩资源可用 `node tools/build-color-clear-release.mjs` 从网页关卡和候选队列重新生成，生成时实际复放通路。每日本机补给、网页音乐及图鉴旋转预览尚未迁入，广告按钮为模拟，未接真实登录。
 
 ## 验证与已知边界
 
