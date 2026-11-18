@@ -1,5 +1,9 @@
 # 当前状态与接续入口
 
+## 微信旋转与消除性能（2026-11-18）
+
+法师鸭舞台的渲染组件从 4505 个减为 42 个，含 37 个积木分区。保留 4500 块、自动旋转和恒快发射。226 项测试、类型检查和 Cocos Web 对照通过，微信预览包位于 `build/wechat-rescue-fast`。iPhone 真机帧时间待复测。见[实施记录](archive/2026-11-18-wechat-rescue-performance-session.md)。
+
 ## 微信界面精修预览（2026-11-18）
 
 原生对局、营地和图鉴已补齐层次，包位于 build/wechat-rescue-ui。221 项测试与 Cocos 浏览器、微信预览编译通过。公众平台 0.1.0 保留旧画面。见[实施记录](archive/2026-11-18-wechat-ui-polish-session.md)。

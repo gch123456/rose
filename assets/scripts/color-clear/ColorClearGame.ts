@@ -24,6 +24,22 @@ export function levelEliminationPace(level: Pick<Level, 'pacing'>, remaining: nu
     return {interval:.14, flightSeconds:FLIGHT_SECONDS};
 }
 const TAU = Math.PI * 2;
+const compareTargets = (a: Voxel, b: Voxel) => Number(b.core) - Number(a.core) || b.y - a.y || a.id - b.id;
+type ViewRay = {
+    direction: [number, number, number];
+    axis: 0 | 1 | 2;
+    u: 0 | 1 | 2;
+    w: 0 | 1 | 2;
+    sign: number;
+};
+type Visibility = {
+    yaw: number;
+    pitch: number;
+    remaining: number;
+    ray: ViewRay;
+    byCell: Map<Voxel, boolean>;
+    all?: Voxel[];
+};
 let nextRun = 0;
 export const aimY = (c: Voxel): number => c.y + (c.shape === 'hemisphere' ? .23 : 0);
 const normalize = (a: number) => (a % TAU + TAU) % TAU;
@@ -123,9 +139,13 @@ export class ColorClearGame {
     slots: (Capsule | null)[] = [null, null, null, null]; reserve: Capsule[] = []; flights: Flight[] = [];
     phase: 'playing' | 'paused' | 'won' | 'lost' = 'playing'; yaw = 0; pitch = 0; reason = ''; combo = 0; shots = 0; continued = false;
     private cooldown = 0; private events: ClearEvent[] = []; private reach: Set<number> | null = null;
-    private visibility: {yaw:number; pitch:number; remaining:number; cells:Voxel[]} | null = null;
-    private lattice: Map<string,Voxel> | null = null;
-    private bounds: number[][] = [];
+    private visibility: Visibility | null = null;
+    private lattice: Map<number, Voxel> | null = null;
+    private latticeMin = [0, 0, 0];
+    private latticeMax = [0, 0, 0];
+    private latticeStride = [1, 1, 1];
+    private targetsByColor = new Map<number, Voxel[]>();
+    private cellsById = new Map<number, Voxel>();
     private run = 0; private rewardSerial = 0; private flightSerial = 0;
     private reward: { ticket: RewardTicket; phase: 'playing' | 'paused' | 'lost' } | null = null;
     bonusCount = 0;
@@ -193,13 +213,16 @@ export class ColorClearGame {
         this.emergencyUsed = false;
         this.rollMysteryPositions();
         this.slots = [null, null, null, null]; this.reserve = []; this.flights = []; this.yaw = this.level.initialYaw ?? 0; this.pitch = clampPitch(this.level.initialPitch ?? 0); this.phase = 'playing';
-        this.lattice = this.cells.every(c=>(!c.shape||c.shape==='box')&&[c.x,c.y,c.z].every(Number.isInteger)) ? new Map(this.cells.map(c=>[`${c.x},${c.y},${c.z}`,c])) : null;
-        if(this.lattice&&this.lattice.size!==this.cells.length)this.lattice=null;
-        this.bounds = ['x','y','z'].map(k=>{const values=this.cells.map(c=>c[k as 'x'|'y'|'z']);return [Math.min(...values),Math.max(...values)];});
-        // Each dominant-axis slab can probe up to nine integer boxes. Leave
-        // extra headroom for map/allocation cost: sparse wide lattices are
-        // cheaper with the bounded cell scan than with empty-space traversal.
-        if(this.lattice&&Math.max(...this.bounds.map(([min,max])=>max-min+1))*16>this.cells.length)this.lattice=null;
+        this.targetsByColor.clear();
+        this.cellsById.clear();
+        for (const cell of this.cells) {
+            if (!this.cellsById.has(cell.id)) this.cellsById.set(cell.id, cell);
+            let bucket = this.targetsByColor.get(cell.color);
+            if (!bucket) { bucket = []; this.targetsByColor.set(cell.color, bucket); }
+            bucket.push(cell);
+        }
+        for (const bucket of this.targetsByColor.values()) bucket.sort(compareTargets);
+        this.prepareLattice();
         this.visibility = null; this.cooldown = 0; this.reason = ''; this.combo = 0; this.shots = 0; this.continued = false; this.events = []; this.reach = null; this.reward = null; this.run = ++nextRun;
     }
     pause(): void { if (this.phase === 'playing') this.phase = 'paused'; }
@@ -235,33 +258,74 @@ export class ColorClearGame {
         }
         return true;
     }
-    visibleTargets(): Voxel[] {
-        const n = this.remaining, cache = this.visibility;
-        if (!cache || cache.yaw !== this.yaw || cache.pitch !== this.pitch || cache.remaining !== n)
-            this.visibility = {yaw:this.yaw, pitch:this.pitch, remaining:n, cells:this.cells.filter(c => this.lattice ? this.latticeVisible(c) : canSeeCell(c, this.cells, this.yaw, this.pitch))};
-        return this.visibility!.cells.slice();
+    private prepareLattice(): void {
+        this.lattice = null;
+        if (!this.cells.length || !this.cells.every(c =>
+            (!c.shape || c.shape === 'box') && [c.x, c.y, c.z].every(Number.isSafeInteger))) return;
+        this.latticeMin = ['x', 'y', 'z'].map(key => Math.min(...this.cells.map(c => c[key as 'x' | 'y' | 'z'])));
+        this.latticeMax = ['x', 'y', 'z'].map(key => Math.max(...this.cells.map(c => c[key as 'x' | 'y' | 'z'])));
+        const spans = this.latticeMax.map((max, axis) => max - this.latticeMin[axis] + 1);
+        // The bounded cell scan is cheaper than crossing a wide, sparse lattice.
+        if (Math.max(...spans) * 16 > this.cells.length) return;
+        this.latticeStride = [1, spans[0], spans[0] * spans[1]];
+        const lattice = new Map<number, Voxel>();
+        for (const cell of this.cells) {
+            const index = (cell.x - this.latticeMin[0]) + (cell.y - this.latticeMin[1]) * this.latticeStride[1]
+                + (cell.z - this.latticeMin[2]) * this.latticeStride[2];
+            lattice.set(index, cell);
+        }
+        if (lattice.size === this.cells.length) this.lattice = lattice;
     }
-    /** Visit the integer boxes crossed by each dominant-axis ray slab. Closed
-     * ranges include edge/corner ties; the original intersection is the oracle. */
-    private latticeVisible(cell: Voxel): boolean {
+    private visibilityAtPose(remaining: number): Visibility {
+        const cached = this.visibility;
+        if (cached && cached.yaw === this.yaw && cached.pitch === this.pitch && cached.remaining === remaining) return cached;
+        const direction = viewDirection(this.yaw, this.pitch);
+        let axis: 0 | 1 | 2 = 0;
+        if (Math.abs(direction[1]) > Math.abs(direction[axis])) axis = 1;
+        if (Math.abs(direction[2]) > Math.abs(direction[axis])) axis = 2;
+        const ray: ViewRay = {direction, axis, u: axis === 0 ? 1 : 0, w: axis === 2 ? 1 : 2, sign: direction[axis] > 0 ? 1 : -1};
+        return this.visibility = {yaw:this.yaw, pitch:this.pitch, remaining, ray, byCell:new Map()};
+    }
+    private isVisible(cell: Voxel, visibility: Visibility): boolean {
         if (!cell.alive) return false;
-        const direction=viewDirection(this.yaw,this.pitch), origin=[cell.x,cell.y,cell.z];
-        let axis=0;for(let i=1;i<3;i++)if(Math.abs(direction[i])>Math.abs(direction[axis]))axis=i;
-        const sign=direction[axis]>0?1:-1, other=[0,1,2].filter(i=>i!==axis);
-        for(let v=origin[axis];v>=this.bounds[axis][0]&&v<=this.bounds[axis][1];v+=sign){
-            const t0=Math.max(0,(v-origin[axis]-.5*sign)/direction[axis]), t1=(v-origin[axis]+.5*sign)/direction[axis];
-            const ranges=other.map(i=>{const a=origin[i]+direction[i]*t0,b=origin[i]+direction[i]*t1;return [Math.ceil(Math.min(a,b)-.5-1e-9),Math.floor(Math.max(a,b)+.5+1e-9)];});
-            for(let a=ranges[0][0];a<=ranges[0][1];a++)for(let b=ranges[1][0];b<=ranges[1][1];b++){
-                const xyz=[0,0,0];xyz[axis]=v;xyz[other[0]]=a;xyz[other[1]]=b;
-                const blocker=this.lattice!.get(xyz.join(','));
-                if(blocker?.alive&&blocker.id!==cell.id&&blocks(cell,blocker,direction))return false;
+        const cached = visibility.byCell.get(cell);
+        if (cached !== undefined) return cached;
+        const visible = this.lattice ? this.latticeVisible(cell, visibility.ray) : !this.cells.some(blocker =>
+            blocker.alive && blocker.id !== cell.id && blocks(cell, blocker, visibility.ray.direction));
+        visibility.byCell.set(cell, visible);
+        return visible;
+    }
+    visibleTargets(): Voxel[] {
+        const visibility = this.visibilityAtPose(this.remaining);
+        visibility.all ??= this.cells.filter(cell => this.isVisible(cell, visibility));
+        return visibility.all.slice();
+    }
+    /** Visit the boxes crossed by the dominant-axis ray slabs. Closed ranges
+     * preserve edge/corner ties. The geometry test remains the final oracle. */
+    private latticeVisible(cell: Voxel, ray: ViewRay): boolean {
+        const {direction, axis, u, w, sign} = ray;
+        const start = [cell.x, cell.y, cell.z], min = this.latticeMin, max = this.latticeMax;
+        const stride = this.latticeStride, lattice = this.lattice!;
+        for (let value = start[axis]; value >= min[axis] && value <= max[axis]; value += sign) {
+            const t0 = Math.max(0, (value - start[axis] - .5 * sign) / direction[axis]);
+            const t1 = (value - start[axis] + .5 * sign) / direction[axis];
+            const u0 = start[u] + direction[u] * t0, u1 = start[u] + direction[u] * t1;
+            const w0 = start[w] + direction[w] * t0, w1 = start[w] + direction[w] * t1;
+            const firstU = Math.max(min[u], Math.ceil(Math.min(u0, u1) - .5 - 1e-9));
+            const lastU = Math.min(max[u], Math.floor(Math.max(u0, u1) + .5 + 1e-9));
+            const firstW = Math.max(min[w], Math.ceil(Math.min(w0, w1) - .5 - 1e-9));
+            const lastW = Math.min(max[w], Math.floor(Math.max(w0, w1) + .5 + 1e-9));
+            const base = (value - min[axis]) * stride[axis];
+            for (let a = firstU; a <= lastU; a++) for (let b = firstW; b <= lastW; b++) {
+                const blocker = lattice.get(base + (a - min[u]) * stride[u] + (b - min[w]) * stride[w]);
+                if (blocker?.alive && blocker.id !== cell.id && blocks(cell, blocker, direction)) return false;
             }
         }
         return true;
     }
     chainPreview(id: number): Voxel[] {
-        const first = this.cells.find(c => c.id === id && c.alive); if (!first) return [];
-        return [first];
+        const cell = this.cellsById.get(id);
+        return cell?.alive ? [cell] : [];
     }
     drainEvents(): ClearEvent[] { const out = this.events; this.events = []; return out; }
     private clear(cell: Voxel): void {
@@ -278,9 +342,9 @@ export class ColorClearGame {
         }
         if (cell.core) this.events.push({ type: 'chain', cell: { ...cell }, color: cell.color });
     }
-    private settle(): void {
+    private settle(remaining: number): void {
         if (this.flights.length) return;
-        if (!this.remaining) { this.phase = 'won'; this.events.push({ type: 'won' }); return; }
+        if (!remaining) { this.phase = 'won'; this.events.push({ type: 'won' }); return; }
         const active = this.slots.filter((s): s is Capsule => !!s), supplied = this.supply.some(c => c.length) || this.reserve.length > 0;
         if (!active.length && !supplied) this.reason = '弹药已用完，还有积木没有清除';
         else if (active.length === this.slots.length || !supplied) {
@@ -294,24 +358,33 @@ export class ColorClearGame {
         const step = Math.min(.25, dt);
         for (const f of [...this.flights]) {
             f.time -= step; if (f.time > 1e-9) continue;
-            this.flights.splice(this.flights.indexOf(f), 1); const target = this.cells.find(c => c.id === f.target);
+            this.flights.splice(this.flights.indexOf(f), 1); const target = this.cellsById.get(f.target);
             if (target?.alive) { this.events.push({ type: 'hit', cell: { ...target }, slot: f.slot, color: f.color, flightId: f.id }); this.clear(target); }
         }
         this.slots.forEach((s, i) => { if (s && s.ammo <= 0 && !this.flights.some(f => f.capsuleId === s.id)) { this.slots[i] = null; this.events.push({ type: 'empty', slot: i, color: s.color }); } });
         this.cooldown -= step;
-        while (this.cooldown <= 0 && this.remaining) {
-            const pace = levelEliminationPace(this.level, this.remaining, this.cells.length);
+        const remaining = this.remaining;
+        let reserved: Set<number> | undefined;
+        while (this.cooldown <= 0 && remaining) {
+            const pace = levelEliminationPace(this.level, remaining, this.cells.length);
             this.cooldown += pace.interval;
             for (let i = 0; i < this.slots.length; i++) {
-                const s = this.slots[i]; if (!s || s.ammo <= 0 || this.flights.some(f=>f.capsuleId===s.id)) continue;
-                const reserved = new Set(this.flights.flatMap(f => f.claimed));
-                const target = this.visibleTargets().filter(c => c.color === s.color && this.chainPreview(c.id).every(b => !reserved.has(b.id))).sort((a, b) => Number(b.core) - Number(a.core) || b.y - a.y || a.id - b.id)[0];
+                const capsule = this.slots[i];
+                if (!capsule || capsule.ammo <= 0 || this.flights.some(f => f.capsuleId === capsule.id)) continue;
+                reserved ??= new Set(this.flights.flatMap(f => f.claimed));
+                const visibility = this.visibilityAtPose(remaining);
+                const target = this.targetsByColor.get(capsule.color)?.find(cell =>
+                    !reserved!.has(cell.id) && this.isVisible(cell, visibility));
                 if (!target) continue;
-                s.ammo--; this.shots++; const id = ++this.flightSerial;
-                this.flights.push({ id, target: target.id, capsuleId: s.id, slot: i, color: s.color, time: pace.flightSeconds, duration: pace.flightSeconds, claimed: this.chainPreview(target.id).map(c => c.id) });
-                this.events.push({ type: 'fire', cell: { ...target }, slot: i, color: s.color, flightId: id });
+                reserved.add(target.id);
+                capsule.ammo--;
+                this.shots++;
+                const id = ++this.flightSerial;
+                this.flights.push({id, target:target.id, capsuleId:capsule.id, slot:i, color:capsule.color,
+                    time:pace.flightSeconds, duration:pace.flightSeconds, claimed:[target.id]});
+                this.events.push({type:'fire', cell:{...target}, slot:i, color:capsule.color, flightId:id});
             }
         }
-        this.settle();
+        this.settle(remaining);
     }
 }

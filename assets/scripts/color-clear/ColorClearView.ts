@@ -1,3 +1,4 @@
+import { BlockMeshIndex } from './ColorClearBlockMesh';
 import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
 import { ColorClearGame, FLIGHT_SECONDS } from './ColorClearGame';
 import type { Voxel, RewardTicket, PieceShape } from './ColorClearGame';
@@ -16,7 +17,8 @@ const SLOT_Y = -199;
 const FRONT_Y = -319;
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
 const SYMBOLS = ['●', '▲', '◆', '■', '✦', '⬟'];
-type Card = { node: Node; pen: Graphics; label: Label };
+type Card = { node: Node; pen: Graphics; label: Label; paintKey?: string };
+type BlockBatch = { node: Node; renderer: MeshRenderer; mesh: Mesh };
 /** Attach only to a new empty scene after selecting the colorClear engine profile.
  * Browser preview is validated independently; this adapter requires Creator import/runtime validation. */
 @ccclass('ColorClearView')
@@ -62,10 +64,22 @@ export class ColorClearView extends Component {
     private reserveCards: Card[] = [];
     private projectilePen!: Graphics;
     private uiCamera!: Camera;
-    private visualShots: {slot:number; id:number; flightId:number; age:number}[] = [];
-
-    private voxels: Node[] = [];
-    private fragments: { node: Node; age: number; vx: number; vy: number; vz: number }[] = [];
+    private readonly shotTint = new Color('#a9d9cf');
+    private readonly shotLight = new Color('#ffffed');
+    private readonly localPoint = new Vec3();
+    private readonly screenPoint = new Vec3();
+    private readonly uiPoint = new Vec3();
+    private paintedEffects = false;
+    private fragments: { x: number; y: number; vx: number; vy: number; life: number; color: Color }[] = [];
+    private fragmentColors: Color[] = [];
+    private blockIndex: BlockMeshIndex | null = null;
+    private readonly batches = new Map<string, BlockBatch>();
+    private readonly dirtyBatches = new Set<string>();
+    private readonly details = new Map<number, Node>();
+    private readonly cellsById = new Map<number, Voxel>();
+    private meshRadius = 1;
+    private renderedYaw = NaN;
+    private renderedPitch = NaN;
     private slots: Card[] = [];
     private lastDrag = 0;
     private supplies: Card[] = [];
@@ -75,14 +89,12 @@ export class ColorClearView extends Component {
     private phaseText!: Label;
     private resultText!: Label;
     private dragId = -1;
-    private signature = '';
     private sound!: AudioSource;
     private clips = new Map<string, AudioClip>();
     private muted = false;
     private lastHitSound = 0;
     private clock = 0;
     private unlocked = 1;
-    private previousPhase = '';
 
     onLoad(): void {
         this.album=new AlbumService(sys.localStorage,wechatAlbumTransport(this.albumApiOrigin));
@@ -323,83 +335,152 @@ export class ColorClearView extends Component {
         if (this.pendingReward) this.pendingReward.owner.resolveReward(this.pendingReward.ticket, false);
         this.pendingReward = null;
         this.rewardPanel.active = false;
-        this.visualShots = [];
         this.model = next;
         this.colors = RELEASE_LEVELS[id === FIRST_RESCUE ? 0 : 1].palette;
         this.orbit.reset();
         this.dragId = -1;
-        this.signature = '';
-        this.previousPhase = '';
         this.bonusUntil = 0;
         this.runStarted = true;
         this.camp.active = false;
-        for (const node of this.voxels) node.destroy();
-        this.world.removeAllChildren();
-        this.voxels = [];
-        for (const fragment of this.fragments) fragment.node.destroy();
+        this.clearBatches();
         this.fragments = [];
+        this.projectilePen.clear();
+        this.paintedEffects = false;
+        this.fragmentColors = this.colors.map(color => new Color(color));
+        this.renderedYaw = this.renderedPitch = NaN;
+        for (const card of [...this.slots, ...this.supplies, ...this.reserveCards]) card.paintKey = undefined;
+        this.meshRadius = 1 + Math.max(...this.model.cells.map(cell => Math.hypot(cell.x, cell.y, cell.z)));
+        this.cellsById.clear();
+        this.blockIndex = new BlockMeshIndex(this.model.cells, this.colors);
+        for (const key of this.blockIndex.chunkKeys) this.updateBatch(key);
         for (const cell of this.model.cells) {
-            const node = this.cubeNode(this.world, 'Block', cell.color, cell.shape, cell.visualTint);
-            node.setPosition(cell.x, cell.y, cell.z);
-            node.setScale(.97, .97, .97);
-            this.voxels[cell.id] = node;
+            this.cellsById.set(cell.id, cell);
+            if (!cell.visualDetail) continue;
+            const owner = this.child(this.world, 'BlockAccent', false);
+            owner.setPosition(cell.x, cell.y, cell.z);
+            this.details.set(cell.id, owner);
             if (cell.visualDetail === 'eye') {
-                const eye = this.cubeNode(node, 'Eye', cell.color, 'sphere', '#253532');
+                const eye = this.cubeNode(owner, 'Eye', cell.color, 'sphere', '#253532');
                 eye.setPosition(0, .04, .53);
                 eye.setScale(.42, .55, .30);
-                const glint = this.cubeNode(node, 'EyeHighlight', cell.color, 'sphere', '#fffaf0');
+                const glint = this.cubeNode(owner, 'EyeHighlight', cell.color, 'sphere', '#fffaf0');
                 glint.setPosition(-.078, .148, .65);
                 glint.setScale(.13, .13, .1);
-            } else if (cell.visualDetail === 'bill') {
-                const seam = this.cubeNode(node, 'BillSeam', cell.color, 'box', '#9c692e');
+            } else {
+                const seam = this.cubeNode(owner, 'BillSeam', cell.color, 'box', '#9c692e');
                 seam.setPosition(0, -.12, .5);
                 seam.setScale(.73, .07, .07);
             }
         }
-        const radius = Math.max(...this.model.cells.map(cell => Math.hypot(cell.x, cell.y, cell.z)));
-        this.camera.orthoHeight = radius * 2.48 + 1.5;
+        this.camera.orthoHeight = (this.meshRadius - 1) * 2.48 + 1.5;
         this.camera.node.setPosition(0, -this.camera.orthoHeight * .23, 30);
         this.world.active = true;
         this.refresh(true);
     }
     private soundFor(name: string): void { const clip = this.clips.get(name); if (!this.muted && clip) this.sound.playOneShot(clip, name === 'hit' ? .2 : .45); }
-    private burst(cell: Voxel): void {
-        const worldPos = this.voxels[cell.id].worldPosition;
-        for (let i = 0; i < 3 && this.fragments.length < 64; i++) {
-            const n = this.cubeNode(this.node, 'ClearFragment', cell.color); n.setWorldPosition(worldPos); n.setScale(.16, .16, .16);
-            this.fragments.push({ node: n, age: 0, vx: (Math.random() - .5) * 7, vy: 3 + Math.random() * 4, vz: (Math.random() - .5) * 4 });
+    private clearBatches(): void {
+        for (const {node, mesh} of this.batches.values()) {
+            node.active = false;
+            node.destroy();
+            mesh.destroy();
         }
+        for (const owner of this.details.values()) { owner.active = false; owner.destroy(); }
+        this.batches.clear();
+        this.details.clear();
+        this.dirtyBatches.clear();
     }
-    private refresh(force = false): void {
-        const sig = JSON.stringify([this.model.phase, this.model.remaining, this.model.slots, this.model.supply.map(c => c.slice(0, 2)), this.muted, this.model.reserve,...(this.model.slots.some(Boolean)?[this.model.yaw.toFixed(2),this.model.pitch.toFixed(2)]:[])]);
-        if (!force && sig === this.signature) return; this.signature = sig;
+    private updateBatch(key: string): void {
+        const index = this.blockIndex!;
+        const data = index.makeChunk(key);
+        const previous = this.batches.get(key);
+        if (!data.indices.length) {
+            if (previous) previous.node.active = false;
+            return;
+        }
+        const geometry = {
+            positions: Float32Array.from(data.positions),
+            colors: Float32Array.from(data.colors),
+            indices16: Uint16Array.from(data.indices),
+        };
+        if (previous) {
+            previous.mesh.updateSubMesh(0, geometry);
+            previous.renderer.onGeometryChanged();
+            previous.node.active = true;
+            return;
+        }
+        const cells = index.cellCount(key);
+        const edge = this.meshRadius;
+        const mesh = utils.MeshUtils.createDynamicMesh(0, {
+            ...geometry,
+            minPos: {x: -edge, y: -edge, z: -edge},
+            maxPos: {x: edge, y: edge, z: edge},
+        }, undefined, { maxSubMeshes: 1, maxSubMeshVertices: cells * 24, maxSubMeshIndices: cells * 36 });
+        const node = this.child(this.world, 'BlockBatch', false);
+        const renderer = node.addComponent(MeshRenderer);
+        renderer.mesh = mesh;
+        renderer.setMaterial(this.blockMaterial('#ffffff', true), 0);
+        this.batches.set(key, {node, renderer, mesh});
+    }
+    private projectCell(cell: Voxel): Vec3 {
+        this.localPoint.set(cell.x, cell.y, cell.z);
+        Vec3.transformMat4(this.localPoint, this.localPoint, this.world.worldMatrix);
+        this.camera.worldToScreen(this.localPoint, this.screenPoint);
+        this.uiCamera.screenToWorld(this.screenPoint, this.uiPoint);
+        return this.ui.getComponent(UITransform)!.convertToNodeSpaceAR(this.uiPoint, this.localPoint);
+    }
+    private burst(cell: Voxel): void {
+        if (this.fragments.length >= 28) return;
+        const point = this.projectCell(cell);
+        this.fragments.push({x: point.x, y: point.y, vx: (Math.random() - .5) * 84,
+            vy: 40 + Math.random() * 44, life: .28, color: this.fragmentColors[cell.color]});
+    }
+    private refresh(_force = false): void {
         this.title.string = `第 ${this.model.level.id === FIRST_RESCUE ? '01' : '02'} 关 · ${this.model.level.name}`;
         this.remaining.node.active=this.showRemaining||this.showProgress;this.remaining.string=[this.showRemaining?`剩余 ${this.model.remaining} 块`:'',this.showProgress?`已清除 ${Math.round(this.model.progress*100)}%`:''].filter(Boolean).join(' · ');this.status.node.active=this.showLabels;
-        const visible = new Set(this.model.slots.some(Boolean) ? this.model.visibleTargets().map(c => c.color) : []);
-        this.status.string = this.model.slots.some(s => s && visible.has(s.color)) ? '同色消除中' : '↔ 转一转找同色';
+        this.status.string = this.model.flights.length ? '同色消除中' : '↔ 转一转找同色';
         this.slots.forEach((card, i) => {
             const capsule = this.model.slots[i];
-            this.paint(card.pen, 86, 90, capsule ? this.colors[capsule.color] : '#e5ede3');
-            this.outline(card.pen, 86, 90, '#c5d9c8', 19);
-            card.label.color = new Color(capsule ? this.ink(this.colors[capsule.color]) : '#526c60');
+            const fill = capsule ? this.colors[capsule.color] : '#e5ede3';
+            if (card.paintKey !== fill) {
+                card.paintKey = fill;
+                this.paint(card.pen, 86, 90, fill);
+                this.outline(card.pen, 86, 90, '#c5d9c8', 19);
+                card.label.color = new Color(capsule ? this.ink(fill) : '#526c60');
+            }
             card.label.string = i >= this.model.slots.length ? '扩槽' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
         });
         this.supplies.forEach((card, i) => {
             const row = Math.floor(i / 4), column = i % 4, capsule = this.model.supply[column][row];
             const mystery = this.model.isAmmoHidden(column, row);
             const color = capsule && !row ? this.colors[capsule.color] : mystery ? '#fbefd7' : '#f6f4e9';
-            this.paint(card.pen, 134, row ? 39 : 74, color, row ? 12 : 19);
-            this.outline(card.pen, 134, row ? 39 : 74, mystery ? '#ad8e62' : '#ccd9cc', row ? 12 : 19);
-            if (capsule && row) {
-                card.pen.fillColor = new Color(this.colors[capsule.color]);
-                card.pen.roundRect(-52, -11, 22, 22, 6);
-                card.pen.fill();
+            const swatch = capsule ? this.colors[capsule.color] : '';
+            const key = color + ':' + swatch + ':' + mystery;
+            if (card.paintKey !== key) {
+                card.paintKey = key;
+                this.paint(card.pen, 134, row ? 39 : 74, color, row ? 12 : 19);
+                this.outline(card.pen, 134, row ? 39 : 74, mystery ? '#ad8e62' : '#ccd9cc', row ? 12 : 19);
+                if (swatch && row) {
+                    card.pen.fillColor = new Color(swatch);
+                    card.pen.roundRect(-52, -11, 22, 22, 6);
+                    card.pen.fill();
+                }
+                card.label.color = new Color(!row && capsule ? this.ink(color) : '#26463c');
             }
-            card.label.color = new Color(!row && capsule ? this.ink(this.colors[capsule.color]) : '#26463c');
             card.label.string = capsule ? (row ? '    ' : SYMBOLS[capsule.color] + ' ') +
                 (mystery ? '?' : capsule.ammo) : '·';
         });
-        this.reserveCards.forEach((card,i)=>{const c=this.model.reserve[i];card.node.active=!!c;if(c){this.paint(card.pen,86,48,this.colors[c.color]);card.label.string=`${SYMBOLS[c.color]} ${c.ammo}`;}});
+        this.reserveCards.forEach((card, index) => {
+            const capsule = this.model.reserve[index];
+            card.node.active = !!capsule;
+            if (!capsule) return;
+            const fill = this.colors[capsule.color];
+            if (card.paintKey !== fill) {
+                card.paintKey = fill;
+                this.paint(card.pen, 86, 40, fill);
+                card.label.color = new Color(this.ink(fill));
+            }
+            card.label.string = SYMBOLS[capsule.color] + ' ' + capsule.ammo;
+        });
         this.dialog.active = !this.camp.active && this.model.phase !== 'playing';
         this.continueButton.label.string = this.model.phase === 'won'
             ? this.model.level.id === FIRST_RESCUE ? '下一关 · 法师鸭' : '再救一次'
@@ -415,13 +496,40 @@ export class ColorClearView extends Component {
     private finishReward(completed:boolean):void {
         const pending=this.pendingReward;if(!pending)return;this.pendingReward=null;this.rewardPanel.active=false;pending.owner.resolveReward(pending.ticket,completed);if(pending.owner===this.model)this.refresh(true);
     }
-    private drawProjectiles():void {
-        const g=this.projectilePen;g.clear();
-        for(let i=this.visualShots.length-1;i>=0;i--){const shot=this.visualShots[i],flight=this.model.flights.find(f=>f.id===shot.flightId);if(!flight){this.visualShots.splice(i,1);continue;}
-            const target=this.voxels[shot.id];if(!target)continue;const aim=new Vec3(0,this.model.cells[shot.id].shape==='hemisphere'?.23:0,0);Vec3.transformMat4(aim,aim,target.worldMatrix);const screen=this.camera.worldToScreen(aim),world=this.uiCamera.screenToWorld(screen),end=this.ui.getComponent(UITransform)!.convertToNodeSpaceAR(world);
-            const x=-245+shot.slot*98,y=SLOT_Y+45,t=Math.max(0,Math.min(1,1-flight.time/(flight.duration??FLIGHT_SECONDS))),cx=(x+end.x)/2,cy=Math.max(y,end.y)+30;
-            const px=(1-t)*(1-t)*x+2*(1-t)*t*cx+t*t*end.x,py=(1-t)*(1-t)*y+2*(1-t)*t*cy+t*t*end.y;
-            g.strokeColor=new Color('#a9d9cf');g.lineWidth=3;g.moveTo(x,y);g.lineTo(px,py);g.stroke();g.fillColor=new Color('#ffffed');g.circle(px,py,6);g.fill();
+    private drawProjectiles(dt: number): void {
+        const pen = this.projectilePen;
+        const visible = this.model.flights.length > 0 || this.fragments.length > 0;
+        if (!visible && !this.paintedEffects) return;
+        pen.clear();
+        this.paintedEffects = visible;
+        pen.strokeColor = this.shotTint;
+        pen.lineWidth = 3;
+        pen.fillColor = this.shotLight;
+        for (const flight of this.model.flights) {
+            const target = this.cellsById.get(flight.target);
+            if (!target) continue;
+            const end = this.projectCell(target);
+            const x = -245 + flight.slot * 98, y = SLOT_Y + 45;
+            const t = Math.max(0, Math.min(1, 1 - flight.time / (flight.duration ?? FLIGHT_SECONDS)));
+            const lift = 60 * (1 - t) * t;
+            const px = x + (end.x - x) * t, py = y + (end.y - y) * t + lift;
+            pen.moveTo(x, y);
+            pen.lineTo(px, py);
+            pen.stroke();
+            pen.circle(px, py, 5);
+            pen.fill();
+        }
+        for (let i = this.fragments.length - 1; i >= 0; i--) {
+            const particle = this.fragments[i];
+            particle.life -= dt;
+            if (particle.life <= 0) { this.fragments.splice(i, 1); continue; }
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+            particle.vy -= 220 * dt;
+            const size = 2 + 16 * particle.life;
+            pen.fillColor = particle.color;
+            pen.rect(particle.x, particle.y, size, size);
+            pen.fill();
         }
     }
     private ink(hex: string): string {
@@ -517,28 +625,51 @@ export class ColorClearView extends Component {
         this.orbit.beginDrag();
         this.lastDrag = this.clock;
     }
-    private touchMove(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.drag(this.model,e.getUIDelta().x*.67,-e.getUIDelta().y*.67,this.clock-this.lastDrag);this.lastDrag=this.clock;this.refresh(true); } }
+    private touchMove(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.drag(this.model,e.getUIDelta().x*.67,-e.getUIDelta().y*.67,this.clock-this.lastDrag);this.lastDrag=this.clock; } }
     private touchEnd(e: EventTouch): void { if (e.getID() === this.dragId) { this.orbit.release(e.type===Input.EventType.TOUCH_CANCEL,this.clock-this.lastDrag); this.dragId = -1; } }
     update(dt: number): void {
         this.clock += dt;
         if (this.camp.active || this.albumPanel.active) return;
         this.bonusLabel.node.active = this.clock < this.bonusUntil;
-        this.orbit.step(this.model,dt,this.dragId>=0);
-        this.model.tick(dt);Quat.fromAxisAngle(this.qPitch,new Vec3(1,0,0),this.model.pitch);Quat.fromAxisAngle(this.qYaw,new Vec3(0,1,0),this.model.yaw);Quat.multiply(this.qModel,this.qPitch,this.qYaw);this.world.setRotation(this.qModel);
-        for (const e of this.model.drainEvents()) {
-            if(e.type==='won')this.album.book.unlock(this.model.level.id);
-            if(e.type==='bonus'){this.bonusUntil=this.clock+1.1;this.soundFor('chain');}
-            if (e.type === 'clear' && e.cell) { this.burst(e.cell); this.voxels[e.cell.id].active = false; }
-            if(e.type==='fire'&&e.cell)this.visualShots.push({slot:e.slot!,id:e.cell.id,flightId:e.flightId!,age:0});
-            if (e.type === 'hit') { if (this.clock - this.lastHitSound > .045) { this.soundFor('hit'); this.lastHitSound = this.clock; } }
-            else if (['load', 'chain', 'won', 'lost'].includes(e.type)) this.soundFor(e.type);
+        this.orbit.step(this.model, dt, this.dragId >= 0);
+        this.model.tick(dt);
+        if (this.renderedYaw !== this.model.yaw || this.renderedPitch !== this.model.pitch) {
+            this.renderedYaw = this.model.yaw;
+            this.renderedPitch = this.model.pitch;
+            Quat.fromAxisAngle(this.qPitch, Vec3.UNIT_X, this.renderedPitch);
+            Quat.fromAxisAngle(this.qYaw, Vec3.UNIT_Y, this.renderedYaw);
+            Quat.multiply(this.qModel, this.qPitch, this.qYaw);
+            this.world.setRotation(this.qModel);
         }
-        for (let i = this.fragments.length - 1; i >= 0; i--) { const p = this.fragments[i]; p.age += dt; if (p.age > .65) { p.node.destroy(); this.fragments.splice(i, 1); continue; } p.vy -= 14 * dt; p.node.translate(new Vec3(p.vx * dt, p.vy * dt, p.vz * dt)); p.node.setScale(.16 * (1 - p.age / .65), .16 * (1 - p.age / .65), .16 * (1 - p.age / .65)); }
-        if (this.model.phase === 'won' && this.previousPhase !== 'won') { this.unlocked = 2; try { sys.localStorage.setItem(PROGRESS_KEY, '2'); } catch { /* optional */ } }
-        this.drawProjectiles();
-        this.previousPhase = this.model.phase; this.refresh();
+        const events = this.model.drainEvents();
+        for (const event of events) {
+            if (event.type === 'won') {
+                this.album.book.unlock(this.model.level.id);
+                this.unlocked = 2;
+                try { sys.localStorage.setItem(PROGRESS_KEY, '2'); } catch { /* storage optional */ }
+            } else if (event.type === 'bonus') {
+                this.bonusUntil = this.clock + 1.1;
+                this.soundFor('chain');
+            } else if (event.type === 'clear' && event.cell) {
+                this.burst(event.cell);
+                const detail = this.details.get(event.cell.id);
+                if (detail) detail.active = false;
+                for (const key of this.blockIndex!.dirtyChunks(event.cell)) this.dirtyBatches.add(key);
+            }
+            if (event.type === 'hit' && this.clock - this.lastHitSound > .045) {
+                this.soundFor('hit');
+                this.lastHitSound = this.clock;
+            } else if (event.type === 'load' || event.type === 'chain' || event.type === 'won' || event.type === 'lost') {
+                this.soundFor(event.type);
+            }
+        }
+        for (const key of this.dirtyBatches) this.updateBatch(key);
+        this.dirtyBatches.clear();
+        if (events.length) this.refresh();
+        this.drawProjectiles(dt);
     }
     onDestroy(): void {
+        this.clearBatches();
         input.off(Input.EventType.TOUCH_START, this.touchStart, this); input.off(Input.EventType.TOUCH_MOVE, this.touchMove, this); input.off(Input.EventType.TOUCH_END, this.touchEnd, this); input.off(Input.EventType.TOUCH_CANCEL, this.touchEnd, this); game.off(Game.EVENT_HIDE, this.pause, this);
         for (const picture of this.ownedPictures) { picture.frame.destroy(); picture.texture.destroy(); }
         this.campFrame?.destroy();this.campImage?.destroy();for (const m of this.materialsByColor.values()) m.destroy();for(const m of this.meshCache.values())m.destroy();

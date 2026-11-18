@@ -39,13 +39,14 @@ test('long partition keeps all capsules in range when each color permits it',()=
 test('sparse wide lattices avoid empty-space traversal while compact solids retain acceleration',()=>{
  const sparse=Array.from({length:800},(_,i)=>cell(i,-1000+i*2,(i*37)%2001-1000,(i*91)%2001-1000,0));
  const compact=Array.from({length:1000},(_,i)=>cell(i,i%10,Math.floor(i/10)%10,Math.floor(i/100),0));
- const original=Map.prototype.get;
  for(const [cells,accelerated] of [[sparse,false],[compact,true]]){
   const g=new ColorClearGame({id:1,name:'cost',cells,supply:[[],[],[],[]],solution:[],initialYaw:.55,initialPitch:.24});
   let coordinateProbes=0;
-  try{Map.prototype.get=function(key){if(typeof key==='string'&&/^-?\d+,-?\d+,-?\d+$/.test(key))coordinateProbes++;return original.call(this,key);};
-   assert.deepEqual(g.visibleTargets().map(c=>c.id),g.cells.filter(c=>canSeeCell(c,g.cells,g.yaw,g.pitch)).map(c=>c.id));
-  }finally{Map.prototype.get=original;}
+  if(g.lattice){
+   const get=g.lattice.get.bind(g.lattice);
+   g.lattice.get=key=>{coordinateProbes++;return get(key);};
+  }
+  assert.deepEqual(g.visibleTargets().map(c=>c.id),g.cells.filter(c=>canSeeCell(c,g.cells,g.yaw,g.pitch)).map(c=>c.id));
   if(accelerated)assert.ok(coordinateProbes>0&&coordinateProbes<cells.length*cells.length);
   else assert.equal(coordinateProbes,0,'sparse bounds must not scan unoccupied slabs');
  }
