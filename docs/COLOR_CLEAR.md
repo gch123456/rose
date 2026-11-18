@@ -56,11 +56,10 @@
 
 ```bash
 COCOS_CREATOR=/path/to/CocosCreator \
-WECHAT_PROJECT_CONFIG=/path/to/local/project.config.json \
 tools/build-wechat-rescue.sh
 ```
 
-也可由本地环境变量 `WECHAT_APPID` 提供 AppID。用具开发权限的小游戏账号，不把账号配置提交到 Git。脚本在隔离副本选用 3D 引擎配置，并让现有启动场景进入救援组件。源码场景和原割草入口保持原样。导入微信开发者工具的目录为 `build/wechat-rescue`，目录同级含 `game.json`、`game.js`、`project.config.json`。不要选择源码根目录。
+构建默认读取 `tools/cocos/wechat-rescue.project.json` 中的小游戏 AppID。其他项目可用 `WECHAT_APPID` 或 `WECHAT_PROJECT_CONFIG` 覆盖。脚本在隔离副本选用 3D 引擎配置，并让现有启动场景进入救援组件。源码场景和原割草入口保持原样。导入微信开发者工具的目录为 `build/wechat-rescue`，目录同级含 `game.json`、`game.js`、`project.config.json`。不要选择源码根目录。
 
 首个小游戏构建包含离线营地、雨衣鸭与法师鸭、单层本机图鉴和音效。法师鸭压缩资源可用 `node tools/build-color-clear-release.mjs` 从网页关卡和候选队列重新生成，生成时实际复放通路。每日本机补给、网页音乐及图鉴旋转预览尚未迁入，广告按钮为模拟，未接真实登录。
 

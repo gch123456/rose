@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# COCOS_CREATOR=/path/to/CocosCreator WECHAT_PROJECT_CONFIG=/path/to/project.config.json tools/build-wechat-rescue.sh
+# COCOS_CREATOR=/path/to/CocosCreator tools/build-wechat-rescue.sh
 set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 creator="${COCOS_CREATOR:-}"
@@ -9,8 +9,7 @@ if [[ ! -x "$creator" ]]; then
   exit 2
 fi
 if [[ -z "${WECHAT_APPID:-}" && -z "${WECHAT_PROJECT_CONFIG:-}" ]]; then
-  printf '请通过 WECHAT_APPID 或 WECHAT_PROJECT_CONFIG 指定小游戏。\n' >&2
-  exit 2
+  export WECHAT_PROJECT_CONFIG="$root/tools/cocos/wechat-rescue.project.json"
 fi
 parent="$(dirname -- "$output")"
 mkdir -p "$parent"
