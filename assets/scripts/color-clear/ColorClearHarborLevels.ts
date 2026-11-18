@@ -1,46 +1,86 @@
 import type {Level, RescueTier, Voxel} from './ColorClearGame.ts';
 import {ColorClearGame} from './ColorClearGame.ts';
 import {makeReleaseLevel, RELEASE_LEVELS} from './ColorClearRelease.ts';
+import {harborDuckParts, harborDuckScale} from './ColorClearHarborDuckGeometry.ts';
+import type {HarborDuckRegion} from './ColorClearHarborDuckGeometry.ts';
 
 type HarborStage = {id: number; name: string; palette: readonly string[]; tier: RescueTier};
 type HarborStageData = {level: Level; exitIds: ReadonlySet<number>};
 
 export const HARBOR_STAGES: readonly HarborStage[] = [
-    {id: 11, name: '雨衣鸭', palette: ['#65AF9B', '#DFAC76', '#F3C95D'], tier: 'warmup'},
-    {id: 13, name: '渡船鸭', palette: ['#69A7CC', '#78BCAE', '#E2C49D', '#F3C054'], tier: 'planning'},
+    {id: 11, name: '雨衣鸭', palette: ['#57BFA7', '#FFDE93', '#F69B66'], tier: 'warmup'},
+    {id: 13, name: '渡船鸭', palette: ['#68B5D4', '#FFE29D', '#F29968', '#9AADDF'], tier: 'planning'},
     RELEASE_LEVELS[1],
 ];
 
 const shellStages = new Map<number, HarborStageData>();
 
-function makeShell(stage: HarborStage, bridge: boolean): HarborStageData {
-    const [hx, hy, hz] = bridge ? [6, 5, 6] : [4, 4, 4];
-    const doorColor = stage.palette.length - 1;
-    const width = bridge ? 3 : 2;
-    const cells: Voxel[] = [];
-    const exitIds = new Set<number>();
+const neighbors = [[1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]];
+const gridKey = (x: number, y: number, z: number): string => `${x},${y},${z}`;
+const regionColor: Record<HarborDuckRegion, number> = {coat: 0, face: 1, beak: 2, cap: 3};
 
-    for (let y = -hy; y <= hy; y++) {
-        for (let z = -hz; z <= hz; z++) {
-            for (let x = -hx; x <= hx; x++) {
-                const boundary = Number(Math.abs(x) === hx) + Number(Math.abs(y) === hy) + Number(Math.abs(z) === hz);
-                const door = Math.abs(x) <= width && y >= -hy + 1 && y <= width
-                    && (z === hz || (bridge && z === hz - 1));
-                // Chamfer the eight solid corners without exposing the hollow center.
-                if ((!boundary && !door) || boundary === 3) continue;
-
-                const rail = Math.abs(y) === hy || (bridge && Math.abs(x) === hx && Math.abs(z) > hz - 3);
-                const inset = (y + hy) % 4 === 0 || (Math.abs(x) === hx && Math.abs(z) < 2);
-                const sideBolt = bridge && Math.abs(x) === hx && z >= 3 && y >= -2 && y <= 1;
-                const color = door || sideBolt ? doorColor : rail || inset ? 1 : bridge && y < -1 ? 2 : 0;
-                const id = cells.length;
-                cells.push({id, x, y, z, color, core: false, alive: true});
-                if (door || sideBolt) exitIds.add(id);
+function makeSurface(stage: HarborStage): Voxel[] {
+    const scale = harborDuckScale(stage.id);
+    const parts = harborDuckParts(stage.id).map(part => {
+        const angle = part.roll * Math.PI / 180;
+        const [x, y, z] = part.position.map(value => value * scale);
+        const [rx, ry, rz] = part.size.map(value => value * scale / 2);
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        return {x, y, z, rx, ry, rz, cos, sin, region: part.region};
+    });
+    const enclosing = new Map<string, Voxel>();
+    const bound = Math.ceil(3.1 * scale);
+    for (let y = -bound; y <= bound; y++) {
+        for (let z = -bound; z <= bound; z++) {
+            for (let x = -bound; x <= bound; x++) {
+                let region: HarborDuckRegion | undefined;
+                let closest = Infinity;
+                for (const part of parts) {
+                    const dx = x - part.x, dy = y - part.y, dz = Math.abs(z - part.z);
+                    const u = Math.abs(dx * part.cos + dy * part.sin);
+                    const v = Math.abs(dy * part.cos - dx * part.sin);
+                    // Compare the voxel's projected extent against the same
+                    // ellipsoid as the intact 3D duck, then peel inside voxels.
+                    const margin = .5 * (Math.abs(part.cos) + Math.abs(part.sin));
+                    const nearX = Math.max(0, u - margin) / part.rx;
+                    const nearY = Math.max(0, v - margin) / part.ry;
+                    const nearZ = Math.max(0, dz - .5) / part.rz;
+                    if (nearX * nearX + nearY * nearY + nearZ * nearZ > 1) continue;
+                    const radius = Math.hypot(u / part.rx, v / part.ry, dz / part.rz);
+                    const distance = (radius - 1) * Math.min(part.rx, part.ry, part.rz);
+                    if (distance >= closest) continue;
+                    closest = distance;
+                    region = part.region;
+                }
+                if (region !== undefined) {
+                    enclosing.set(gridKey(x, y, z), {id: -1, x, y, z, color: regionColor[region], core: false, alive: true});
+                }
             }
         }
     }
 
-    return {level: planShell(stage, cells, bridge ? 26 : 12), exitIds};
+    const shell = Array.from(enclosing.values()).filter(({x, y, z}) =>
+        neighbors.some(([dx, dy, dz]) => !enclosing.has(gridKey(x + dx, y + dy, z + dz))));
+    shell.forEach((cell, id) => { cell.id = id; });
+    // Anchor eye highlights on the two front blocks nearest the actual eyes.
+    const face = shell.filter(cell => cell.color === regionColor.face
+        && cell.z > 0 && !enclosing.has(gridKey(cell.x, cell.y, cell.z + 1)));
+    for (const sign of [-1, 1]) {
+        const x = sign * scale * .57, y = scale * 1.60, z = scale * 2.03;
+        const best = face.reduce<Voxel | undefined>((answer, cell) => {
+            if (cell.x * sign <= 0) return answer;
+            const distance = (cell.x - x) ** 2 + (cell.y - y) ** 2 + .35 * (cell.z - z) ** 2;
+            if (!answer || distance < (answer.x - x) ** 2 + (answer.y - y) ** 2 + .35 * (answer.z - z) ** 2) return cell;
+            return answer;
+        }, undefined);
+        if (best) best.visualDetail = 'eye';
+    }
+    return shell;
+}
+
+function makeShell(stage: HarborStage, bridge: boolean): HarborStageData {
+    const cells = makeSurface(stage);
+    return {level: planShell(stage, cells, bridge ? 26 : 12), exitIds: new Set(cells.map(cell => cell.id))};
 }
 
 /** Deal a color-varied queue while recording a supply-only route. Each
@@ -51,10 +91,9 @@ function planShell(stage: HarborStage, cells: Voxel[], budget: number): Level {
         supply: [[], [], [], []], solution: [], replay: [],
     };
     const game = new ColorClearGame(level);
-    const order = stage.palette.length === 3 ? [2, 0, 1] : [3, 0, 1, 2, 3, 0, 3, 1, 3, 2];
+    const order = stage.palette.length === 3 ? [1, 0, 2] : [3, 0, 1, 2, 3, 0, 3, 1, 3, 2];
     let next = 0;
-    // Keep the reference route straightforward. The other cardinal directions
-    // let a player uncover side locks and clear the remaining crate if desired.
+    // Let the reference route turn when the current surface runs out of a color.
     const turns = [.42, -.75, 1.2, -.5 * Math.PI, .5 * Math.PI, Math.PI];
     const replay = level.replay!;
     while (game.phase === 'playing') {

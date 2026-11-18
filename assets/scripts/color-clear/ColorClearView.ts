@@ -27,7 +27,6 @@ const MUSIC_KEY = 'color-clear.music';
 const EFFECTS_KEY = 'color-clear.muted';
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v2';
 const OLD_PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
-const SYMBOLS = ['●', '▲', '◆', '■', '✦', '⬟'];
 type Card = { node: Node; pen: Graphics; label: Label; paintKey?: string };
 type BlockBatch = { node: Node; renderer: MeshRenderer; mesh: Mesh };
 /** Attach only to a new empty scene after selecting the colorClear engine profile.
@@ -53,6 +52,8 @@ export class ColorClearView extends Component {
     private chasePen!: Graphics;
     private chaseLabel!: Label;
     private chasePaintTime = -Infinity;
+    private chaseShownGap = .63;
+    private chaseRunTime = 0;
     private skillButton!: Card;
     private skillUsed = false;
     private harborBackdrop!: Sprite;
@@ -95,7 +96,6 @@ export class ColorClearView extends Component {
     private readonly reticleWhite = new Color('#fffcf0');
     private shotColors: Color[] = [];
     private hitMarkers: {id: number; life: number; fresh: boolean}[] = [];
-    private frontSymbols: Label[] = [];
     private readonly localPoint = new Vec3();
     private readonly screenPoint = new Vec3();
     private readonly uiPoint = new Vec3();
@@ -180,11 +180,13 @@ export class ColorClearView extends Component {
         this.title = this.text(this.ui, '', 34, 0, 482, 414, '#204d42');
         this.title.isBold = true;
         const chaseTrack = this.child(this.ui, 'HarborChase', true);
-        chaseTrack.setPosition(0, 405);
+        chaseTrack.setPosition(0, 404);
         this.chasePen = chaseTrack.addComponent(Graphics);
-        this.panel(this.ui, 'RescueGoal', 0, 366, 314, 29, '#132d36da', '#304952', 12);
-        this.chaseLabel = this.text(this.ui, '', 18, 0, 366, 304, '#fff9e7');
+        this.chaseLabel = this.text(this.ui, '', 17, 0, 363, 260, '#fff7d5');
         this.chaseLabel.isBold = true;
+        this.chaseLabel.enableOutline = true;
+        this.chaseLabel.outlineColor = new Color('#183b42');
+        this.chaseLabel.outlineWidth = 2;
         this.bonusLabel = this.text(this.ui, '', 25, 0, -85, 365, '#fff0a1');
         this.bonusLabel.isBold = true;
         this.bonusLabel.node.active = false;
@@ -203,7 +205,7 @@ export class ColorClearView extends Component {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
                     const flight = this.button(this.ui, '', -222 + col * 148, FRONT_Y, 134, 76, () => {});
                     drawRescueModule(flight.pen, 134, 76, this.colors[capsule.color]);
-                    flight.label.node.setPosition(31, -3);
+                    flight.label.node.setPosition(25, -5);
                     flight.label.isBold = true;
                     flight.label.string = String(capsule.ammo);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
@@ -212,12 +214,7 @@ export class ColorClearView extends Component {
             } });
             card.label.fontSize = row ? 23 : 25;
             card.label.isBold = !row;
-            card.label.node.setPosition(row ? 16 : 31, row ? 0 : -3);
-            if (!row) {
-                const symbol = this.text(card.node, '', 17, 31, 22, 32, '#233e45');
-                symbol.isBold = true;
-                this.frontSymbols.push(symbol);
-            }
+            card.label.node.setPosition(row ? 15 : 24, row ? 0 : -5);
             this.supplies.push(card);
         }
         this.dialog = this.child(this.ui, 'ColorClearDialog', true);this.dialog.addComponent(BlockInputEvents);
@@ -478,6 +475,8 @@ export class ColorClearView extends Component {
         this.colors = HARBOR_STAGES[this.stageIndex()].palette;
         this.chase = new HarborChase(id === FIRST_RESCUE ? 'tutorial' : id === LAST_RESCUE ? 'long' : 'bridge');
         this.chasePaintTime = -Infinity;
+        this.chaseShownGap = this.chase.separation;
+        this.chaseRunTime = 0;
         this.skillUsed = false;
         this.escapeShowUntil = 0;
         this.wonDialogPending = false;
@@ -602,24 +601,32 @@ export class ColorClearView extends Component {
         const duck = this.wholeDuck;
         if (!duck) return;
         duck.active = true;
+        tween(this.world).to(.20, {eulerAngles: new Vec3(0, 22, 0)}, {easing: 'quadOut'}).start();
         tween(duck)
-            .to(.34, {position: new Vec3(0, .75, 7)}, {easing: 'quadOut'})
-            .to(.54, {position: new Vec3(5.2, 1.4, 10)}, {easing: 'quadInOut'})
+            .to(.18, {position: new Vec3(1.1, .90, 1.8)}, {easing: 'quadOut'})
+            .to(.17, {position: new Vec3(2.7, .05, 3)}, {easing: 'quadIn'})
+            .to(.20, {position: new Vec3(4.5, 1.20, 5.3)}, {easing: 'quadOut'})
+            .to(.30, {position: new Vec3(8.4, .05, 8)}, {easing: 'quadIn'})
             .start();
         this.escapeShowUntil = this.clock + .95;
         this.wonDialogPending = true;
     }
-    private drawChaseTrack(): void {
-        if (this.clock - this.chasePaintTime < 1 / 15) return;
-        this.chasePaintTime = this.clock;
+    private drawChaseTrack(dt: number): void {
         const escaped = this.model.phase === 'won';
-        drawHarborChase(this.chasePen, escaped ? 1 : this.chase.separation,
-            this.clock, this.chase.frozen > 0, escaped || this.chase.caught);
-        const label = escaped ? '鸭鸭已安全上船' : this.chase.caught ? '被追上了'
+        const caught = this.chase.caught;
+        const target = escaped ? 1 : this.chase.separation;
+        this.chaseShownGap += (target - this.chaseShownGap) * (1 - Math.exp(-Math.min(dt, .25) * 6));
+        if (this.model.phase === 'playing' || (escaped && this.wonDialogPending)) {
+            this.chaseRunTime += dt * (this.clock - this.feedback.lastHit < .2 ? 1.38 : 1);
+        }
+        if (this.clock - this.chasePaintTime < 1 / 24) return;
+        this.chasePaintTime = this.clock;
+        drawHarborChase(this.chasePen, this.chaseShownGap, this.chaseRunTime,
+            this.chase.frozen > 0, caught || (escaped && !this.wonDialogPending), caught);
+        const label = escaped ? '鸭鸭已安全上船' : caught ? '被烤鸭师傅追上了'
             : this.chase.frozen > 0 ? '追兵冻结'
-            : this.chase.separation < .18 ? '追兵靠近 · 消除就能拉开'
-            : this.model.hasExit ? `清掉金色门闩 · 还差 ${this.model.exitRemaining} 块`
-            : '连消拉开追兵';
+            : this.chase.separation < .18 ? '追兵靠近'
+            : `还剩 ${this.model.cells.length - this.model.combo} 块`;
         if (this.chaseLabel.string !== label) this.chaseLabel.string = label;
     }
     private updateLoadHint(): void {
@@ -697,12 +704,12 @@ export class ColorClearView extends Component {
             if (card.paintKey !== key) {
                 card.paintKey = key;
                 drawLauncher(card.pen, fill, locked);
-                card.label.color = new Color(locked ? '#fff9e8' : '#284149');
+                card.label.color = new Color('#284149');
                 card.label.fontSize = locked ? 19 : 20;
                 card.label.isBold = true;
                 card.label.node.setPosition(0, locked ? -1 : 2);
             }
-            card.label.string = locked ? '扩槽' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
+            card.label.string = locked ? '扩槽' : capsule ? String(capsule.ammo) : '';
         });
         this.supplies.forEach((card, i) => {
             const row = Math.floor(i / 4), column = i % 4, capsule = this.model.supply[column][row];
@@ -713,10 +720,9 @@ export class ColorClearView extends Component {
                 card.paintKey = key;
                 if (!row && capsule) drawRescueModule(card.pen, 134, 76, swatch);
                 else drawSpareAmmo(card.pen, swatch, mystery);
-                card.label.color = new Color(row || !capsule ? '#fff8e9' : '#233e45');
+                card.label.color = new Color('#233e45');
             }
-            if (!row) this.frontSymbols[column].string = capsule ? SYMBOLS[capsule.color] : '';
-            card.label.string = capsule ? (row ? `${SYMBOLS[capsule.color]} ${mystery ? '?' : capsule.ammo}` : String(capsule.ammo)) : '';
+            card.label.string = capsule ? mystery ? '?' : String(capsule.ammo) : '';
         });
         this.loadHint.node.active = this.model.reserve.length === 0;
         this.reserveCards.forEach((card, index) => {
@@ -729,7 +735,7 @@ export class ColorClearView extends Component {
                 this.paint(card.pen, 86, 30, fill, 9);
                 card.label.color = new Color(this.ink(fill));
             }
-            card.label.string = SYMBOLS[capsule.color] + ' ' + capsule.ammo;
+            card.label.string = String(capsule.ammo);
         });
         this.skillButton.label.string = this.skillUsed ? '技能已使用'
             : this.model.level.id === LAST_RESCUE ? '冻结追兵'
@@ -1053,7 +1059,7 @@ export class ColorClearView extends Component {
             this.wonDialogPending = false;
             this.refresh();
         }
-        this.drawChaseTrack();
+        this.drawChaseTrack(dt);
         for (const key of this.dirtyBatches) this.updateBatch(key);
         this.dirtyBatches.clear();
         if (events.length) this.refresh();
