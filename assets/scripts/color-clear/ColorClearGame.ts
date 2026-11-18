@@ -287,7 +287,9 @@ export class ColorClearGame {
         return this.visibility = {yaw:this.yaw, pitch:this.pitch, remaining, ray, byCell:new Map()};
     }
     private isVisible(cell: Voxel, visibility: Visibility): boolean {
-        if (!cell.alive) return false;
+        return cell.alive && this.hasClearSight(cell, visibility);
+    }
+    private hasClearSight(cell: Voxel, visibility: Visibility): boolean {
         const cached = visibility.byCell.get(cell);
         if (cached !== undefined) return cached;
         const visible = this.lattice ? this.latticeVisible(cell, visibility.ray) : !this.cells.some(blocker =>
@@ -299,6 +301,16 @@ export class ColorClearGame {
         const visibility = this.visibilityAtPose(this.remaining);
         visibility.all ??= this.cells.filter(cell => this.isVisible(cell, visibility));
         return visibility.all.slice();
+    }
+    /** A hit may still be shown at the removed position until the effect fades. */
+    visibleVoxelPositions(ids: Iterable<number>): Set<number> {
+        const visibility = this.visibilityAtPose(this.remaining);
+        const visible = new Set<number>();
+        for (const id of ids) {
+            const cell = this.cellsById.get(id);
+            if (cell && this.hasClearSight(cell, visibility)) visible.add(id);
+        }
+        return visible;
     }
     /** Visit the boxes crossed by the dominant-axis ray slabs. Closed ranges
      * preserve edge/corner ties. The geometry test remains the final oracle. */

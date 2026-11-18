@@ -26,7 +26,7 @@ test('adjacent blocks in different chunks hide their shared faces until one clea
     assert.equal(index.cellCount(left), 1, 'capacity counts the originally assigned cells');
 });
 
-test('an isolated block has no gaps, holds the same color on every face, and keeps outward winding', () => {
+test('an isolated block has no gaps, varies brightness without changing hue, and keeps outward winding', () => {
     const index = new BlockMeshIndex([voxel(0, 0, 0, 0, 1, '#db2e10')], palette);
     const mesh = index.makeChunk(index.chunkKeys[0]);
     assert.equal(mesh.positions.length, BLOCK_VERTEX_CAPACITY * 3);
@@ -41,8 +41,11 @@ test('an isolated block has no gaps, holds the same color on every face, and kee
         assert.ok(normal.reduce((dot,n,k) => dot+n*a[k],0) > 0, 'each triangle faces away from the cube center');
     }
     assert.notDeepEqual(mesh.colors.slice(0, 4), mesh.colors.slice(16, 20), 'rim and center stay distinct');
-    for (let face = 0; face < 6; face++) {
-        assert.deepEqual(mesh.colors.slice(face * 32, face * 32 + 32), mesh.colors.slice(0, 32));
+    const faces = Array.from({length: 6}, (_, i) => mesh.colors.slice(i * 32 + 16, i * 32 + 19));
+    assert.ok(faces[2][2] - faces[3][2] > .15, 'top and underside must read as different planes');
+    for (const [r, g, b] of faces) {
+        assert.ok(Math.abs(r / b - faces[2][0] / faces[2][2]) < 1e-8);
+        assert.ok(Math.abs(g / b - faces[2][1] / faces[2][2]) < 1e-8);
     }
 });
 

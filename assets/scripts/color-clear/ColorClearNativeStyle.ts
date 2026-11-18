@@ -26,7 +26,7 @@ export function rescueBlockTint(voxel: Pick<Voxel, 'color' | 'visualTint'>, pale
     const base = palette[voxel.color];
     if (!voxel.visualTint) return base;
     // Keep the source model's texture detail while remapping it to the exact
-    // ammo color family. The same voxel color is used on all six faces.
+    // ammo color family before the mesh applies its fixed lighting.
     const tint = voxel.visualTint;
     const lightness = (channel(tint, 1) * .21 + channel(tint, 3) * .72 + channel(tint, 5) * .07) / 255;
     return mixRescueColors(base, lightness < .64 ? '#17372e' : '#ffffff', Math.abs(lightness - .64) * .16);

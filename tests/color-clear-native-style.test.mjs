@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { ColorClearGame } from '../assets/scripts/color-clear/ColorClearGame.ts';
 import { fitRescueScreen, rescueBlockTint, RESCUE_STAGE } from '../assets/scripts/color-clear/ColorClearNativeStyle.ts';
 
 test('short, tall and inset screens fit the same touch layout with balanced margins', () => {
@@ -29,4 +30,18 @@ test('a legacy tint only contributes brightness, never its original hue', () => 
     assert.ok(parseInt(a.slice(5), 16) > parseInt(a.slice(1, 3), 16));
     assert.ok(parseInt(b.slice(1, 3), 16) > parseInt(b.slice(5), 16));
     assert.equal(rescueBlockTint({ color: 1 }, colors), colors[1]);
+});
+
+test('hit markers resolve the selected voxel and suppress occluded positions at the current pose', () => {
+    const cells = [
+        {id: 1, x: 0, y: 0, z: 0, color: 0, alive: true, core: false},
+        {id: 2, x: 0, y: 0, z: 1, color: 0, alive: true, core: false},
+    ];
+    const game = new ColorClearGame({id: 99, name: 'marker', cells, supply: [[{id: 1, color: 0, ammo: 2}]], solution: []});
+    assert.deepEqual([...game.visibleVoxelPositions([1, 2, 90])], [2]);
+    game.cells[1].alive = false;
+    assert.deepEqual([...game.visibleVoxelPositions([1, 2])], [1, 2], 'impact can remain at the actual cleared position');
+    game.cells[1].alive = true;
+    game.yaw = Math.PI;
+    assert.deepEqual([...game.visibleVoxelPositions([1, 2])], [1]);
 });

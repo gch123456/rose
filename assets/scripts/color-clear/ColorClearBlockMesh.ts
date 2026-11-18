@@ -8,12 +8,14 @@ type CellRecord = {
     voxel: Voxel;
     chunk: string;
     neighbors: (CellRecord | undefined)[];
-    rgb: Point;
-    edgeRgb: Point;
+    faces: readonly {rgb: Point; edgeRgb: Point}[];
 };
 
 const CHUNK_WIDTH = 8;
 const HALF_BLOCK = .5;
+// Diffuse light is baked into the model's axes to preserve the color identity
+// during rotation. Only brightness varies across the faces.
+const FACE_LIGHT = [.91, .82, 1, .75, .96, .87];
 export const BLOCK_VERTEX_CAPACITY = 48;
 export const BLOCK_INDEX_CAPACITY = 72;
 const FACE_DELTAS: Point[] = [
@@ -34,9 +36,9 @@ const gridKey = (x: number, y: number, z: number): string => x + ',' + y + ',' +
 const chunkKey = ({x, y, z}: Position): string =>
     gridKey(Math.floor(x / CHUNK_WIDTH), Math.floor(y / CHUNK_WIDTH), Math.floor(z / CHUNK_WIDTH));
 
-function vertexColor(hex: string): Point {
+function vertexColor(hex: string, light: number): Point {
     // The Cocos unlit shader reads vertex RGB as sRGB.
-    const read = (index: number): number => parseInt(hex.slice(index, index + 2), 16) / 255;
+    const read = (index: number): number => parseInt(hex.slice(index, index + 2), 16) / 255 * light;
     return [read(1), read(3), read(5)];
 }
 
@@ -48,16 +50,17 @@ export class BlockMeshIndex {
     private readonly chunks = new Map<string, CellRecord[]>();
 
     constructor(cells: readonly Voxel[], palette: readonly string[]) {
-        const byTint = new Map<string, {rgb: Point; edgeRgb: Point}>();
+        const byTint = new Map<string, CellRecord['faces']>();
         for (const voxel of cells) {
             const chunk = chunkKey(voxel);
             const tint = rescueBlockTint(voxel, palette);
-            let colors = byTint.get(tint);
-            if (!colors) {
-                colors = {rgb: vertexColor(tint), edgeRgb: vertexColor(mixRescueColors(tint, '#26433f', .23))};
-                byTint.set(tint, colors);
+            let faces = byTint.get(tint);
+            if (!faces) {
+                const rim = mixRescueColors(tint, '#243a40', .28);
+                faces = FACE_LIGHT.map(light => ({rgb: vertexColor(tint, light), edgeRgb: vertexColor(rim, light)}));
+                byTint.set(tint, faces);
             }
-            const entry: CellRecord = {voxel, chunk, neighbors: [], ...colors};
+            const entry: CellRecord = {voxel, chunk, neighbors: [], faces};
             this.cells.set(gridKey(voxel.x, voxel.y, voxel.z), entry);
             let entries = this.chunks.get(chunk);
             if (!entries) {
@@ -106,11 +109,11 @@ export class BlockMeshIndex {
         const {x, y, z} = entry.voxel;
         const [nx, ny, nz] = FACE_DELTAS[face];
         // A narrow rim on every face gives the cells a visible boundary without
-        // the holes of shrunken cubes or the color shift of directional light.
+        // opening gaps between adjacent blocks.
         for (let layer = 0; layer < 2; layer++) {
             const edge = layer ? HALF_BLOCK - .038 : HALF_BLOCK;
             const offset = layer ? .039 : 0;
-            const [r, g, b] = layer ? entry.rgb : entry.edgeRgb;
+            const [r, g, b] = layer ? entry.faces[face].rgb : entry.faces[face].edgeRgb;
             const vertex = positions.length / 3;
             for (const [dx, dy, dz] of FACE_CORNERS[face]) {
                 positions.push(

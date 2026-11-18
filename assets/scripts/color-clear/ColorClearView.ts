@@ -1,5 +1,5 @@
-import {drawCampCorners, drawDuckCapsule, drawGear, drawPond} from './ColorClearRescueArt';
-import {fitRescueScreen, RESCUE_STAGE} from './ColorClearNativeStyle';
+import {drawAmmoRack, drawCampCorners, drawGear, drawLauncher, drawPond, drawRescueModule, drawSpareAmmo} from './ColorClearRescueArt';
+import {fitRescueScreen, mixRescueColors, RESCUE_STAGE} from './ColorClearNativeStyle';
 import {BLOCK_INDEX_CAPACITY, BLOCK_VERTEX_CAPACITY, BlockMeshIndex} from './ColorClearBlockMesh';
 import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Rect, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
 import { ColorClearGame, FLIGHT_SECONDS } from './ColorClearGame';
@@ -66,8 +66,12 @@ export class ColorClearView extends Component {
     private reserveCards: Card[] = [];
     private projectilePen!: Graphics;
     private uiCamera!: Camera;
-    private readonly shotTint = new Color('#a9d9cf');
-    private readonly shotLight = new Color('#ffffed');
+    private readonly reticleInk = new Color('#1d4149');
+    private readonly reticleGold = new Color('#ffdb7a');
+    private readonly reticleWhite = new Color('#fffcf0');
+    private shotColors: Color[] = [];
+    private hitMarkers: {id: number; life: number; fresh: boolean}[] = [];
+    private frontSymbols: Label[] = [];
     private readonly localPoint = new Vec3();
     private readonly screenPoint = new Vec3();
     private readonly uiPoint = new Vec3();
@@ -87,6 +91,7 @@ export class ColorClearView extends Component {
     private supplies: Card[] = [];
     private title!: Label;
     private status!: Label;
+    private loadHint!: Label;
     private remaining!: Label;
     private phaseText!: Label;
     private resultText!: Label;
@@ -149,9 +154,9 @@ export class ColorClearView extends Component {
         this.bonusLabel.node.active = false;
         this.settingsButton(this.ui, -266, 493);
         this.remaining = this.text(this.ui, '', 18, 0, 366, 540, '#486a61');
-        this.text(this.ui, '拖动转面', 18, 0, -87, 160, '#385e53');
+        this.text(this.ui, '拖动转面', 18, 0, -89, 160, '#fff7e4');
         this.text(this.ui, '发射台', 17, -250, -124, 110, '#42675d');
-        this.text(this.ui, '点前排装填', 17, -229, -250, 140, '#42675d');
+        this.loadHint = this.text(this.ui, '点前排装填', 17, -228, -238, 140, '#42675d');
         this.status = this.text(this.ui, '', 16, 90, -124, 360, '#486a61');
         for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, SLOT_Y, 88, 76, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
         for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-231,86,30,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
@@ -160,17 +165,23 @@ export class ColorClearView extends Component {
                 const slot = this.model.slots.indexOf(null);
                 if (this.model.select(col)) {
                     const capsule = this.model.slots[slot]!; this.refresh(true);
-                    const flight = this.button(this.ui, '', -222 + col * 148, FRONT_Y, 104, 60, () => {});
-                    drawDuckCapsule(flight.pen, 104, 60, this.colors[capsule.color], false);
-                    flight.label.node.setPosition(14, 1);
+                    const flight = this.button(this.ui, '', -222 + col * 148, FRONT_Y, 134, 76, () => {});
+                    drawRescueModule(flight.pen, 134, 76, this.colors[capsule.color]);
+                    flight.label.node.setPosition(31, -3);
+                    flight.label.isBold = true;
                     flight.label.string = String(capsule.ammo);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
-                    tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0) }).call(() => flight.node.destroy()).start();
+                    tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0), scale: new Vec3(.58, .58, 1) }).call(() => flight.node.destroy()).start();
                 }
             } });
-            card.label.fontSize = row ? 24 : 30;
+            card.label.fontSize = row ? 23 : 25;
             card.label.isBold = !row;
-            card.label.node.setPosition(row ? 16 : 18, 1);
+            card.label.node.setPosition(row ? 16 : 31, row ? 0 : -3);
+            if (!row) {
+                const symbol = this.text(card.node, '', 17, 31, 22, 32, '#233e45');
+                symbol.isBold = true;
+                this.frontSymbols.push(symbol);
+            }
             this.supplies.push(card);
         }
         this.dialog = this.child(this.ui, 'ColorClearDialog', true);this.dialog.addComponent(BlockInputEvents);
@@ -279,7 +290,11 @@ export class ColorClearView extends Component {
         this.stageRoot.layer = STAGE_LAYER;
         this.stagePen = this.panel(this.stageRoot, 'ModelStage', 0, 167, 600, 562, '#edf8f3', '#bfd8cc', 38);
         this.paintStage(false);
-        this.panel(this.stageRoot, 'AmmoPanel', 0, -372, 600, 238, '#f1eee2', '#e4dbc7', 29);
+        this.panel(this.stageRoot, 'LaunchRail', 0, SLOT_Y - 2, 600, 90, '#b7ccc0', '#86a9a2', 23);
+        const rack = this.child(this.stageRoot, 'AmmoRack', false);
+        rack.layer = STAGE_LAYER;
+        rack.setPosition(0, -372);
+        drawAmmoRack(rack.addComponent(Graphics));
     }
     private paintStage(wizard: boolean): void {
         this.paint(this.stagePen, 600, 562, '#edf8f3', 38);
@@ -404,9 +419,11 @@ export class ColorClearView extends Component {
         this.camp.active = false;
         this.clearBatches();
         this.fragments = [];
+        this.hitMarkers = [];
         this.projectilePen.clear();
         this.paintedEffects = false;
         this.fragmentColors = this.colors.map(color => new Color(color));
+        this.shotColors = this.colors.map(color => new Color(mixRescueColors(color, '#ffffff', .18)));
         this.renderedYaw = this.renderedPitch = NaN;
         for (const card of [...this.slots, ...this.supplies, ...this.reserveCards]) card.paintKey = undefined;
         this.meshRadius = 1 + Math.max(...this.model.cells.map(cell => Math.hypot(cell.x, cell.y, cell.z)));
@@ -500,15 +517,15 @@ export class ColorClearView extends Component {
         this.slots.forEach((card, i) => {
             const capsule = this.model.slots[i];
             const locked = i >= this.model.slots.length;
-            const fill = capsule ? this.colors[capsule.color] : locked ? '#eee8d9' : '#dfece3';
-            if (card.paintKey !== fill) {
-                card.paintKey = fill;
-                if (capsule) drawDuckCapsule(card.pen, 88, 76, fill, true);
-                else {
-                    this.paint(card.pen, 88, 76, fill, 28);
-                    this.outline(card.pen, 88, 76, locked ? '#ded5bf' : '#cbded2', 28);
-                }
-                card.label.color = new Color('#285249');
+            const fill = capsule ? this.colors[capsule.color] : undefined;
+            const key = fill ?? (locked ? 'locked' : 'empty');
+            if (card.paintKey !== key) {
+                card.paintKey = key;
+                drawLauncher(card.pen, fill, locked);
+                card.label.color = new Color(locked ? '#fff9e8' : '#284149');
+                card.label.fontSize = locked ? 19 : 20;
+                card.label.isBold = true;
+                card.label.node.setPosition(0, locked ? -1 : 2);
             }
             card.label.string = locked ? '扩槽' : capsule ? `${SYMBOLS[capsule.color]} ${capsule.ammo}` : '';
         });
@@ -519,24 +536,14 @@ export class ColorClearView extends Component {
             const key = swatch + ':' + mystery;
             if (card.paintKey !== key) {
                 card.paintKey = key;
-                if (capsule && !row) {
-                    drawDuckCapsule(card.pen, 134, 76, swatch, false);
-                } else {
-                    this.paint(card.pen, 134, row ? 38 : 76, mystery ? '#fff3d7' : '#fbf9f0', row ? 16 : 27);
-                    if (capsule) {
-                        card.pen.fillColor = new Color(swatch);
-                        card.pen.circle(-43, 0, 11);
-                        card.pen.fill();
-                        card.pen.strokeColor = new Color('#2d4e4960');
-                        card.pen.lineWidth = 1.4;
-                        card.pen.circle(-43, 0, 11);
-                        card.pen.stroke();
-                    }
-                }
-                card.label.color = new Color('#203f37');
+                if (!row && capsule) drawRescueModule(card.pen, 134, 76, swatch);
+                else drawSpareAmmo(card.pen, swatch, mystery);
+                card.label.color = new Color(row || !capsule ? '#fff8e9' : '#233e45');
             }
-            card.label.string = capsule ? `${SYMBOLS[capsule.color]} ${mystery ? '?' : capsule.ammo}` : '·';
+            if (!row) this.frontSymbols[column].string = capsule ? SYMBOLS[capsule.color] : '';
+            card.label.string = capsule ? (row ? `${SYMBOLS[capsule.color]} ${mystery ? '?' : capsule.ammo}` : String(capsule.ammo)) : '';
         });
+        this.loadHint.node.active = this.model.reserve.length === 0;
         this.reserveCards.forEach((card, index) => {
             const capsule = this.model.reserve[index];
             card.node.active = !!capsule;
@@ -544,7 +551,7 @@ export class ColorClearView extends Component {
             const fill = this.colors[capsule.color];
             if (card.paintKey !== fill) {
                 card.paintKey = fill;
-                drawDuckCapsule(card.pen, 86, 30, fill, true);
+                this.paint(card.pen, 86, 30, fill, 9);
                 card.label.color = new Color(this.ink(fill));
             }
             card.label.string = SYMBOLS[capsule.color] + ' ' + capsule.ammo;
@@ -564,28 +571,70 @@ export class ColorClearView extends Component {
     private finishReward(completed:boolean):void {
         const pending=this.pendingReward;if(!pending)return;this.pendingReward=null;this.rewardPanel.active=false;pending.owner.resolveReward(pending.ticket,completed);if(pending.owner===this.model)this.refresh(true);
     }
+    private drawReticle(x: number, y: number, radius: number, hit: boolean): void {
+        const pen = this.projectilePen;
+        const arm = radius * .58;
+        const trace = (): void => {
+            for (const dx of [-1, 1]) {
+                for (const dy of [-1, 1]) {
+                    pen.moveTo(x + (radius - arm) * dx, y + radius * dy);
+                    pen.lineTo(x + radius * dx, y + radius * dy);
+                    pen.lineTo(x + radius * dx, y + (radius - arm) * dy);
+                }
+            }
+            pen.stroke();
+        };
+        pen.strokeColor = this.reticleInk;
+        pen.lineWidth = hit ? 6 : 4;
+        trace();
+        pen.strokeColor = hit ? this.reticleGold : this.reticleWhite;
+        pen.lineWidth = hit ? 3 : 2;
+        trace();
+    }
     private drawProjectiles(dt: number): void {
         const pen = this.projectilePen;
-        const visible = this.model.flights.length > 0 || this.fragments.length > 0;
+        const flights = this.model.flights;
+        for (let i = this.hitMarkers.length - 1; i >= 0; i--) {
+            this.hitMarkers[i].life -= dt;
+            if (this.hitMarkers[i].life <= 0) this.hitMarkers.splice(i, 1);
+        }
+        const visible = flights.length > 0 || this.fragments.length > 0 || this.hitMarkers.length > 0;
         if (!visible && !this.paintedEffects) return;
         pen.clear();
         this.paintedEffects = visible;
-        pen.strokeColor = this.shotTint;
-        pen.lineWidth = 3;
-        pen.fillColor = this.shotLight;
-        for (const flight of this.model.flights) {
+        const targetsInView = flights.length || this.hitMarkers.length
+            ? this.model.visibleVoxelPositions([...flights.map(flight => flight.target), ...this.hitMarkers.map(mark => mark.id)])
+            : null;
+        for (const flight of flights) {
             const target = this.cellsById.get(flight.target);
-            if (!target) continue;
+            if (!target || !targetsInView?.has(flight.target)) continue;
             const end = this.projectCell(target);
-            const x = -245 + flight.slot * 98, y = SLOT_Y + 38;
+            const x = -245 + flight.slot * 98, y = SLOT_Y + 34;
             const t = Math.max(0, Math.min(1, 1 - flight.time / (flight.duration ?? FLIGHT_SECONDS)));
-            const lift = 60 * (1 - t) * t;
-            const px = x + (end.x - x) * t, py = y + (end.y - y) * t + lift;
-            pen.moveTo(x, y);
+            const tail = Math.max(0, t - .16);
+            const dx = end.x - x, dy = end.y - y;
+            const px = x + dx * t, py = y + dy * t + 36 * (1 - t) * t;
+            pen.strokeColor = this.reticleInk;
+            pen.lineWidth = 6;
+            pen.moveTo(x + dx * tail, y + dy * tail + 36 * (1 - tail) * tail);
             pen.lineTo(px, py);
             pen.stroke();
-            pen.circle(px, py, 5);
+            pen.fillColor = this.reticleInk;
+            pen.circle(px, py, 6);
             pen.fill();
+            pen.fillColor = this.shotColors[flight.color];
+            pen.circle(px, py, 4.3);
+            pen.fill();
+            this.drawReticle(end.x, end.y, 11, false);
+        }
+        for (const mark of this.hitMarkers) {
+            const cell = this.cellsById.get(mark.id);
+            const fresh = mark.fresh;
+            mark.fresh = false;
+            if (!cell || !targetsInView?.has(mark.id)) continue;
+            if (fresh) this.burst(cell);
+            const end = this.projectCell(cell);
+            this.drawReticle(end.x, end.y, 8 + 9 * (1 - mark.life / .18), true);
         }
         for (let i = this.fragments.length - 1; i >= 0; i--) {
             const particle = this.fragments[i];
@@ -786,7 +835,8 @@ export class ColorClearView extends Component {
                 this.bonusUntil = this.clock + 1.1;
                 this.soundFor('chain');
             } else if (event.type === 'clear' && event.cell) {
-                this.burst(event.cell);
+                if (this.hitMarkers.length >= 9) this.hitMarkers.shift();
+                this.hitMarkers.push({id: event.cell.id, life: .18, fresh: true});
                 const detail = this.details.get(event.cell.id);
                 if (detail) detail.active = false;
                 for (const key of this.blockIndex!.dirtyChunks(event.cell)) this.dirtyBatches.add(key);
