@@ -24,3 +24,7 @@ footer #album-button{width:auto;height:28px;padding:0 10px;border-radius:15px;ba
 
 /* Rescue camp palette and access to inventory without obscuring four supply rows. */
 body{background:#e6e8db}.game-shell{background:#fff7e8}.dialog{background:#fff6df}.primary{background:#2d705d;box-shadow:0 4px #205541}.dialog-symbol{background:#f4e4bc}.rescued-duck{font-size:45px;animation:duck-arrives .65s ease-out}.dialog-options button{color:#49614a}.minimal-copy .heading h1{font-size:15px}footer{gap:5px}footer #camp-home,footer #use-reorder{width:auto;min-width:40px;height:28px;padding:0 8px;border-radius:14px;background:#f4ead0;color:#496450;font-size:10px;white-space:nowrap}footer #album-button{margin-right:0}footer .footer-mark{display:none}.album-heading h2{color:#285441}@keyframes duck-arrives{0%{transform:translateY(22px) scale(.6);opacity:0}65%{transform:translateY(-9px) scale(1.08)}100%{transform:translateY(0) scale(1);opacity:1}}
+
+#combo.bonus{background:#fff1bd;color:#694413;border:1px solid #e9b35f;letter-spacing:.04em}
+.supply .mystery-card strong{font-weight:900}
+#emergency-reserve{margin-top:12px;background:#a36b27;box-shadow:0 4px #804d19}

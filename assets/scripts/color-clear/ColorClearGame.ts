@@ -4,7 +4,9 @@ export type Voxel = { id: number; x: number; y: number; z: number; color: number
 export type Capsule = { id: number; color: number; ammo: number };
 export type ReplayStep = { yaw:number; pitch:number; column?:number; ticks:number };
 export type Level = { id: number; name: string; cells: Voxel[]; supply: Capsule[][]; initialYaw?: number; initialPitch?: number; solution: { column: number; yaw: number }[]; replay?: ReplayStep[]; pacing?: 'remaining' | 'fast' };
-export type ClearEvent = { type: 'load' | 'fire' | 'hit' | 'clear' | 'chain' | 'empty' | 'won' | 'lost'; cell?: Voxel; slot?: number; color?: number; core?: boolean; flightId?: number };
+export type RescueTier = 'warmup' | 'planning' | 'challenge';
+export const SAME_COLOR_BONUS = 5;
+export type ClearEvent = { type: 'load' | 'fire' | 'hit' | 'clear' | 'chain' | 'bonus' | 'empty' | 'won' | 'lost'; cell?: Voxel; slot?: number; color?: number; core?: boolean; flightId?: number };
 export type RewardTicket = { id: number; run: number; kind: 'slot' | 'continue' };
 export type Flight = { id: number; target: number; capsuleId: number; slot: number; color: number; time: number; readonly duration: number; claimed: number[] };
 export const FLIGHT_SECONDS = .28;
@@ -126,12 +128,70 @@ export class ColorClearGame {
     private bounds: number[][] = [];
     private run = 0; private rewardSerial = 0; private flightSerial = 0;
     private reward: { ticket: RewardTicket; phase: 'playing' | 'paused' | 'lost' } | null = null;
-    constructor(level: Level) { this.level = level; this.restart(); }
+    bonusCount = 0;
+    private streakColor: number | null = null;
+    private streak = 0;
+    private emergencyUsed = false;
+    private mysteryPositions = new Set<number>();
+
+    readonly rescueTier?: RescueTier;
+    private readonly random: () => number;
+
+    constructor(level: Level, rescueTier?: RescueTier, random = Math.random) {
+        this.level = level;
+        this.rescueTier = rescueTier;
+        this.random = random;
+        this.restart();
+    }
+
+    isAmmoHidden(column: number, row: number): boolean {
+        return (row === 2 || row === 3) && !!this.supply[column]?.[row]
+            && this.mysteryPositions.has(column * 4 + row);
+    }
+
+    private rollMysteryPositions(): void {
+        this.mysteryPositions.clear();
+        if (!this.rescueTier || this.rescueTier === 'warmup') return;
+        const positions = this.supply.flatMap((queue, column) =>
+            [2, 3].filter(row => queue[row]).map(row => column * 4 + row));
+        const challenge = this.rescueTier === 'challenge';
+        const limit = Math.min(positions.length, (challenge ? 2 : 1) + Math.floor(this.random() * (challenge ? 3 : 2)));
+        for (let i = 0; i < limit; i++) {
+            const index = Math.floor(this.random() * positions.length);
+            this.mysteryPositions.add(positions.splice(index, 1)[0]);
+        }
+    }
+
+    get canUseEmergencyReserve(): boolean {
+        if (this.rescueTier !== 'challenge' || this.bonusCount === 0 || this.emergencyUsed
+            || this.phase !== 'lost' || this.reward || this.flights.length
+            || this.slots.some(slot => !slot) || this.reserve.length >= 6) return false;
+        const reachable = this.reach ??= reachableColors(this.cells);
+        return [...this.supply.map(queue => queue[0]), ...this.reserve]
+            .some(capsule => capsule && capsule.ammo > 0 && reachable.has(capsule.color));
+    }
+
+    useEmergencyReserve(): boolean {
+        if (!this.canUseEmergencyReserve) return false;
+        const index = this.slots.findIndex(slot => slot && slot.ammo > 0);
+        if (index < 0) return false;
+        this.reserve.push(this.slots[index]!);
+        this.slots[index] = null;
+        this.emergencyUsed = true;
+        this.reason = '';
+        this.phase = 'playing';
+        return true;
+    }
     get remaining(): number { return this.cells.reduce((n, c) => n + Number(c.alive), 0); }
     get progress(): number { return 1 - this.remaining / Math.max(1, this.cells.length); }
     get canContinue(): boolean { return this.phase === 'lost' && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
+        this.bonusCount = 0;
+        this.streakColor = null;
+        this.streak = 0;
+        this.emergencyUsed = false;
+        this.rollMysteryPositions();
         this.slots = [null, null, null, null]; this.reserve = []; this.flights = []; this.yaw = this.level.initialYaw ?? 0; this.pitch = clampPitch(this.level.initialPitch ?? 0); this.phase = 'playing';
         this.lattice = this.cells.every(c=>(!c.shape||c.shape==='box')&&[c.x,c.y,c.z].every(Number.isInteger)) ? new Map(this.cells.map(c=>[`${c.x},${c.y},${c.z}`,c])) : null;
         if(this.lattice&&this.lattice.size!==this.cells.length)this.lattice=null;
@@ -207,6 +267,15 @@ export class ColorClearGame {
     private clear(cell: Voxel): void {
         if (!cell.alive) return; cell.alive = false; this.combo++; this.reach = null;
         this.events.push({ type: 'clear', cell: { ...cell }, color: cell.color, core: cell.core });
+        if (this.rescueTier) {
+            this.streak = cell.color === this.streakColor ? this.streak + 1 : 1;
+            this.streakColor = cell.color;
+            if (this.streak === SAME_COLOR_BONUS) {
+                this.streak = 0;
+                this.bonusCount++;
+                this.events.push({ type: 'bonus', cell: { ...cell }, color: cell.color });
+            }
+        }
         if (cell.core) this.events.push({ type: 'chain', cell: { ...cell }, color: cell.color });
     }
     private settle(): void {

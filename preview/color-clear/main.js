@@ -39,9 +39,15 @@ const fixtureMode=!!studioLevel||new URLSearchParams(location.search).get('fixtu
 const levelFor=n=>studioLevel?structuredClone(studioLevel):fixtureMode?makeRescueFixture():makeLevel(n);
 let settings=normalizePresentation(pref('presentation',{})),rewardSession=null,reserveOpen=false;
 const requestedLevel=Math.min(unlocked,Math.max(1,Math.floor(Number(new URLSearchParams(location.search).get('level')))||1));
-let model=new ColorClearGame(levelFor(requestedLevel));
+const requestedTier = new URLSearchParams(location.search).get('difficulty');
+function newRun(number) {
+ const tier = studioLevel && ['warmup','planning','challenge'].includes(requestedTier)
+  ? requestedTier : getDifficultyProfile(number).tier;
+ return new ColorClearGame(levelFor(number), fixtureMode && !studioLevel ? undefined : tier);
+}
+let model=newRun(requestedLevel);
 const orbit=new ModelOrbit(),openingSpin=new URLSearchParams(location.search).get('autospin')!=='0';orbit.reset(openingSpin);
-let renderer,meshes=[],pieces=[],coreMarks=[],viewScale=9,frameId,drag=null,lastTime=performance.now(),uiStamp='',shownPhase='',comboUntil=0,lastTone=0,audio,rotationVelocity=0,lastDragTime=0,rangeStamp='';
+let renderer,meshes=[],pieces=[],coreMarks=[],viewScale=9,frameId,drag=null,lastTime=performance.now(),uiStamp='',shownPhase='',comboUntil=0,bonusUntil=0,lastTone=0,audio,rotationVelocity=0,lastDragTime=0,rangeStamp='';
 let particles=[],bullets=[];
 const scene=new THREE.Scene();
 const root=new THREE.Group();root.position.y=-.65;scene.add(root);
@@ -132,7 +138,7 @@ function soundEvent(e){
 }
 function toast(text){$('toast').textContent=text;$('toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').classList.remove('show'),1600);}
 function paintCapsule(node,color){const hex=COLORS[color];node.style.setProperty('--color',hex);const n=parseInt(hex.slice(1),16),luminance=((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000;node.style.setProperty('--capsule-ink',luminance>175?'#354139':'#fff');}
-function capsuleMarkup(c,preview=false,waiting=false){return `<span class="symbol">${SYMBOLS[c.color]}</span><strong>${c.ammo}</strong>`;}
+function capsuleMarkup(c,hidden=false){return `<span class="symbol">${SYMBOLS[c.color]}</span><strong>${hidden?'?':c.ammo}</strong>`;}
 function syncUI(force=false){
  const signature=JSON.stringify([model.slots,model.supply.map(c=>c.slice(0,4)),model.phase,model.remaining,muted,model.reserve,settings,orbit.automatic,...(model.slots.some(Boolean)?[model.yaw.toFixed(2),model.pitch.toFixed(2)]:[])]);
  if(!force&&signature===uiStamp)return;uiStamp=signature;
@@ -158,7 +164,13 @@ function syncUI(force=false){
   const previous=$('supply').children[row*4+col];
   if(!c){if(!previous?.classList.contains('empty-supply')){const blank=document.createElement('div');blank.className='empty-supply'+(row?' preview-card':'');blank.textContent='·';if(previous)previous.replaceWith(blank);else $('supply').append(blank);}continue;}
   let b=previous;if(!b||b.tagName!=='BUTTON'){b=document.createElement('button');if(previous)previous.replaceWith(b);else $('supply').append(b);}
-  b.className='capsule'+(row?' preview-card':'');paintCapsule(b,c.color);if(b.dataset.content!==`${c.id}:${c.ammo}`){b.innerHTML=capsuleMarkup(c);b.dataset.content=`${c.id}:${c.ammo}`;}b.disabled=row>0;b.setAttribute('aria-label',`${row?'下一颗':'选择'}${NAMES[c.color]}，${c.ammo}发`);
+  const hidden = model.isAmmoHidden(col, row);
+  b.className='capsule'+(row?' preview-card':'')+(hidden?' mystery-card':'');
+  paintCapsule(b,c.color);
+  const content = c.id+':'+(hidden?'?':c.ammo);
+  if(b.dataset.content!==content){b.innerHTML=capsuleMarkup(c,hidden);b.dataset.content=content;}
+  b.disabled=row>0;
+  b.setAttribute('aria-label',(row?'预览':'选择')+NAMES[c.color]+'，'+(hidden?'弹量升到第二行揭晓':c.ammo+'发'));
   if(!row){b.dataset.column=String(col);b.onclick=()=>{
    ensureAudio();const origin=b.getBoundingClientRect(),slotIndex=model.slots.indexOf(null);
    if(!model.select(col)){toast('发射槽已满，先转动模型消除一些');return;}
@@ -185,6 +197,13 @@ function processEvents(){
    const slot=$('slots').children[e.slot];slot.classList.remove('firing');void slot.offsetWidth;slot.classList.add('firing');
   }
   if(e.type==='load'){const slot=$('slots').children[e.slot];slot?.classList.add('pop');}
+  if(e.type==='bonus'){
+   bonusUntil=performance.now()+1150;
+   burst(e.cell,true);
+   tone(785,.14,.05);
+   tone(1047,.17,.045,.08);
+   if(model.rescueTier==='challenge'&&model.bonusCount===1)toast('已获得一次应急暂存，满槽卡住时可用');
+  }
   if(e.type==='chain'){ $('combo').textContent='漂亮命中 ✧'; $('world').dataset.chainEvents=String(Number($('world').dataset.chainEvents||0)+1); }
   if(e.type==='won'){campAudio.setActive(false);}
   if(e.type==='won'&&!fixtureMode){albumUI.record(model.level.id);unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,model.level.id+1));save('unlocked',unlocked);}
@@ -194,15 +213,32 @@ function processEvents(){
 function openDialog(mode='phase'){
  $('overlay').hidden=false;
  const won=model.phase==='won',lost=model.phase==='lost';
+ $('emergency-reserve').hidden=!model.canUseEmergencyReserve;
  $('dialog-symbol').classList.toggle('rescued-duck',won);
  $('dialog-symbol').textContent=won?'🦆':lost?'↻':'Ⅱ';$('dialog-kicker').textContent=won?'RESCUE COMPLETE':lost?'TRY A DIFFERENT ORDER':'TAKE YOUR TIME';
  $('dialog-title').textContent=mode==='help'?'两种操作，就会玩':won?'安全抵达！':lost?'差一点，换个顺序':'休息一下';
  $('dialog-text').textContent=mode==='help'?`${getDifficultyProfile(model.level.id).label}：点前排胶囊进入发射槽，自动消除同色积木。上下左右拖动寻找目标。${model.level.id<4?'同色弹药与积木数相等，每发清除一块。':'每发清除一块；注意留槽位给能打开外层的颜色。'}`:won?`清除了 ${model.cells.length} 块积木，用了 ${model.shots} 发。${model.level.id===LEVEL_COUNT?'十关体验完成，也可以回头试试另一种顺序。':'封印解开了，伙伴已安全抵达营地。'}`:lost?model.reason:'颜色不会偷偷溜走，准备好了再继续。';
+ if(mode==='help'&&model.rescueTier){
+  $('dialog-text').textContent += ' 同色连续消掉 5 块触发奖励。';
+  if(model.rescueTier!=='warmup')$('dialog-text').textContent += ' 问号胶囊升到第二行才揭晓弹量。';
+  if(model.rescueTier==='challenge')$('dialog-text').textContent += ' 攒到一次奖励后，符合条件的满槽死局可暂存最左一颗胶囊，每局一次。';
+ }
+ if(won&&model.bonusCount)$('dialog-text').textContent+=' 同色奖励 × '+model.bonusCount+'。';
  $('primary').textContent=studioLevel&&won?'再玩这关':lost&&model.canContinue?'模拟广告 · 暂存续关':won?(model.level.id===LEVEL_COUNT?'从第一关再来':'下一关 →'):lost?'换个顺序再试':'继续游戏';
  $('primary').onclick=()=>{ensureAudio();if(won)loadLevel(model.level.id===LEVEL_COUNT?1:model.level.id+1);else if(lost){if(model.canContinue)requestReward('continue');else loadLevel(model.level.id);}else{model.resume();campAudio.setActive(true);$('overlay').hidden=true;shownPhase='playing';lastTime=performance.now();}};
 }
 function pause(){campAudio.setActive(false);if(drag)orbit.release(true,0);drag=null;rotationVelocity=0;if(model.phase==='playing'){model.pause();shownPhase='paused';openDialog();syncUI(true);}}
-function loadLevel(n){campAudio.setActive(true);if(shuffleVariants.length){try{const index=chooseVariant(shuffleVariants.length,shuffleIndex);const next=decodeLevel(variantData(shuffleBase,shuffleVariants[index]));studioLevel=next;shuffleIndex=index;try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}}catch{toast('随机队列未通过校验，保留当前排列');}}if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=new ColorClearGame(levelFor(n));orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
+function loadLevel(n){campAudio.setActive(true);if(shuffleVariants.length){try{const index=chooseVariant(shuffleVariants.length,shuffleIndex);const next=decodeLevel(variantData(shuffleBase,shuffleVariants[index]));studioLevel=next;shuffleIndex=index;try{sessionStorage.setItem('color-clear.last-shuffle',String(index));}catch{/* optional recent-index memory */}}catch{toast('随机队列未通过校验，保留当前排列');}}if(rewardSession){rewardSession.owner.resolveReward(rewardSession.ticket,false);rewardSession=null;}$('reward-overlay').hidden=true;reserveOpen=false;drag=null;rotationVelocity=0;model=newRun(n);orbit.reset(openingSpin);shownPhase='playing';uiStamp='';comboUntil=0;bonusUntil=0;$('combo').classList.remove('show');$('overlay').hidden=true;buildModel();syncUI(true);lastTime=performance.now();}
+$('emergency-reserve').onclick=()=>{
+ ensureAudio();
+ if(!model.useEmergencyReserve())return;
+ reserveOpen=true;
+ $('overlay').hidden=true;
+ shownPhase='playing';
+ lastTime=performance.now();
+ syncUI(true);
+ toast('已腾出一槽，剩余弹药保存在暂存区');
+};
 $('pause').onclick=()=>{ensureAudio();pause();};$('restart').onclick=()=>{ensureAudio();loadLevel(model.level.id);};
 function toggleSound(){muted=!muted;audioPrefs.setEffects(!muted);campAudio.sync();if(!muted){ensureAudio();tone();}syncUI(true);}
 $('dialog-music').onclick=()=>{audioPrefs.setMusic(!audioPrefs.music);ensureAudio();campAudio.sync();syncUI(true);};
@@ -234,7 +270,12 @@ function frame(time){
  particles=particles.filter(p=>p.age<p.life);
  for(let i=0;i<particles.length;i++){const p=particles[i];p.age+=dt;p.v.y-=14*dt;p.p.addScaledVector(p.v,dt);dummy.position.copy(p.p);dummy.rotation.set(p.age*6,p.spin+p.age*5,p.age*3);dummy.scale.setScalar(Math.max(0,1-p.age/p.life)*1.6);dummy.updateMatrix();particleMesh.setMatrixAt(i,dummy.matrix);particleMesh.setColorAt(i,domColors[p.color]);}
  particleMesh.count=particles.length;particleMesh.instanceMatrix.needsUpdate=true;if(particleMesh.instanceColor)particleMesh.instanceColor.needsUpdate=true;
- if(time<comboUntil&&model.combo>=3){if(!$('combo').textContent.startsWith('连锁')||model.combo%7===0)$('combo').textContent=`消除 × ${model.combo}`;$('combo').classList.add('show');}else{$('combo').classList.remove('show');$('combo').textContent='';}
+ if(time<bonusUntil){
+  $('combo').textContent='✦ 同色 5 连消！';
+  $('combo').classList.add('show','bonus');
+ }else{
+ $('combo').classList.remove('bonus');
+ if(time<comboUntil&&model.combo>=3){if(!$('combo').textContent.startsWith('连锁')||model.combo%7===0)$('combo').textContent=`消除 × ${model.combo}`;$('combo').classList.add('show');}else{$('combo').classList.remove('show');$('combo').textContent='';}}
  const stamp=model.remaining+':'+model.yaw.toFixed(3)+':'+model.pitch.toFixed(3);
  if(stamp!==rangeStamp){
   rangeStamp=stamp;const affected=new Set();
@@ -244,7 +285,7 @@ function frame(time){
  }
  renderer.render(scene,camera);frameId=requestAnimationFrame(frame);
 }
-window.__colorClear={snapshot:()=>({visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:levelEliminationPace(model.level,model.remaining,model.cells.length),shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,autoEnabled:orbit.enabled,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
+window.__colorClear={snapshot:()=>({rescueTier:model.rescueTier,bonusCount:model.bonusCount,visibleColors:[...new Set(model.visibleTargets().map(c=>c.color))],frontColors:model.supply.map(q=>q[0]?.color??null),pacing:model.level.pacing??'legacy',pace:levelEliminationPace(model.level,model.remaining,model.cells.length),shuffleIndex,flightClocks:model.flights.map(f=>({time:f.time,duration:f.duration})),level:model.level.id,phase:model.phase,remaining:model.remaining,shots:model.shots,yaw:model.yaw,pitch:model.pitch,automatic:orbit.automatic,autoEnabled:orbit.enabled,slots:model.slots.map(s=>s?{...s}:null),supply:model.supply.map(c=>c.length),reason:model.reason,reserve:model.reserve.map(c=>({...c})),flights:model.flights.length,shapes:[...new Set(model.cells.map(c=>c.shape||'box'))]})};
 window.addEventListener('pagehide',()=>{cancelAnimationFrame(frameId);audio?.suspend();campAudio.setActive(false);});
 window.addEventListener('pageshow',e=>{if(e.persisted){lastTime=performance.now();frameId=requestAnimationFrame(frame);}});
 
