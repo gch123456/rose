@@ -3,11 +3,9 @@ export type DockFlight = {x: number; y: number; color: number; duration: number;
 const MAX_FLIGHTS = 12;
 const BOOST_WINDOW = .30;
 
-/** Bridges cleared voxels and the pursuit: only a landing moves the duck. */
+/** Loads the conveyor boost when a cleared block reaches the duck. */
 export class HarborDelivery {
     readonly flights: DockFlight[] = [];
-    duckX = 69;
-    scroll = 0;
     stride = 0;
     private boost = 0;
     private chain = 0;
@@ -58,8 +56,6 @@ export class HarborDelivery {
     private advance(dt: number): void {
         const moving = Math.min(dt, this.boostTime);
         this.boostTime -= moving;
-        this.duckX = Math.min(146, this.duckX + moving * this.boost * 34);
-        this.scroll = (this.scroll + moving * this.boost * 53) % 41;
-        this.stride += dt + moving * this.boost * .56;
+        this.stride += moving * (1 + this.boost * .65);
     }
 }

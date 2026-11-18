@@ -22,111 +22,92 @@ export function drawGear(pen: Graphics): void {
 }
 
 const INK = '#23434a';
-const BRASS = '#e7ae62';
 
 function rounded(pen: Graphics, color: string, x: number, y: number, w: number, h: number, radius: number): void {
     fill(pen, color, () => pen.roundRect(x, y, w, h, radius));
 }
 
+function drawAmmoDuck(pen: Graphics, x: number, y: number, color: string, scale = 1): void {
+    const shade = mixRescueColors(color, INK, .28);
+    const light = mixRescueColors(color, '#ffe5b8', .24);
+    const gloss = mixRescueColors(color, '#fff7dd', .67);
+    fill(pen, shade, () => {
+        pen.ellipse(x - 3 * scale, y - 8 * scale, 17 * scale, 11 * scale);
+        pen.ellipse(x + 2 * scale, y + 4 * scale, 12 * scale, 13 * scale);
+    });
+    fill(pen, light, () => {
+        pen.ellipse(x - 4 * scale, y - 6 * scale, 16 * scale, 10 * scale);
+        pen.ellipse(x + scale, y + 5 * scale, 11 * scale, 12 * scale);
+    });
+    fill(pen, color, () => pen.ellipse(x - 6 * scale, y - 5 * scale, 8 * scale, 4.5 * scale));
+    fill(pen, '#de8756', () => pen.ellipse(x + 13 * scale, y + 3 * scale, 6 * scale, 3.6 * scale));
+    fill(pen, '#f6b96f', () => pen.ellipse(x + 14 * scale, y + 4.2 * scale, 5.2 * scale, 2.4 * scale));
+    fill(pen, '#db936caa', () => pen.ellipse(x + 6 * scale, y + 2.4 * scale, 3.2 * scale, 1.7 * scale));
+    fill(pen, INK, () => pen.circle(x + 6 * scale, y + 8 * scale, 1.9 * scale));
+    fill(pen, gloss, () => {
+        pen.ellipse(x - 2.5 * scale, y + 12 * scale, 3.5 * scale, 1.5 * scale);
+        pen.ellipse(x - 9 * scale, y - 4 * scale, 4.2 * scale, 1.2 * scale);
+    });
+}
+
 export function drawRescueModule(pen: Graphics, w: number, h: number, color: string): void {
     pen.clear();
-    const x = -w / 2, y = -h / 2;
-    const edge = mixRescueColors(color, INK, .47);
-    const enamel = mixRescueColors(color, '#fff5d9', .20);
-    const highlight = mixRescueColors(color, '#ffffff', .68);
-    // Two bumpers and the dark gasket sit underneath the molded shell.
-    rounded(pen, '#162f32a0', x + 5, y, w - 10, h - 4, 14);
-    rounded(pen, INK, x + 6, y + 5, w - 12, h - 19, 16);
-    rounded(pen, edge, x + 7, y + 10, w - 14, h - 24, 14);
-    rounded(pen, color, x + 9, y + 16, w - 18, h - 29, 13);
-    rounded(pen, enamel, x + 12, y + 23, w - 24, h - 41, 11);
-    // The case itself is shaped around the little upward beak and the wings.
-    const nose = x + w * .31;
-    fill(pen, edge, () => {
-        pen.moveTo(nose - 22, y + 26);
-        pen.bezierCurveTo(nose - 27, y + 39, nose - 22, y + 66, nose - 3, y + 67);
-        pen.bezierCurveTo(nose + 9, y + 68, nose + 16, y + 59, nose + 16, y + 48);
-        pen.lineTo(nose + 15, y + 29);
-        pen.quadraticCurveTo(nose - 3, y + 10, nose - 22, y + 26);
-        pen.close();
+    const left = -w / 2;
+    const bottom = -h / 2;
+    const shade = mixRescueColors(color, '#37585a', .34);
+    const glaze = mixRescueColors(color, '#fff2c9', .19);
+    const shine = mixRescueColors(color, '#fff3dc', .63);
+
+    fill(pen, '#30495133', () => pen.ellipse(0, bottom + 10, w * .43, 9));
+    rounded(pen, shade, left + 6, bottom + 8, w - 12, h - 18, 23);
+    rounded(pen, color, left + 6, bottom + 13, w - 12, h - 23, 22);
+    rounded(pen, glaze, left + 10, bottom + 18, w - 20, h - 30, 19);
+    rounded(pen, shine, left + 26, h / 2 - 17, w * .46, 3, 1.5);
+
+    // The count sits on the glazed shell without an inset frame.
+    drawAmmoDuck(pen, left + w * .29, 4, color, 1.3);
+    fill(pen, shade, () => {
+        pen.ellipse(left + 23, bottom + 11, 5, 2.5);
+        pen.ellipse(w / 2 - 23, bottom + 11, 5, 2.5);
     });
-    fill(pen, enamel, () => {
-        pen.moveTo(nose - 21, y + 29);
-        pen.bezierCurveTo(nose - 26, y + 43, nose - 15, y + 65, nose - 2, y + 65);
-        pen.bezierCurveTo(nose + 9, y + 65, nose + 14, y + 56, nose + 14, y + 47);
-        pen.lineTo(nose + 13, y + 32);
-        pen.quadraticCurveTo(nose - 4, y + 18, nose - 21, y + 29);
-        pen.close();
-    });
-    fill(pen, '#bd7443', () => {
-        pen.moveTo(nose + 8, y + 49);
-        pen.quadraticCurveTo(nose + 19, y + 55, nose + 27, y + 49);
-        pen.quadraticCurveTo(nose + 27, y + 42, nose + 8, y + 43);
-        pen.close();
-    });
-    fill(pen, '#ffc974', () => {
-        pen.moveTo(nose + 8, y + 50);
-        pen.quadraticCurveTo(nose + 18, y + 57, nose + 26, y + 49);
-        pen.quadraticCurveTo(nose + 26, y + 46, nose + 8, y + 46);
-        pen.close();
-    });
-    fill(pen, INK, () => pen.circle(nose + 4, y + 55, 2.5));
-    fill(pen, highlight, () => {
-        pen.ellipse(nose - 10, y + 57, 6, 3);
-        pen.ellipse(nose - 10, y + 36, 9, 4.8);
-    });
-    rounded(pen, edge, w / 2 - 62, y + 20, 52, 29, 8);
-    rounded(pen, '#fff8e3', w / 2 - 60, y + 22, 48, 26, 7);
-    rounded(pen, BRASS, x + 18, y + 7, 17, 5, 2);
-    rounded(pen, BRASS, w / 2 - 35, y + 7, 17, 5, 2);
 }
 
 export function drawLauncher(pen: Graphics, color: string | undefined, locked: boolean): void {
     pen.clear();
-    rounded(pen, '#203c43', -44, -38, 88, 73, 15);
-    rounded(pen, '#6c9295', -41, -34, 82, 69, 13);
-    rounded(pen, '#31535b', -36, -27, 72, 57, 10);
-    rounded(pen, '#213b45', -32, -24, 64, 49, 8);
-    if (locked) {
-        rounded(pen, '#52757c', -28, -19, 56, 37, 9);
-        fill(pen, '#9cb2a9', () => {
-            pen.circle(-22, 11, 2);
-            pen.circle(22, 11, 2);
-        });
-        return;
+    rounded(pen, '#ac6d65', -43, -36, 86, 70, 22);
+    rounded(pen, locked ? '#e1a79a' : '#f2b39e', -42, -31, 84, 65, 20);
+    rounded(pen, locked ? '#92adab' : '#588084', -35, -23, 70, 48, 16);
+    rounded(pen, locked ? '#c7d5c3' : '#84a7a1', -33, -20, 66, 42, 15);
+    rounded(pen, '#f7c7b0aa', -20, 27, 40, 3, 1.5);
+    if (!locked) {
+        fill(pen, '#496e74', () => pen.ellipse(0, 30, 9.5, 3.7));
+        if (color) {
+            const shade = mixRescueColors(color, INK, .24);
+            const glaze = mixRescueColors(color, '#ffedcd', .19);
+            rounded(pen, shade, -29, -18, 58, 37, 13);
+            rounded(pen, glaze, -28, -13, 56, 32, 12);
+            rounded(pen, mixRescueColors(color, '#fff5dd', .63), -17, 14, 25, 2.5, 1.25);
+        }
+        rounded(pen, color ? '#ffd180' : '#789894', -7, -27, 14, 3, 1.5);
     }
-    rounded(pen, '#263e45', -18, 20, 36, 18, 7);
-    rounded(pen, color ?? '#8aaba8', -15, 24, 30, 13, 6);
-    fill(pen, '#274952', () => pen.ellipse(0, 32, 10, 4));
-    if (color) {
-        rounded(pen, mixRescueColors(color, INK, .3), -31, -18, 62, 37, 9);
-        rounded(pen, color, -29, -13, 58, 33, 8);
-        rounded(pen, '#fffae7', -26, -10, 52, 25, 7);
-    }
-    rounded(pen, color ? '#ffc66b' : '#729699', -8, -32, 16, 4, 2);
 }
 
 export function drawSpareAmmo(pen: Graphics, color: string, mystery: boolean): void {
     pen.clear();
-    rounded(pen, '#24424b', -66, -18, 132, 36, 9);
-    rounded(pen, '#496a70', -64, -15, 128, 32, 8);
-    rounded(pen, mystery ? '#6b6457' : '#35545e', -62, -13, 124, 26, 7);
-    if (color) {
-        rounded(pen, mixRescueColors(color, INK, .32), -56, -11, 25, 22, 6);
-        rounded(pen, color, -54, -7, 21, 17, 5);
-        rounded(pen, mixRescueColors(color, '#ffffff', .64), -52, 3, 13, 3, 1.5);
-    }
+    rounded(pen, mystery ? '#b78574' : '#779a97', -65, -17, 130, 33, 12);
+    rounded(pen, mystery ? '#eab9a0' : '#abc9bd', -65, -13, 130, 29, 11);
+    if (color) drawAmmoDuck(pen, -40, 1, color, .59);
 }
 
 export function drawAmmoRack(pen: Graphics): void {
-    rounded(pen, '#203e46', -300, -121, 600, 242, 24);
-    rounded(pen, '#7a9d98', -296, -115, 592, 234, 22);
-    rounded(pen, '#436970', -291, -108, 582, 220, 18);
-    rounded(pen, '#33515b', -287, -105, 574, 207, 17);
+    rounded(pen, '#9c6d67', -300, -121, 600, 242, 26);
+    rounded(pen, '#d69586', -299, -116, 598, 237, 25);
+    rounded(pen, '#e4a697', -294, -108, 588, 221, 21);
+    rounded(pen, '#f4c7b0', -267, 112, 534, 4, 2);
     for (let col = 0; col < 4; col++) {
         const center = -222 + col * 148;
-        rounded(pen, '#253e48', center - 67, -106, 134, 218, 16);
-        rounded(pen, '#53737a', center - 64, -102, 128, 206, 14);
+        rounded(pen, '#6b8d88', center - 67, -107, 134, 216, 18);
+        rounded(pen, '#8eafa1', center - 65, -102, 130, 207, 16);
     }
 }
 

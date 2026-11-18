@@ -1,21 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { HarborChase } from '../assets/scripts/color-clear/ColorClearHarborChase.ts';
+import { conveyorDuckX, HarborChase } from '../assets/scripts/color-clear/ColorClearHarborChase.ts';
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-10, `expected ${a} to be close to ${b}`);
 
-test('the bridge has a quiet opening, and inactivity gives time to recover before capture', () => {
+test('the bridge belt drifts during its safe opening and eventually reaches the oven', () => {
     const chase = new HarborChase('bridge');
     assert.ok(chase.separation > .55 && chase.separation < .7);
     const start = chase.separation;
 
     chase.tick(20);
-    near(chase.separation, start);
+    assert.ok(chase.separation > .45 && chase.separation < start);
+    assert.ok(conveyorDuckX(chase.separation) < conveyorDuckX(start));
+    assert.equal(chase.caught, false);
     chase.tick(8);
-    assert.ok(chase.separation > .3 && chase.separation < start);
+    assert.ok(chase.separation > .25 && chase.separation < start);
     chase.tick(30);
     assert.equal(chase.separation, 0);
+    assert.equal(conveyorDuckX(chase.separation), -190);
     assert.equal(chase.caught, true);
     chase.hit(100);
     chase.freeze();

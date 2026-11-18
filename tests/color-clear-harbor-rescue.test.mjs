@@ -46,7 +46,8 @@ test('water spends exactly matching ammo and leaves claimed shot targets alone',
 test('being caught does not become an optional ad or emergency rescue', () => {
     const game = new ColorClearGame(level(), 'challenge', Math.random, {freeStallRescue:true, exitIds: new Set([0])});
     assert.ok(game.select(1));
-    game.caughtByCook();
+    game.failAtOven();
+    assert.equal(game.reason, '鸭鸭被送进烤鸭炉了');
     assert.equal(game.phase, 'lost');
     assert.equal(game.openShellWithWater(10), 0);
     assert.equal(game.canUseEmergencyReserve, false);

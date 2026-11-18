@@ -2,15 +2,20 @@ export type HarborChaseMode = 'tutorial' | 'bridge' | 'long';
 
 const MODES = {
     tutorial: { opening: 12, approachPerSecond: .032, minimum: .24 },
-    bridge: { opening: 20, approachPerSecond: .035, minimum: 0 },
-    long: { opening: 32, approachPerSecond: .026, minimum: 0 },
+    bridge: { opening: 20, approachPerSecond: .030, minimum: 0 },
+    long: { opening: 32, approachPerSecond: .023, minimum: 0 },
 } as const;
 
+const OPENING_DRIFT = .006;
 const HIT_DISTANCE = .018;
 const HIT_BREATHING_ROOM = 1.5;
 
-/** Advance only during active play. The chase follows physical hits, regardless
- * of the current angle, ammo color, or speed of the visual feedback. */
+export function conveyorDuckX(clearance: number): number {
+    return -190 + Math.max(0, Math.min(1, clearance)) * 340;
+}
+
+/** Advance only during active play. The belt brings the duck toward the oven,
+ * and arriving blocks buy distance and time. */
 export class HarborChase {
     private gap = .63;
     private openingTime: number;
@@ -30,14 +35,13 @@ export class HarborChase {
     tick(dt: number): void {
         if (!Number.isFinite(dt) || dt <= 0 || this.caught) return;
 
-        // Protection windows overlap. Only the part of the frame after all
-        // protection expires lets the cook close the gap.
-        const protection = Math.max(this.openingTime, this.frozenTime, this.hitProtection);
-        const exposedTime = Math.max(0, dt - protection);
+        const stopped = Math.max(this.frozenTime, this.hitProtection);
+        const openingDrift = Math.max(0, Math.min(dt, this.openingTime) - stopped);
+        const exposedTime = Math.max(0, dt - Math.max(this.openingTime, stopped));
         this.openingTime = Math.max(0, this.openingTime - dt);
         this.frozenTime = Math.max(0, this.frozenTime - dt);
         this.hitProtection = Math.max(0, this.hitProtection - dt);
-        this.gap = Math.max(this.rules.minimum, this.gap - this.rules.approachPerSecond * exposedTime);
+        this.gap = Math.max(this.rules.minimum, this.gap - OPENING_DRIFT * openingDrift - this.rules.approachPerSecond * exposedTime);
     }
 
     hit(amount = 1): void {

@@ -7,10 +7,10 @@ import { ColorClearGame, FLIGHT_SECONDS } from './ColorClearGame';
 import type { Voxel, RewardTicket, PieceShape } from './ColorClearGame';
 import {makeReleaseLevel, chooseReleaseQueue} from './ColorClearRelease';
 import {HARBOR_STAGES, makeHarborStage} from './ColorClearHarborLevels';
-import {HarborChase} from './ColorClearHarborChase';
+import {conveyorDuckX, HarborChase} from './ColorClearHarborChase';
 import {HarborDelivery} from './ColorClearHarborDelivery';
 import {createHarborDuck} from './ColorClearHarborDuck';
-import {drawHarborChase, drawHarborDeck} from './ColorClearHarborHud';
+import {drawHarborConveyor, drawHarborDeck} from './ColorClearHarborHud';
 import {ModelOrbit} from './ColorClearOrbit';
 import {AlbumService} from './ColorClearAlbum';
 import {wechatAlbumTransport} from './ColorClearWechat';
@@ -55,7 +55,9 @@ export class ColorClearView extends Component {
     private chaseLabel!: Label;
     private chasePaintTime = -Infinity;
     private chaseShownGap = .63;
-    private chaseRunTime = 0;
+    private beltOffset = 0;
+    private ovenShowUntil = 0;
+    private ovenDialogPending = false;
     private delivery = new HarborDelivery();
     private deliveryPen!: Graphics;
     private deliveryFlash = 0;
@@ -214,6 +216,7 @@ export class ColorClearView extends Component {
                     drawRescueModule(flight.pen, 134, 76, this.colors[capsule.color]);
                     flight.label.node.setPosition(31, -3);
                     flight.label.isBold = true;
+                    flight.label.color = new Color('#25434a');
                     flight.label.string = String(capsule.ammo);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
                     tween(flight.node).to(.12, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0), scale: new Vec3(.58, .58, 1) }).call(() => flight.node.destroy()).start();
@@ -358,7 +361,7 @@ export class ColorClearView extends Component {
         const trail = this.child(this.stageRoot, 'BackComboTrail', false);
         trail.layer = STAGE_LAYER;
         this.backTrail = trail.addComponent(Graphics);
-        this.panel(this.stageRoot, 'LaunchRail', 0, SLOT_Y - 2, 600, 90, '#b7ccc0', '#86a9a2', 23);
+        this.panel(this.stageRoot, 'LaunchRail', 0, SLOT_Y - 2, 600, 90, '#d99584', '#b9766d', 29);
         const rack = this.child(this.stageRoot, 'AmmoRack', false);
         rack.layer = STAGE_LAYER;
         rack.setPosition(0, -372);
@@ -483,7 +486,9 @@ export class ColorClearView extends Component {
         this.chase = new HarborChase(id === FIRST_RESCUE ? 'tutorial' : id === LAST_RESCUE ? 'long' : 'bridge');
         this.chasePaintTime = -Infinity;
         this.chaseShownGap = this.chase.separation;
-        this.chaseRunTime = 0;
+        this.beltOffset = 0;
+        this.ovenShowUntil = 0;
+        this.ovenDialogPending = false;
         this.delivery = new HarborDelivery();
         this.deliveryPen.clear();
         this.deliveryFlash = 0;
@@ -622,21 +627,21 @@ export class ColorClearView extends Component {
         this.escapeShowUntil = this.clock + .95;
         this.wonDialogPending = true;
     }
-    private drawChaseTrack(dt: number): void {
+    private drawConveyor(dt: number): void {
         const escaped = this.model.phase === 'won';
-        const caught = this.chase.caught;
+        const reachedOven = this.chase.caught;
+        const active = this.model.phase === 'playing';
+        const frozen = this.chase.frozen > 0;
         const target = escaped ? 1 : this.chase.separation;
         this.chaseShownGap += (target - this.chaseShownGap) * (1 - Math.exp(-Math.min(dt, .25) * 6));
-        if (this.model.phase === 'playing' || (escaped && this.wonDialogPending)) {
-            this.chaseRunTime += dt;
-        }
+        if (active && !frozen) this.beltOffset = (this.beltOffset + dt * 32) % 38;
         if (this.clock - this.chasePaintTime < 1 / 24) return;
         this.chasePaintTime = this.clock;
-        drawHarborChase(this.chasePen, this.chaseShownGap, this.chaseRunTime,
-            this.chase.frozen > 0, caught || (escaped && !this.wonDialogPending), caught, this.delivery);
-        const label = escaped ? '鸭鸭已安全上船' : caught ? '被烤鸭师傅追上了'
-            : this.chase.frozen > 0 ? '追兵冻结'
-            : this.chase.separation < .18 ? '追兵靠近'
+        drawHarborConveyor(this.chasePen, conveyorDuckX(this.chaseShownGap), this.beltOffset,
+            this.delivery.stride, this.delivery.speed, frozen, !active && !this.wonDialogPending, reachedOven);
+        const label = escaped ? '鸭鸭逃离了烤炉' : reachedOven ? '到达烤炉'
+            : frozen ? '传送带已暂停'
+            : this.chase.separation < .18 ? '快到炉口了'
             : `还剩 ${this.model.cells.length - this.model.combo} 块`;
         if (this.chaseLabel.string !== label) this.chaseLabel.string = label;
     }
@@ -656,6 +661,8 @@ export class ColorClearView extends Component {
         } else {
             this.deliveryFlash = 0;
         }
+    }
+    private drawDockDeliveries(): void {
         const visible = (this.model.phase === 'playing' || this.wonDialogPending)
             && (this.delivery.flights.length > 0 || this.deliveryFlash > 0);
         if (!visible && !this.hasDeliveryPaint) return;
@@ -663,7 +670,7 @@ export class ColorClearView extends Component {
         const pen = this.deliveryPen;
         pen.clear();
         if (!visible) return;
-        const endX = this.delivery.duckX + 10, endY = CHASE_Y + 3;
+        const endX = conveyorDuckX(this.chaseShownGap) + 10, endY = CHASE_Y + 3;
         for (const flight of this.delivery.flights) {
             const time = flight.age / flight.duration;
             const travel = time * time * (3 - 2 * time);
@@ -769,7 +776,7 @@ export class ColorClearView extends Component {
             if (card.paintKey !== key) {
                 card.paintKey = key;
                 drawLauncher(card.pen, fill, locked);
-                card.label.color = new Color(locked ? '#fff9e8' : '#284149');
+                card.label.color = new Color(locked ? '#526968' : '#25434a');
                 card.label.fontSize = locked ? 19 : 20;
                 card.label.isBold = true;
                 card.label.node.setPosition(0, locked ? -1 : 2);
@@ -785,7 +792,7 @@ export class ColorClearView extends Component {
                 card.paintKey = key;
                 if (!row && capsule) drawRescueModule(card.pen, 134, 76, swatch);
                 else drawSpareAmmo(card.pen, swatch, mystery);
-                card.label.color = new Color(row ? '#fff8e9' : '#233e45');
+                card.label.color = new Color('#25434a');
             }
             card.label.string = capsule ? mystery ? '?' : String(capsule.ammo) : '';
         });
@@ -803,14 +810,14 @@ export class ColorClearView extends Component {
             card.label.string = String(capsule.ammo);
         });
         this.skillButton.label.string = this.skillUsed ? '技能已使用'
-            : this.model.level.id === LAST_RESCUE ? '冻结追兵'
+            : this.model.level.id === LAST_RESCUE ? '停带 · 5 秒'
             : `水花 · ${this.unlocked >= 2 ? 20 : 10}`;
         const skillKey = this.skillUsed ? 'spent' : 'ready';
         if (this.skillButton.paintKey !== skillKey) {
             this.skillButton.paintKey = skillKey;
             this.paint(this.skillButton.pen, 172, 56, this.skillUsed ? '#e4e5da' : '#ffd37c', 18);
         }
-        this.dialog.active = !this.camp.active && this.model.phase !== 'playing' && this.clock >= this.escapeShowUntil;
+        this.dialog.active = !this.camp.active && this.model.phase !== 'playing' && this.clock >= Math.max(this.escapeShowUntil, this.ovenShowUntil);
         this.continueButton.label.string = this.model.phase === 'won'
             ? this.model.level.id !== LAST_RESCUE ? `下一关 · ${HARBOR_STAGES[this.stageIndex() + 1].name}` : '再救一次'
             : this.model.phase === 'paused' ? '继续救援' : '再试一次';
@@ -1119,13 +1126,22 @@ export class ColorClearView extends Component {
         this.updateDockDeliveries(dt);
         if (this.model.phase === 'playing' && !this.model.escapeReady) {
             this.chase.tick(Math.min(.25, dt));
-            if (this.chase.caught) this.model.caughtByCook();
+            if (this.chase.caught) {
+                this.model.failAtOven();
+                this.ovenShowUntil = this.clock + .56;
+                this.ovenDialogPending = true;
+            }
         }
         if (this.wonDialogPending && this.clock >= this.escapeShowUntil) {
             this.wonDialogPending = false;
             this.refresh();
         }
-        this.drawChaseTrack(dt);
+        if (this.ovenDialogPending && this.clock >= this.ovenShowUntil) {
+            this.ovenDialogPending = false;
+            this.refresh();
+        }
+        this.drawConveyor(dt);
+        this.drawDockDeliveries();
         for (const key of this.dirtyBatches) this.updateBatch(key);
         this.dirtyBatches.clear();
         if (events.length) this.refresh();

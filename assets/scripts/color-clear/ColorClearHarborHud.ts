@@ -1,74 +1,116 @@
 import {Color, Graphics} from 'cc';
-import type {HarborDelivery} from './ColorClearHarborDelivery';
+
+const palette = new Map<string, Color>();
+
+function color(hex: string): Color {
+    let cached = palette.get(hex);
+    if (!cached) {
+        cached = new Color(hex);
+        palette.set(hex, cached);
+    }
+    return cached;
+}
 
 function paint(pen: Graphics, hex: string, shape: () => void): void {
-    pen.fillColor = new Color(hex);
+    pen.fillColor = color(hex);
     shape();
     pen.fill();
 }
 
 function outline(pen: Graphics, hex: string, width: number, shape: () => void): void {
-    pen.strokeColor = new Color(hex);
+    pen.strokeColor = color(hex);
     pen.lineWidth = width;
     shape();
     pen.stroke();
 }
 
-function drawDock(pen: Graphics, scroll: number): void {
-    paint(pen, '#354553', () => pen.roundRect(-262, -36, 524, 72, 19));
-    paint(pen, '#96b4b5', () => pen.roundRect(-259, -32, 518, 65, 17));
-    paint(pen, '#355c6d', () => {
-        pen.moveTo(-253, 5);
-        pen.quadraticCurveTo(-203, 24, -161, 14);
-        pen.quadraticCurveTo(-86, 30, -16, 9);
-        pen.quadraticCurveTo(49, 28, 110, 12);
-        pen.quadraticCurveTo(166, 29, 252, 9);
-        pen.lineTo(252, -20);
-        pen.lineTo(-253, -20);
+function drawConveyor(pen: Graphics, scroll: number, frozen: boolean): void {
+    paint(pen, '#374c5c', () => pen.roundRect(-262, -36, 524, 72, 20));
+    paint(pen, frozen ? '#e3f3f2' : '#fcefd7', () => pen.roundRect(-258, -32, 516, 64, 17));
+    paint(pen, frozen ? '#b7dce9' : '#eadbc4', () => pen.roundRect(-257, -25, 514, 24, 8));
+    outline(pen, '#ffffff93', 1.5, () => {
+        pen.moveTo(-140, 25);
+        pen.lineTo(233, 25);
+        for (let x = -112; x < 210; x += 58) {
+            pen.moveTo(x, 23);
+            pen.lineTo(x, -8);
+        }
+    });
+
+    paint(pen, '#536d7d', () => pen.roundRect(-215, -29, 453, 19, 9));
+    paint(pen, frozen ? '#89bdcf' : '#9ab3ad', () => pen.roundRect(-212, -26, 448, 13, 6));
+    outline(pen, frozen ? '#e2faff' : '#5e807b', 2, () => {
+        const offset = ((scroll % 38) + 38) % 38;
+        for (let x = -157 - offset; x < 226; x += 38) {
+            if (x - 6 < -208) continue;
+            pen.moveTo(x + 6, -15);
+            pen.lineTo(x, -19);
+            pen.lineTo(x + 6, -23);
+        }
+    });
+    paint(pen, '#e6dbc5', () => {
+        pen.circle(-207, -20, 6);
+        pen.circle(229, -20, 6);
+    });
+    paint(pen, '#708890', () => {
+        pen.circle(-207, -20, 2.4);
+        pen.circle(229, -20, 2.4);
+    });
+    outline(pen, '#708890', 1, () => {
+        const angle = scroll / 6;
+        const dx = Math.cos(angle) * 4;
+        const dy = Math.sin(angle) * 4;
+        for (const x of [-207, 229]) {
+            pen.moveTo(x - dx, -20 - dy);
+            pen.lineTo(x + dx, -20 + dy);
+        }
+    });
+
+    // The mint guard sets the safe end apart from the oven.
+    paint(pen, '#659c8b', () => pen.roundRect(215, -11, 29, 19, 7));
+    paint(pen, '#b8e1cd', () => pen.roundRect(219, -8, 21, 13, 4));
+    outline(pen, '#3d746b', 2.5, () => {
+        pen.moveTo(225, -1);
+        pen.lineTo(228, -4);
+        pen.lineTo(234, 2);
+    });
+}
+
+function drawOven(pen: Graphics, frozen: boolean, reachedOven: boolean): void {
+    paint(pen, '#ab685d', () => pen.roundRect(-245, -23, 100, 47, 15));
+    paint(pen, '#df8f77', () => pen.roundRect(-243, -19, 96, 46, 14));
+    paint(pen, '#f3ac8d', () => pen.roundRect(-240, -14, 91, 40, 13));
+    paint(pen, '#cc7d64', () => pen.roundRect(-244, -26, 100, 8, 4));
+    paint(pen, '#fff2d6', () => {
+        pen.roundRect(-231, 18, 31, 4, 2);
+        pen.circle(-222, 5, 4.5);
+    });
+    paint(pen, frozen ? '#76d8e9' : '#ffd180', () => pen.circle(-222, 5, 2.7));
+    outline(pen, '#b86d61', 2, () => {
+        pen.moveTo(-232, -2);
+        pen.lineTo(-221, -2);
+        pen.moveTo(-232, -7);
+        pen.lineTo(-222, -7);
+    });
+
+    // A deep arch with its own light, bounded by the oven's enamel face.
+    paint(pen, '#985450', () => {
+        pen.moveTo(-210, -20);
+        pen.lineTo(-210, -1);
+        pen.bezierCurveTo(-210, 22, -156, 22, -156, -1);
+        pen.lineTo(-156, -20);
         pen.close();
     });
-    paint(pen, '#fff0b6', () => pen.circle(178, 20, 8));
-    outline(pen, '#c7dada88', 2, () => {
-        pen.moveTo(-200, 25);
-        pen.lineTo(-175, 25);
-        pen.moveTo(18, 24);
-        pen.lineTo(41, 24);
-        pen.moveTo(120, 7);
-        pen.lineTo(138, 7);
-        pen.moveTo(-40, -5);
-        pen.lineTo(-12, -5);
+    paint(pen, frozen ? '#527987' : '#713c43', () => {
+        pen.moveTo(-206, -18);
+        pen.lineTo(-206, -2);
+        pen.bezierCurveTo(-206, 17, -160, 17, -160, -2);
+        pen.lineTo(-160, -18);
+        pen.close();
     });
-
-    paint(pen, '#477d86', () => pen.roundRect(-255, -26, 510, 22, 9));
-    outline(pen, '#b2dbca75', 1.5, () => {
-        for (let i = 0; i < 5; i++) {
-            const x = -213 + i * 94 - scroll / 2;
-            const y = -12 - (i % 2) * 5;
-            pen.moveTo(x, y);
-            pen.lineTo(x + 18, y);
-        }
-    });
-    paint(pen, '#b17c5b', () => pen.roundRect(-252, -31, 504, 15, 7));
-    outline(pen, '#e2b27d', 2, () => {
-        pen.moveTo(-245, -18);
-        pen.lineTo(244, -18);
-    });
-    outline(pen, '#774f4b', 2, () => {
-        for (let i = 0; i < 12; i++) {
-            const x = -215 + i * 41 - scroll;
-            pen.moveTo(x, -20);
-            pen.lineTo(x - 5, -28);
-        }
-    });
-
-    for (const x of [-229, 225]) {
-        paint(pen, '#314e53', () => {
-            pen.roundRect(x - 2, -19, 4, 39, 1);
-            pen.roundRect(x - 8, 17, 16, 4, 2);
-        });
-        paint(pen, '#fff0ab53', () => pen.circle(x, 10, 13));
-        paint(pen, '#f9d58b', () => pen.roundRect(x - 4, 6, 8, 10, 2));
-    }
+    paint(pen, frozen ? '#93ccdb' : '#e99164', () => pen.ellipse(-183, -13, 20, 5));
+    paint(pen, frozen ? '#d2f1f1' : reachedOven ? '#fff0bf' : '#ffbf7e',
+        () => pen.ellipse(-183, -13, reachedOven ? 17 : 11, reachedOven ? 3.7 : 2));
 }
 
 function drawRunningDuck(pen: Graphics, x: number, phase: number, running: boolean, caught: boolean): void {
@@ -106,74 +148,25 @@ function drawRunningDuck(pen: Graphics, x: number, phase: number, running: boole
     });
 }
 
-function drawRunningCook(pen: Graphics, x: number, phase: number, running: boolean, frozen: boolean): void {
-    const stride = running ? Math.sin(phase) : 0;
-    const y = running ? Math.abs(Math.cos(phase)) * 3 : 0;
-    paint(pen, '#593f4160', () => pen.ellipse(x, -19, 20, 3));
-    paint(pen, '#4f555d', () => {
-        pen.ellipse(x - 9 - stride * 8, -15 + Math.max(0, -stride * 7), 7, 4);
-        pen.ellipse(x + 7 + stride * 8, -15 + Math.max(0, stride * 7), 7.5, 4);
-    });
-    paint(pen, frozen ? '#5e90a7' : '#6886a2', () => pen.ellipse(x - 3, y - 5, 16, 12));
-    paint(pen, '#f5e4c7', () => pen.ellipse(x + 2, y - 5, 11, 9));
-    paint(pen, '#e9ae93', () => {
-        pen.ellipse(x + 4, y + 8, 15, 12);
-        pen.ellipse(x + 13 + stride * 5, y - 6, 7, 4.5);
-        pen.ellipse(x + 19, y + 6, 5, 4);
-    });
-    paint(pen, frozen ? '#9beaf1' : '#c85f56', () => {
-        pen.moveTo(x - 14, y + 3);
-        pen.quadraticCurveTo(x - 3, y + 2, x + 13, y + 1);
-        pen.quadraticCurveTo(x + 5, y - 7, x - 3, y - 3);
-        pen.lineTo(x - 17 - stride * 3, y - 2);
-        pen.close();
-    });
-    paint(pen, '#fff6df', () => {
-        pen.circle(x - 11, y + 18, 8);
-        pen.circle(x, y + 23, 10);
-        pen.circle(x + 10, y + 20, 8);
-        pen.roundRect(x - 15, y + 11, 33, 9, 3);
-    });
-    paint(pen, '#d8e0d1', () => pen.roundRect(x - 13, y + 11, 29, 3, 1.5));
-    paint(pen, '#613d3c', () => {
-        pen.ellipse(x + 13, y + 9, 1.9, 2.7);
-        pen.ellipse(x + 12, y + 2, 5, 1.8);
-    });
-    if (frozen) {
-        paint(pen, '#7ad8ed55', () => pen.roundRect(x - 23, -20, 47, 49, 7));
-        outline(pen, '#c9f6ff', 1.5, () => {
-            pen.moveTo(x - 20, 23);
-            pen.lineTo(x - 9, 17);
-            pen.moveTo(x + 20, 12);
-            pen.lineTo(x + 14, 2);
-            pen.moveTo(x - 3, -16);
-            pen.lineTo(x + 12, -17);
-        });
-    }
-}
-
-/** A miniature side-scrolling dock, 524 × 72, centered on the HUD node. */
-export function drawHarborChase(pen: Graphics, gap: number, clock: number, frozen: boolean, ended: boolean,
-    caught: boolean, motion: HarborDelivery): void {
+/** A miniature bakery conveyor, 524 × 72, centered on the HUD node. */
+export function drawHarborConveyor(pen: Graphics, duckX: number, scroll: number, stride: number,
+    boost: number, frozen: boolean, ended: boolean, reachedOven: boolean): void {
     pen.clear();
-    const distance = Math.min(1, Math.max(0, gap));
-    const running = !ended;
-    drawDock(pen, motion.scroll);
-    const duckX = motion.duckX;
-    const cookX = Math.max(-207, duckX - (caught ? 29 : 37 + distance * 250));
-
-    if (running && motion.speed > 0) {
-        outline(pen, '#fff8c89d', 1.7, () => {
-            pen.moveTo(duckX - 50 - motion.speed * 5, 9);
-            pen.lineTo(duckX - 37, 9);
-            pen.moveTo(duckX - 50, 2);
-            pen.lineTo(duckX - 35, 2);
-            pen.moveTo(duckX - 46, -7);
-            pen.lineTo(duckX - 33, -7);
+    drawConveyor(pen, scroll, frozen);
+    drawOven(pen, frozen, reachedOven);
+    if (reachedOven) return;
+    const running = !ended && boost > 0;
+    if (running) {
+        outline(pen, '#83a79f', 1.8, () => {
+            pen.moveTo(duckX - 47 - boost * 5, 8);
+            pen.lineTo(duckX - 35, 8);
+            pen.moveTo(duckX - 46, 1);
+            pen.lineTo(duckX - 34, 1);
+            pen.moveTo(duckX - 42, -7);
+            pen.lineTo(duckX - 32, -7);
         });
     }
-    drawRunningCook(pen, cookX, clock * 14, running && !frozen, frozen);
-    drawRunningDuck(pen, duckX, motion.stride * 19, running, caught);
+    drawRunningDuck(pen, duckX, stride * 19, running, duckX < -136);
 }
 
 export function drawHarborDeck(pen: Graphics): void {

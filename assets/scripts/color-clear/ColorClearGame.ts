@@ -171,7 +171,7 @@ export class ColorClearGame {
     private capsuleRhythm = new WeakMap<Capsule, CapsuleRhythm>();
     private readonly exitIds: ReadonlySet<number>;
     private exitLeft = 0;
-    private caughtByChase = false;
+    private reachedOven = false;
 
     constructor(level: Level, rescueTier?: RescueTier, random = Math.random, options: {
         freeStallRescue?: boolean; exitIds?: ReadonlySet<number>; ammoRhythm?: boolean;
@@ -205,7 +205,7 @@ export class ColorClearGame {
 
     get canUseEmergencyReserve(): boolean {
         if (this.rescueTier !== 'challenge' || (!this.freeStallRescue && this.bonusCount === 0) || this.emergencyUsed
-            || this.phase !== 'lost' || this.caughtByChase || this.reward || this.flights.length
+            || this.phase !== 'lost' || this.reachedOven || this.reward || this.flights.length
             || this.slots.some(slot => !slot) || this.reserve.length >= 6) return false;
         const reachable = this.reach ??= reachableColors(this.cells);
         return [...this.supply.map(queue => queue[0]), ...this.reserve]
@@ -227,13 +227,13 @@ export class ColorClearGame {
     get hasExit(): boolean { return this.exitIds.size > 0; }
     get remaining(): number { return this.cells.reduce((n, c) => n + Number(c.alive), 0); }
     get progress(): number { return 1 - this.remaining / Math.max(1, this.cells.length); }
-    get canContinue(): boolean { return this.phase === 'lost' && !this.caughtByChase && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
+    get canContinue(): boolean { return this.phase === 'lost' && !this.reachedOven && !this.continued && !this.reward && this.slots.some(s => !!s && s.ammo > 0); }
     restart(): void {
         this.cells = this.level.cells.map(c => ({ ...c, alive: true })); this.supply = this.level.supply.map(q => q.map(c => ({ ...c })));
         this.capsuleRhythm = new WeakMap();
         this.bonusCount = 0;
         this.exitLeft = this.exitIds.size;
-        this.caughtByChase = false;
+        this.reachedOven = false;
         this.streakColor = null;
         this.streak = 0;
         this.emergencyUsed = false;
@@ -393,10 +393,10 @@ export class ColorClearGame {
     }
     get escapeReady(): boolean { return this.hasExit && this.exitLeft === 0; }
 
-    caughtByCook(): void {
+    failAtOven(): void {
         if (this.phase !== 'playing' || this.escapeReady) return;
-        this.caughtByChase = true;
-        this.reason = '烤鸭师傅追上了';
+        this.reachedOven = true;
+        this.reason = '鸭鸭被送进烤鸭炉了';
         this.phase = 'lost';
         this.events.push({type:'lost'});
     }
