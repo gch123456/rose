@@ -130,10 +130,10 @@ export function drawAmmoRack(pen: Graphics): void {
     }
 }
 
-export function drawPond(pen: Graphics, wizard: boolean): void {
-    fill(pen, wizard ? '#708f9d' : '#7ba196', () => pen.roundRect(-300, -281, 600, 562, 38));
-    fill(pen, wizard ? '#9db3b5' : '#a9bb98', () => pen.circle(204, 174, 56));
-    fill(pen, wizard ? '#608b98' : '#6c9c90', () => {
+export function drawRescueHarbor(pen: Graphics, wizard: boolean): void {
+    fill(pen, wizard ? '#315471' : '#81aaa3', () => pen.roundRect(-300, -281, 600, 562, 38));
+    fill(pen, wizard ? '#e9cf8e' : '#c1c69c', () => pen.circle(204, 174, 56));
+    fill(pen, wizard ? '#3b6074' : '#6c9c90', () => {
         pen.moveTo(-295, -58);
         pen.bezierCurveTo(-175, 53, -131, 48, -42, -22);
         pen.bezierCurveTo(65, -86, 171, 67, 295, -15);
@@ -141,7 +141,7 @@ export function drawPond(pen: Graphics, wizard: boolean): void {
         pen.lineTo(-295, -201);
         pen.close();
     });
-    fill(pen, wizard ? '#4c7887' : '#588e86', () => {
+    fill(pen, wizard ? '#375f70' : '#588e86', () => {
         pen.moveTo(-297, -129);
         pen.bezierCurveTo(-177, -93, -84, -160, 46, -121);
         pen.bezierCurveTo(148, -86, 234, -112, 297, -90);
@@ -151,6 +151,36 @@ export function drawPond(pen: Graphics, wizard: boolean): void {
         pen.quadraticCurveTo(-297, -278, -297, -238);
         pen.close();
     });
+    if (wizard) {
+        fill(pen, '#f8e5afac', () => {
+            for (const [x, y, r] of [[-238,190,2.8],[-161,211,3],[-86,171,2],[126,180,2.4],[251,105,2.2],
+                [-246,103,1.7],[18,217,2],[270,203,1.8],[98,123,1.6]]) pen.circle(x, y, r);
+        });
+    }
+    const island = wizard ? '#2c5365' : '#557d75';
+    fill(pen, island, () => {
+        pen.ellipse(-224, -66, 65, 8);
+        pen.ellipse(228, -103, 52, 8);
+    });
+    rounded(pen, island, -251, -65, 53, 49, 5);
+    rounded(pen, wizard ? '#53768a' : '#a99e79', -245, -61, 41, 41, 4);
+    fill(pen, wizard ? '#325867' : '#977963', () => {
+        pen.moveTo(-260, -21);
+        pen.lineTo(-224, 13);
+        pen.lineTo(-189, -21);
+        pen.close();
+    });
+    rounded(pen, '#e8c581', -233, -58, 16, 26, 4);
+    rounded(pen, '#6b6454', -226, -58, 2, 25, 1);
+    // Small foreground piers and paper lanterns frame the model.
+    for (const [x, y, height] of [[-264,-184,88],[245,-176,84],[-230,-172,54],[274,-179,56]]) {
+        rounded(pen, '#345456', x - 3, y, 8, height, 3);
+        rounded(pen, '#a0825f', x - 1, y + 5, 4, height - 10, 2);
+        if (height < 60) continue;
+        fill(pen, '#d8b36d30', () => pen.circle(x + 11, y + height - 15, 21));
+        rounded(pen, '#dab273', x + 5, y + height - 26, 15, 18, 5);
+        rounded(pen, '#fff0b8', x + 8, y + height - 20, 9, 10, 3);
+    }
     fill(pen, '#d5e9e477', () => {
         pen.roundRect(-246, 150, 103, 12, 6);
         pen.roundRect(-200, 170, 67, 9, 5);
@@ -181,6 +211,48 @@ export function drawPond(pen: Graphics, wizard: boolean): void {
         pen.ellipse(-243, -219, 6, 8);
         pen.ellipse(-235, -217, 6, 9);
     });
+}
+
+export function drawHarborMotion(pen: Graphics, time: number, wizard: boolean): void {
+    pen.clear();
+    for (let i = 0; i < 3; i++) {
+        const float = Math.sin(time * 1.6 + i * 2.1);
+        const x = (i === 1 ? 227 : -232 + i * 21) + float * 9;
+        const y = 27 + i * 25 + float * 3;
+        fill(pen, wizard ? '#b6d3c873' : '#e0edc897', () => pen.ellipse(x, y, 12 + float * 2, 1.8));
+        if (i === 1) {
+            fill(pen, '#f2c47b', () => {
+                pen.moveTo(x - 10, y + 3);
+                pen.lineTo(x, y + 16);
+                pen.lineTo(x + 10, y + 3);
+                pen.close();
+            });
+            rounded(pen, '#d9895f', x - 9, y + 2, 18, 3, 1.5);
+        }
+    }
+}
+
+export function drawOrbitTrail(pen: Graphics, progress: number, tier: number, front: boolean): void {
+    const radius = 176 + tier * 15;
+    const head = progress * Math.PI * 2.7 - 1.2;
+    for (let i = 7; i >= 0; i--) {
+        const angle = head - i * .16;
+        const depth = Math.sin(angle);
+        if ((depth >= 0) !== front) continue;
+        const x = Math.cos(angle) * radius;
+        const y = 172 - depth * 49 + Math.cos(angle) * 20;
+        const size = (1.7 + tier + (8 - i) * .49) * (1 - progress * .45);
+        fill(pen, i < 3 ? '#fff1ab' : '#efc274b0', () => pen.circle(x, y, size));
+        if (i === 0) {
+            fill(pen, '#fffbe1', () => {
+                pen.moveTo(x - size * 2.3, y);
+                pen.lineTo(x, y + size * 1.8);
+                pen.lineTo(x + size * 2.3, y);
+                pen.lineTo(x, y - size * 1.8);
+                pen.close();
+            });
+        }
+    }
 }
 
 export function drawCampCorners(pen: Graphics): void {

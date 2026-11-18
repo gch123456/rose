@@ -51,3 +51,18 @@ test('earned emergency reserve rescues one full-slot stall exactly once and pres
     assert.ok(game.select(0)); advance(game);
     assert.equal(game.phase, 'won');
 });
+
+test('the four-slot rescue can save a true early stall with no ad or prior bonus', () => {
+    const game = new ColorClearGame(level([0], [[tube(0,0)],[],[],[]]), 'challenge', () => .1, {freeStallRescue:true});
+    game.slots = [tube(1,1,4), tube(2,1), tube(3,1), tube(4,1)];
+    game.tick(.05);
+    assert.equal(game.bonusCount, 0);
+    assert.equal(game.phase, 'lost');
+    assert.equal(game.useEmergencyReserve(), true);
+    assert.equal(game.slots.length, 4);
+    assert.deepEqual(game.reserve, [tube(1,1,4)]);
+    assert.equal(game.useEmergencyReserve(), false);
+    assert.ok(game.select(0));
+    advance(game);
+    assert.equal(game.phase, 'won');
+});

@@ -156,11 +156,13 @@ export class ColorClearGame {
 
     readonly rescueTier?: RescueTier;
     private readonly random: () => number;
+    private readonly freeStallRescue: boolean;
 
-    constructor(level: Level, rescueTier?: RescueTier, random = Math.random) {
+    constructor(level: Level, rescueTier?: RescueTier, random = Math.random, options: {freeStallRescue?: boolean} = {}) {
         this.level = level;
         this.rescueTier = rescueTier;
         this.random = random;
+        this.freeStallRescue = options.freeStallRescue === true;
         this.restart();
     }
 
@@ -183,7 +185,7 @@ export class ColorClearGame {
     }
 
     get canUseEmergencyReserve(): boolean {
-        if (this.rescueTier !== 'challenge' || this.bonusCount === 0 || this.emergencyUsed
+        if (this.rescueTier !== 'challenge' || (!this.freeStallRescue && this.bonusCount === 0) || this.emergencyUsed
             || this.phase !== 'lost' || this.reward || this.flights.length
             || this.slots.some(slot => !slot) || this.reserve.length >= 6) return false;
         const reachable = this.reach ??= reachableColors(this.cells);

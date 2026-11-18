@@ -1,4 +1,5 @@
-import {drawAmmoRack, drawCampCorners, drawGear, drawLauncher, drawPond, drawRescueModule, drawSpareAmmo} from './ColorClearRescueArt';
+import {RescueFeedback} from './ColorClearRescueFeedback';
+import {drawAmmoRack, drawCampCorners, drawGear, drawHarborMotion, drawLauncher, drawOrbitTrail, drawRescueHarbor, drawRescueModule, drawSpareAmmo} from './ColorClearRescueArt';
 import {fitRescueScreen, mixRescueColors, RESCUE_STAGE} from './ColorClearNativeStyle';
 import {BLOCK_INDEX_CAPACITY, BLOCK_VERTEX_CAPACITY, BlockMeshIndex} from './ColorClearBlockMesh';
 import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Rect, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
@@ -17,6 +18,7 @@ const CREAM = '#f9f6ec';
 const TEAL = '#245d51';
 const SLOT_Y = -178;
 const FRONT_Y = -304;
+const ORBIT_SECONDS = .76;
 const MUSIC_KEY = 'color-clear.music';
 const EFFECTS_KEY = 'color-clear.muted';
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
@@ -45,6 +47,7 @@ export class ColorClearView extends Component {
     private campStatus!: Label;
     private continueButton!: Card;
     private emergencyButton!: Card;
+    private restartButton!: Card;
     private albumCards: Card[] = [];
     private albumPortraits: Sprite[] = [];
     private albumMarks: Label[] = [];
@@ -52,7 +55,13 @@ export class ColorClearView extends Component {
     private albumFromCamp = false;
     private runStarted = false;
     private materialsByColor = new Map<string, Material>();
-    private bonusUntil = 0;
+    private readonly feedback = new RescueFeedback();
+    private orbitTier = 0;
+    private orbitStarted = -Infinity;
+    private sameColorUntil = -Infinity;
+    private readonly muzzleFlashes = new Map<number, {until: number; color: number}>();
+    private ambientTick = -Infinity;
+    private fullSince = Infinity;
     private bonusLabel!: Label;
     private world!: Node;
     private ui!: Node;
@@ -108,6 +117,9 @@ export class ColorClearView extends Component {
     private effectsButton!: Card;
     private stageRoot!: Node;
     private stagePen!: Graphics;
+    private harborMotion!: Graphics;
+    private backTrail!: Graphics;
+    private frontTrail!: Graphics;
     private screenFit = {x: 0, y: 0, scale: 1};
     private lastHitSound = 0;
     private clock = 0;
@@ -150,13 +162,14 @@ export class ColorClearView extends Component {
         this.uiCamera = uiCamera;
         this.title = this.text(this.ui, '', 34, 0, 482, 414, '#204d42');
         this.title.isBold = true;
-        this.bonusLabel = this.text(this.ui, '✦ 同色 5 连消', 28, 0, 398, 400, '#8a5018');
+        this.bonusLabel = this.text(this.ui, '', 30, 0, 400, 400, '#fff0a1');
+        this.bonusLabel.isBold = true;
         this.bonusLabel.node.active = false;
-        this.settingsButton(this.ui, -266, 493);
+        this.settingsButton(this.ui, -266, 515);
         this.remaining = this.text(this.ui, '', 18, 0, 366, 540, '#486a61');
         this.text(this.ui, '拖动转面', 18, 0, -89, 160, '#fff7e4');
         this.text(this.ui, '发射台', 17, -250, -124, 110, '#42675d');
-        this.loadHint = this.text(this.ui, '点前排装填', 17, -228, -238, 140, '#42675d');
+        this.loadHint = this.text(this.ui, '点前排装填', 17, -205, -238, 190, '#42675d');
         this.status = this.text(this.ui, '', 16, 90, -124, 360, '#486a61');
         for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, SLOT_Y, 88, 76, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
         for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-231,86,30,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
@@ -171,7 +184,7 @@ export class ColorClearView extends Component {
                     flight.label.isBold = true;
                     flight.label.string = String(capsule.ammo);
                     flight.node.off(Node.EventType.TOUCH_END); // Decorative flight must not intercept another supply tap.
-                    tween(flight.node).to(.18, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0), scale: new Vec3(.58, .58, 1) }).call(() => flight.node.destroy()).start();
+                    tween(flight.node).to(.12, { position: new Vec3(-245 + slot * 98, SLOT_Y, 0), scale: new Vec3(.58, .58, 1) }).call(() => flight.node.destroy()).start();
                 }
             } });
             card.label.fontSize = row ? 23 : 25;
@@ -194,15 +207,16 @@ export class ColorClearView extends Component {
             else this.load(this.model.phase === 'won' ? LAST_RESCUE : this.model.level.id);
             this.refresh(true);
         }, '#acd6c2');
-        this.emergencyButton = this.button(this.dialog, '✦ 应急暂存一颗', 0, -130, 440, 64, () => {
+        this.emergencyButton = this.button(this.dialog, '免费暂存一颗', 0, -130, 440, 64, () => {
             if (this.model.useEmergencyReserve()) this.refresh(true);
         }, '#f9d590');
-        this.button(this.dialog, '重新开始这一关', 0, -222, 440, 64, () => this.load(this.model.level.id));
+        this.restartButton = this.button(this.dialog, '重新开始这一关', 0, -222, 440, 64, () => this.load(this.model.level.id));
         this.rewardPanel=this.child(this.ui,'SimulatedReward',true);this.rewardPanel.addComponent(BlockInputEvents);this.rewardPanel.addComponent(UITransform).setContentSize(640,1120);this.paint(this.rewardPanel.addComponent(Graphics),640,1120,'#eef2e0',0);
         this.rewardTitle=this.text(this.rewardPanel,'开发测试 · 模拟广告',28,0,160,560);
         this.text(this.rewardPanel,'没有接入真实微信广告',21,0,80,520,'#718678');
         this.button(this.rewardPanel,'模拟看完并领取',0,-30,440,82,()=>this.finishReward(true),'#68ad89');
         this.button(this.rewardPanel,'取消，不领取',0,-145,440,72,()=>this.finishReward(false));this.rewardPanel.active=false;
+        this.frontTrail = this.child(this.ui, 'FrontComboTrail', true).addComponent(Graphics);
         this.projectilePen=this.child(this.ui,'ProjectileOverlay',true).addComponent(Graphics);
         this.albumPanel = this.child(this.ui, 'Album', true);
         this.albumPanel.addComponent(BlockInputEvents);
@@ -229,7 +243,7 @@ export class ColorClearView extends Component {
         this.createCamp();
         this.createSettings();
         this.sound = this.node.addComponent(AudioSource);
-        for (const name of ['load', 'hit', 'chain', 'won', 'lost']) resources.load(`color-clear-audio/${name}`, AudioClip, (error, clip) => { if (!error && clip && isValid(this.node)) this.clips.set(name, clip); });
+        for (const name of ['load', 'hit', 'hit-lift', 'hit-peak', 'chain', 'surge', 'won', 'lost']) resources.load(`color-clear-audio/${name}`, AudioClip, (error, clip) => { if (!error && clip && isValid(this.node)) this.clips.set(name, clip); });
         this.music = this.node.addComponent(AudioSource);
         this.music.loop = true;
         this.music.volume = .22;
@@ -290,6 +304,13 @@ export class ColorClearView extends Component {
         this.stageRoot.layer = STAGE_LAYER;
         this.stagePen = this.panel(this.stageRoot, 'ModelStage', 0, 167, 600, 562, '#edf8f3', '#bfd8cc', 38);
         this.paintStage(false);
+        const motion = this.child(this.stageRoot, 'HarborMotion', false);
+        motion.layer = STAGE_LAYER;
+        motion.setPosition(0, 167);
+        this.harborMotion = motion.addComponent(Graphics);
+        const trail = this.child(this.stageRoot, 'BackComboTrail', false);
+        trail.layer = STAGE_LAYER;
+        this.backTrail = trail.addComponent(Graphics);
         this.panel(this.stageRoot, 'LaunchRail', 0, SLOT_Y - 2, 600, 90, '#b7ccc0', '#86a9a2', 23);
         const rack = this.child(this.stageRoot, 'AmmoRack', false);
         rack.layer = STAGE_LAYER;
@@ -298,7 +319,7 @@ export class ColorClearView extends Component {
     }
     private paintStage(wizard: boolean): void {
         this.paint(this.stagePen, 600, 562, '#edf8f3', 38);
-        if (this.showBackground) drawPond(this.stagePen, wizard);
+        if (this.showBackground) drawRescueHarbor(this.stagePen, wizard);
         this.outline(this.stagePen, 600, 562, '#c5d8cc', 38);
     }
     private layoutScreen(): void {
@@ -399,7 +420,7 @@ export class ColorClearView extends Component {
         try {
             if (id === LAST_RESCUE) this.wizardQueue = chooseReleaseQueue(this.wizardQueue);
             next = new ColorClearGame(makeReleaseLevel(id, this.wizardPayload, this.wizardQueue),
-                id === LAST_RESCUE ? 'challenge' : 'warmup');
+                id === LAST_RESCUE ? 'challenge' : 'warmup', Math.random, {freeStallRescue: true});
         } catch (error) {
             this.campStatus.string = '关卡数据无法加载';
             this.resultText.string = '关卡数据无法加载';
@@ -414,7 +435,16 @@ export class ColorClearView extends Component {
         this.paintStage(id === LAST_RESCUE);
         this.orbit.reset();
         this.dragId = -1;
-        this.bonusUntil = 0;
+        this.feedback.reset();
+        this.orbitTier = 0;
+        this.orbitStarted = -Infinity;
+        this.sameColorUntil = -Infinity;
+        this.muzzleFlashes.clear();
+        this.ambientTick = -Infinity;
+        this.fullSince = Infinity;
+        this.harborMotion.clear();
+        this.frontTrail.clear();
+        this.backTrail.clear();
         this.runStarted = true;
         this.camp.active = false;
         this.clearBatches();
@@ -453,7 +483,50 @@ export class ColorClearView extends Component {
         this.world.active = true;
         this.refresh(true);
     }
-    private soundFor(name: string): void { const clip = this.clips.get(name); if (!this.effectsMuted && clip) this.sound.playOneShot(clip, name === 'hit' ? .2 : .45); }
+    private soundFor(name: string): void {
+        const clip = this.clips.get(name);
+        if (!this.effectsMuted && clip) this.sound.playOneShot(clip, name.startsWith('hit') ? .36 : .53);
+    }
+    private playHitFeedback(): void {
+        const tier = this.feedback.hit(this.clock);
+        if (tier) {
+            this.orbitStarted = this.clock;
+            this.orbitTier = tier;
+            this.soundFor(tier === 3 ? 'surge' : 'chain');
+            this.lastHitSound = this.clock;
+        } else if (this.clock - this.lastHitSound >= .064) {
+            this.soundFor(this.feedback.level >= 2 ? 'hit-peak' : this.feedback.level ? 'hit-lift' : 'hit');
+            this.lastHitSound = this.clock;
+        }
+    }
+    private drawRescueFeedback(): void {
+        const count = this.feedback.count;
+        this.bonusLabel.node.active = count >= 5 && this.clock - this.feedback.lastHit < .72;
+        if (this.bonusLabel.node.active) {
+            this.bonusLabel.string = `${count} 连消${this.clock < this.sameColorUntil ? ' · 同色 ×5' : ''}`;
+        }
+        if (this.showBackground && this.clock - this.ambientTick >= 1 / 15) {
+            this.ambientTick = this.clock;
+            drawHarborMotion(this.harborMotion, this.clock, this.model.level.id === LAST_RESCUE);
+        }
+        if (!this.orbitTier) return;
+        const progress = (this.clock - this.orbitStarted) / ORBIT_SECONDS;
+        this.backTrail.clear();
+        this.frontTrail.clear();
+        if (progress >= 1) {
+            this.orbitTier = 0;
+            return;
+        }
+        drawOrbitTrail(this.backTrail, progress, this.orbitTier, false);
+        drawOrbitTrail(this.frontTrail, progress, this.orbitTier, true);
+    }
+    private updateLoadHint(): void {
+        const waiting = this.model.phase === 'playing' && !this.model.flights.length && this.model.slots.every(Boolean);
+        if (!waiting) this.fullSince = Infinity;
+        else if (!Number.isFinite(this.fullSince)) this.fullSince = this.clock;
+        const label = this.clock - this.fullSince >= .7 ? '转面找同色' : '点前排装填';
+        if (this.loadHint.string !== label) this.loadHint.string = label;
+    }
     private clearBatches(): void {
         for (const {node, mesh} of this.batches.values()) {
             node.active = false;
@@ -560,7 +633,11 @@ export class ColorClearView extends Component {
         this.continueButton.label.string = this.model.phase === 'won'
             ? this.model.level.id === FIRST_RESCUE ? '下一关 · 法师鸭' : '再救一次'
             : this.model.phase === 'paused' ? '继续救援' : '再试一次';
-        this.emergencyButton.node.active = this.model.canUseEmergencyReserve;
+        const canRescue = this.model.canUseEmergencyReserve;
+        this.emergencyButton.node.active = canRescue;
+        this.emergencyButton.node.setPosition(0, -40);
+        this.continueButton.node.setPosition(0, canRescue ? -136 : -40);
+        this.restartButton.node.active = this.model.phase === 'paused';
         this.phaseText.string = this.model.phase === 'won' ? '安全抵达！' : this.model.phase === 'lost' ? '换个顺序再来' : '休息一下';
         this.resultText.string = this.model.phase === 'lost' ? this.model.reason : `已清除 ${this.model.cells.length - this.model.remaining} 块`;
     }
@@ -598,10 +675,21 @@ export class ColorClearView extends Component {
             this.hitMarkers[i].life -= dt;
             if (this.hitMarkers[i].life <= 0) this.hitMarkers.splice(i, 1);
         }
-        const visible = flights.length > 0 || this.fragments.length > 0 || this.hitMarkers.length > 0;
+        const visible = flights.length > 0 || this.fragments.length > 0 || this.hitMarkers.length > 0 || this.muzzleFlashes.size > 0;
         if (!visible && !this.paintedEffects) return;
         pen.clear();
         this.paintedEffects = visible;
+        for (const [slot, flash] of this.muzzleFlashes) {
+            const time = flash.until - this.clock;
+            if (time <= 0) { this.muzzleFlashes.delete(slot); continue; }
+            const x = -245 + slot * 98, y = SLOT_Y + 34, width = 4 + time * 58;
+            pen.fillColor = this.shotColors[flash.color];
+            pen.ellipse(x, y, width, width * .48);
+            pen.fill();
+            pen.fillColor = this.reticleWhite;
+            pen.circle(x, y + 3, width * .41);
+            pen.fill();
+        }
         const targetsInView = flights.length || this.hitMarkers.length
             ? this.model.visibleVoxelPositions([...flights.map(flight => flight.target), ...this.hitMarkers.map(mark => mark.id)])
             : null;
@@ -665,7 +753,7 @@ export class ColorClearView extends Component {
         const corners = this.child(this.camp, 'ArtworkCorners', true);
         corners.setPosition(0, 94);
         drawCampCorners(corners.addComponent(Graphics));
-        this.settingsButton(this.camp, -266, 493);
+        this.settingsButton(this.camp, -266, 515);
         this.text(this.camp, '鸭命要紧', 66, 0, 477, 420, '#17493e').isBold = true;
         this.panel(this.camp, 'Mission', 0, -272, 598, 140, '#fff9e9', '#e7d3aa', 29);
         this.text(this.camp, '救援任务', 19, -185, -230, 160, '#76552e').isBold = true;
@@ -814,7 +902,6 @@ export class ColorClearView extends Component {
     update(dt: number): void {
         this.clock += dt;
         if (this.camp.active || this.albumPanel.active || this.settingsPanel.active) return;
-        this.bonusLabel.node.active = this.clock < this.bonusUntil;
         this.orbit.step(this.model, dt, this.dragId >= 0);
         this.model.tick(dt);
         if (this.renderedYaw !== this.model.yaw || this.renderedPitch !== this.model.pitch) {
@@ -831,9 +918,6 @@ export class ColorClearView extends Component {
                 this.album.book.unlock(this.model.level.id);
                 this.unlocked = 2;
                 try { sys.localStorage.setItem(PROGRESS_KEY, '2'); } catch { /* storage optional */ }
-            } else if (event.type === 'bonus') {
-                this.bonusUntil = this.clock + 1.1;
-                this.soundFor('chain');
             } else if (event.type === 'clear' && event.cell) {
                 if (this.hitMarkers.length >= 9) this.hitMarkers.shift();
                 this.hitMarkers.push({id: event.cell.id, life: .18, fresh: true});
@@ -841,16 +925,19 @@ export class ColorClearView extends Component {
                 if (detail) detail.active = false;
                 for (const key of this.blockIndex!.dirtyChunks(event.cell)) this.dirtyBatches.add(key);
             }
-            if (event.type === 'hit' && this.clock - this.lastHitSound > .045) {
-                this.soundFor('hit');
-                this.lastHitSound = this.clock;
-            } else if (event.type === 'load' || event.type === 'chain' || event.type === 'won' || event.type === 'lost') {
+            if (event.type === 'hit') this.playHitFeedback();
+            else if (event.type === 'fire' && event.slot !== undefined && event.color !== undefined) {
+                this.muzzleFlashes.set(event.slot, {until: this.clock + .105, color: event.color});
+            } else if (event.type === 'bonus') this.sameColorUntil = this.clock + .55;
+            else if (event.type === 'load' || event.type === 'won' || event.type === 'lost') {
                 this.soundFor(event.type);
             }
         }
         for (const key of this.dirtyBatches) this.updateBatch(key);
         this.dirtyBatches.clear();
         if (events.length) this.refresh();
+        this.updateLoadHint();
+        this.drawRescueFeedback();
         this.drawProjectiles(dt);
     }
     onDestroy(): void {
