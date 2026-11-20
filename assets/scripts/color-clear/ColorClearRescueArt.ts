@@ -81,15 +81,18 @@ export function drawLauncher(pen: Graphics, color: string | undefined, locked: b
     rounded(pen, '#f7c7b0aa', -20, 27, 40, 3, 1.5);
     if (!locked) {
         fill(pen, '#496e74', () => pen.ellipse(0, 30, 9.5, 3.7));
-        if (color) {
-            const shade = mixRescueColors(color, INK, .24);
-            const glaze = mixRescueColors(color, '#ffedcd', .19);
-            rounded(pen, shade, -29, -18, 58, 37, 13);
-            rounded(pen, glaze, -28, -13, 56, 32, 12);
-            rounded(pen, mixRescueColors(color, '#fff5dd', .63), -17, 14, 25, 2.5, 1.25);
-        }
         rounded(pen, color ? '#ffd180' : '#789894', -7, -27, 14, 3, 1.5);
     }
+}
+
+export function drawLauncherAmmo(pen: Graphics, color: string | undefined): void {
+    pen.clear();
+    if (!color) return;
+    const shade = mixRescueColors(color, INK, .24);
+    const glaze = mixRescueColors(color, '#ffedcd', .19);
+    rounded(pen, shade, -29, -18, 58, 37, 13);
+    rounded(pen, glaze, -28, -13, 56, 32, 12);
+    rounded(pen, mixRescueColors(color, '#fff5dd', .63), -17, 14, 25, 2.5, 1.25);
 }
 
 export function drawSpareAmmo(pen: Graphics, color: string, mystery: boolean): void {

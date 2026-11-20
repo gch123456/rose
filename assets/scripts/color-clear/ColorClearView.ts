@@ -1,5 +1,5 @@
-import {RescueFeedback} from './ColorClearRescueFeedback';
-import {drawAmmoRack, drawCampCorners, drawGear, drawHarborMotion, drawLauncher, drawOrbitTrail, drawRescueHarbor, drawRescueModule, drawSpareAmmo} from './ColorClearRescueArt';
+import {hitFountain, launcherRecoil, RescueFeedback} from './ColorClearRescueFeedback';
+import {drawAmmoRack, drawCampCorners, drawGear, drawHarborMotion, drawLauncher, drawLauncherAmmo, drawOrbitTrail, drawRescueHarbor, drawRescueModule, drawSpareAmmo} from './ColorClearRescueArt';
 import {fitRescueScreen, mixRescueColors, RESCUE_STAGE} from './ColorClearNativeStyle';
 import {BLOCK_INDEX_CAPACITY, BLOCK_VERTEX_CAPACITY, BlockMeshIndex} from './ColorClearBlockMesh';
 import { _decorator, Component, Node, Camera, Canvas, UITransform, Graphics, Label, Color, Layers, Mesh, MeshRenderer, Material, primitives, utils, input, Input, EventTouch, view, ResolutionPolicy, game, Game, resources, AudioClip, AudioSource, sys, isValid, Vec3, Quat, BlockInputEvents, tween, ImageAsset, Rect, Texture2D, SpriteFrame, Sprite, JsonAsset } from 'cc';
@@ -30,6 +30,7 @@ const EFFECTS_KEY = 'color-clear.muted';
 const PROGRESS_KEY = 'color-clear.campaign.unlocked.v2';
 const OLD_PROGRESS_KEY = 'color-clear.campaign.unlocked.v1';
 type Card = { node: Node; pen: Graphics; label: Label; paintKey?: string };
+type Launcher = Card & { ammoPen: Graphics; recoilAt: number };
 type BlockBatch = { node: Node; renderer: MeshRenderer; mesh: Mesh };
 /** Attach only to a new empty scene after selecting the colorClear engine profile.
  * Browser preview is validated independently; this adapter requires Creator import/runtime validation. */
@@ -108,7 +109,7 @@ export class ColorClearView extends Component {
     private readonly screenPoint = new Vec3();
     private readonly uiPoint = new Vec3();
     private paintedEffects = false;
-    private fragments: { x: number; y: number; vx: number; vy: number; life: number; color: Color }[] = [];
+    private fragments: { x: number; y: number; vx: number; vy: number; life: number; color: Color; size: number; glint: boolean }[] = [];
     private fragmentColors: Color[] = [];
     private blockIndex: BlockMeshIndex | null = null;
     private readonly batches = new Map<string, BlockBatch>();
@@ -118,7 +119,7 @@ export class ColorClearView extends Component {
     private meshRadius = 1;
     private renderedYaw = NaN;
     private renderedPitch = NaN;
-    private slots: Card[] = [];
+    private slots: Launcher[] = [];
     private lastDrag = 0;
     private supplies: Card[] = [];
     private title!: Label;
@@ -205,7 +206,14 @@ export class ColorClearView extends Component {
         this.text(this.ui, '发射台', 17, -250, -124, 110, '#42675d');
         this.loadHint = this.text(this.ui, '点前排装填', 17, -205, -238, 190, '#42675d');
         this.status = this.text(this.ui, '', 16, 90, -124, 360, '#486a61');
-        for (let i = 0; i < 6; i++) this.slots.push(this.button(this.ui, '', -245 + i * 98, SLOT_Y, 88, 76, () => {if(i===this.model.slots.length)this.startReward('slot');}, '#f0f2e9'));
+        for (let i = 0; i < 6; i++) {
+            const card = this.button(this.ui, '', -245 + i * 98, SLOT_Y, 88, 76,
+                () => { if (i === this.model.slots.length) this.startReward('slot'); }, '#f0f2e9');
+            const ammo = this.child(card.node, 'LauncherAmmo', true);
+            const ammoPen = ammo.addComponent(Graphics);
+            ammo.addChild(card.label.node);
+            this.slots.push({...card, ammoPen, recoilAt: -Infinity});
+        }
         for(let i=0;i<6;i++){const card=this.button(this.ui,'',-245+i*98,-231,86,30,()=>{if(this.model.takeReserve(i))this.refresh(true);});card.node.active=false;this.reserveCards.push(card);}
         for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
             const card = this.button(this.ui, '', -222 + col * 148, (row === 0 ? FRONT_Y : -340 - row * 44), 134, row ? 38 : 76, () => { if (row === 0 && this.model.phase === 'playing') {
@@ -504,6 +512,7 @@ export class ColorClearView extends Component {
         this.orbitStarted = -Infinity;
         this.sameColorUntil = -Infinity;
         this.muzzleFlashes.clear();
+        for (const slot of this.slots) slot.recoilAt = -Infinity;
         this.ambientTick = -Infinity;
         this.fullSince = Infinity;
         this.harborMotion.clear();
@@ -759,10 +768,22 @@ export class ColorClearView extends Component {
         return this.ui.getComponent(UITransform)!.convertToNodeSpaceAR(this.uiPoint, this.localPoint);
     }
     private burst(cell: Voxel): void {
-        if (this.fragments.length >= 28) return;
         const point = this.projectCell(cell);
-        this.fragments.push({x: point.x, y: point.y, vx: (Math.random() - .5) * 84,
-            vy: 40 + Math.random() * 44, life: .28, color: this.fragmentColors[cell.color]});
+        const color = this.fragmentColors[cell.color];
+        const rise = Math.sqrt(2 * 660 * Math.max(12, 360 - point.y));
+        const strong = this.feedback.level > 0 && this.clock - this.feedback.lastHit <= .28;
+        for (const chip of hitFountain(strong, 64 - this.fragments.length)) {
+            this.fragments.push({...chip, x: point.x, y: point.y, vy: Math.min(chip.vy, rise), color});
+        }
+    }
+    private animateLauncherAmmo(): void {
+        this.slots.forEach((card, index) => {
+            const elapsed = this.model.phase === 'playing' && this.model.slots[index]
+                ? this.clock - card.recoilAt : Infinity;
+            const motion = launcherRecoil(elapsed);
+            const node = card.ammoPen.node;
+            if (motion.x !== node.position.x || motion.y !== node.position.y) node.setPosition(motion.x, motion.y);
+        });
     }
     private refresh(_force = false): void {
         this.title.string = `第 ${String(this.stageIndex() + 1).padStart(2, '0')} 关 · ${this.model.level.name}`;
@@ -776,6 +797,7 @@ export class ColorClearView extends Component {
             if (card.paintKey !== key) {
                 card.paintKey = key;
                 drawLauncher(card.pen, fill, locked);
+                drawLauncherAmmo(card.ammoPen, fill);
                 card.label.color = new Color(locked ? '#526968' : '#25434a');
                 card.label.fontSize = locked ? 19 : 20;
                 card.label.isBold = true;
@@ -860,7 +882,7 @@ export class ColorClearView extends Component {
         const pen = this.projectilePen;
         const flights = this.chase.caught ? [] : this.model.flights;
         for (let i = this.hitMarkers.length - 1; i >= 0; i--) {
-            this.hitMarkers[i].life -= dt;
+            if (!this.hitMarkers[i].fresh) this.hitMarkers[i].life -= dt;
             if (this.hitMarkers[i].life <= 0) this.hitMarkers.splice(i, 1);
         }
         const visible = flights.length > 0 || this.fragments.length > 0 || this.hitMarkers.length > 0 || this.muzzleFlashes.size > 0;
@@ -918,10 +940,19 @@ export class ColorClearView extends Component {
             if (particle.life <= 0) { this.fragments.splice(i, 1); continue; }
             particle.x += particle.vx * dt;
             particle.y += particle.vy * dt;
-            particle.vy -= 220 * dt;
-            const size = 2 + 16 * particle.life;
-            pen.fillColor = particle.color;
-            pen.rect(particle.x, particle.y, size, size);
+            particle.vy -= 660 * dt;
+            if (particle.y < -106 || particle.y > 365 || Math.abs(particle.x) > 295) continue;
+            const size = particle.size * Math.min(1, particle.life / .12);
+            pen.fillColor = particle.glint ? this.reticleGold : particle.color;
+            if (particle.glint) {
+                pen.moveTo(particle.x, particle.y + size);
+                pen.lineTo(particle.x + size * .65, particle.y);
+                pen.lineTo(particle.x, particle.y - size);
+                pen.lineTo(particle.x - size * .65, particle.y);
+                pen.close();
+            } else {
+                pen.roundRect(particle.x - size * .5, particle.y - size * .5, size, size, 1.3);
+            }
             pen.fill();
         }
     }
@@ -1117,6 +1148,7 @@ export class ColorClearView extends Component {
             }
             if (event.type === 'hit') this.playHitFeedback();
             else if (event.type === 'fire' && event.slot !== undefined && event.color !== undefined) {
+                this.slots[event.slot].recoilAt = this.clock;
                 this.muzzleFlashes.set(event.slot, {until: this.clock + .105, color: event.color});
             } else if (event.type === 'bonus') this.sameColorUntil = this.clock + .55;
             else if (event.type === 'load' || event.type === 'won' || event.type === 'lost') {
@@ -1147,6 +1179,7 @@ export class ColorClearView extends Component {
         if (events.length) this.refresh();
         this.updateLoadHint();
         this.drawRescueFeedback();
+        this.animateLauncherAmmo();
         this.drawProjectiles(dt);
     }
     onDestroy(): void {
