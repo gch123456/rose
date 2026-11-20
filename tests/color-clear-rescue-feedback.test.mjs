@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RescueFeedback, hitFountain, launcherRecoil } from '../assets/scripts/color-clear/ColorClearRescueFeedback.ts';
+import { RescueFeedback, hitFountain, launcherRecoil, volleyPellet } from '../assets/scripts/color-clear/ColorClearRescueFeedback.ts';
 
 test('real hits grow the combo at 5, 12 and 20, and silence resets the pace', () => {
     const pace = new RescueFeedback();
@@ -42,4 +42,12 @@ test('hit fountain fans out upward, grows with a combo and respects the particle
     assert.ok(streak.every(chip => chip.vy > 0 && chip.life < .65));
     assert.equal(hitFountain(true, 2).length, 2);
     assert.deepEqual(hitFountain(true, 0), []);
+});
+
+test('a volley spreads into three lanes and converges at impact', () => {
+    for (const lane of [-1, 0, 1]) {
+        assert.deepEqual(volleyPellet(0, lane), {along: 0, across: lane * 0});
+        assert.deepEqual(volleyPellet(1, lane), {along: 1, across: lane * 0});
+    }
+    assert.deepEqual([-1, 0, 1].map(lane => volleyPellet(.5, lane).across), [-15, 0, 15]);
 });

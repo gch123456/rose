@@ -41,3 +41,10 @@ export function hitFountain(strong: boolean, available: number, random = Math.ra
         };
     });
 }
+
+/** Three visible pellets spread in flight and converge on the confirmed target. */
+export function volleyPellet(progress: number, lane: number): {along: number; across: number} {
+    const t = Math.max(0, Math.min(1, progress));
+    const fan = t * (1 - t) * 4;
+    return {along: t + lane * .085 * fan, across: lane * 15 * fan};
+}

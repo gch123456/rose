@@ -1,4 +1,4 @@
-import {hitFountain, launcherRecoil, RescueFeedback} from './ColorClearRescueFeedback';
+import {hitFountain, launcherRecoil, RescueFeedback, volleyPellet} from './ColorClearRescueFeedback';
 import {drawAmmoRack, drawCampCorners, drawGear, drawHarborMotion, drawLauncher, drawLauncherAmmo, drawOrbitTrail, drawRescueHarbor, drawRescueModule, drawSpareAmmo} from './ColorClearRescueArt';
 import {fitRescueScreen, mixRescueColors, RESCUE_STAGE} from './ColorClearNativeStyle';
 import {BLOCK_INDEX_CAPACITY, BLOCK_VERTEX_CAPACITY, BlockMeshIndex} from './ColorClearBlockMesh';
@@ -103,8 +103,10 @@ export class ColorClearView extends Component {
     private readonly reticleInk = new Color('#1d4149');
     private readonly reticleGold = new Color('#ffdb7a');
     private readonly reticleWhite = new Color('#fffcf0');
+    private readonly burstHalo = new Color('#ffedaa99');
+    private readonly emptyBursts = new Map<number, {until: number; color: number}>();
     private shotColors: Color[] = [];
-    private hitMarkers: {id: number; life: number; fresh: boolean}[] = [];
+    private hitMarkers: {id: number; life: number; fresh: boolean; finishing?: boolean}[] = [];
     private readonly localPoint = new Vec3();
     private readonly screenPoint = new Vec3();
     private readonly uiPoint = new Vec3();
@@ -512,6 +514,7 @@ export class ColorClearView extends Component {
         this.orbitStarted = -Infinity;
         this.sameColorUntil = -Infinity;
         this.muzzleFlashes.clear();
+        this.emptyBursts.clear();
         for (const slot of this.slots) slot.recoilAt = -Infinity;
         this.ambientTick = -Infinity;
         this.fullSince = Infinity;
@@ -767,11 +770,11 @@ export class ColorClearView extends Component {
         this.uiCamera.screenToWorld(this.screenPoint, this.uiPoint);
         return this.ui.getComponent(UITransform)!.convertToNodeSpaceAR(this.uiPoint, this.localPoint);
     }
-    private burst(cell: Voxel): void {
+    private burst(cell: Voxel, finishing = false): void {
         const point = this.projectCell(cell);
         const color = this.fragmentColors[cell.color];
         const rise = Math.sqrt(2 * 660 * Math.max(12, 360 - point.y));
-        const strong = this.feedback.level > 0 && this.clock - this.feedback.lastHit <= .28;
+        const strong = finishing || (this.feedback.level > 0 && this.clock - this.feedback.lastHit <= .28);
         for (const chip of hitFountain(strong, 64 - this.fragments.length)) {
             this.fragments.push({...chip, x: point.x, y: point.y, vy: Math.min(chip.vy, rise), color});
         }
@@ -878,6 +881,30 @@ export class ColorClearView extends Component {
         pen.lineWidth = hit ? 3 : 2;
         trace();
     }
+    private drawShotVolley(x: number, y: number, endX: number, endY: number, t: number, color: Color): void {
+        const pen = this.projectilePen;
+        const dx = endX - x, dy = endY - y;
+        const scale = Math.hypot(dx, dy) || 1;
+        const sideX = -dy / scale, sideY = dx / scale;
+        for (let lane = -1; lane <= 1; lane++) {
+            const head = volleyPellet(t, lane);
+            const tail = volleyPellet(t - .20, lane);
+            const px = x + dx * head.along + sideX * head.across;
+            const py = y + dy * head.along + sideY * head.across + 36 * t * (1 - t);
+            pen.strokeColor = color;
+            pen.lineWidth = lane === 0 ? 4 : 2.4;
+            pen.moveTo(x + dx * tail.along + sideX * tail.across,
+                y + dy * tail.along + sideY * tail.across);
+            pen.lineTo(px, py);
+            pen.stroke();
+            pen.fillColor = this.reticleInk;
+            pen.circle(px, py, lane === 0 ? 5.4 : 4.2);
+            pen.fill();
+            pen.fillColor = lane === 0 ? this.reticleWhite : color;
+            pen.circle(px, py, lane === 0 ? 4 : 2.9);
+            pen.fill();
+        }
+    }
     private drawProjectiles(dt: number): void {
         const pen = this.projectilePen;
         const flights = this.chase.caught ? [] : this.model.flights;
@@ -885,7 +912,7 @@ export class ColorClearView extends Component {
             if (!this.hitMarkers[i].fresh) this.hitMarkers[i].life -= dt;
             if (this.hitMarkers[i].life <= 0) this.hitMarkers.splice(i, 1);
         }
-        const visible = flights.length > 0 || this.fragments.length > 0 || this.hitMarkers.length > 0 || this.muzzleFlashes.size > 0;
+        const visible = flights.length > 0 || this.fragments.length > 0 || this.hitMarkers.length > 0 || this.muzzleFlashes.size > 0 || this.emptyBursts.size > 0;
         if (!visible && !this.paintedEffects) return;
         pen.clear();
         this.paintedEffects = visible;
@@ -900,6 +927,21 @@ export class ColorClearView extends Component {
             pen.circle(x, y + 3, width * .41);
             pen.fill();
         }
+        for (const [slot, burst] of this.emptyBursts) {
+            const time = burst.until - this.clock;
+            if (time <= 0) { this.emptyBursts.delete(slot); continue; }
+            const x = -245 + slot * 98, y = SLOT_Y + 34;
+            const radius = 8 + (1 - time / .34) * 19;
+            pen.strokeColor = this.burstHalo;
+            pen.lineWidth = 1 + time * 6;
+            pen.ellipse(x, y, radius, radius * .63);
+            pen.stroke();
+            pen.fillColor = this.shotColors[burst.color];
+            for (let i = -1; i <= 1; i++) {
+                pen.circle(x + i * radius * .48, y + radius * (1 - Math.abs(i) * .28), 2 + time * 3);
+            }
+            pen.fill();
+        }
         const targetsInView = flights.length || this.hitMarkers.length
             ? this.model.visibleVoxelPositions([...flights.map(flight => flight.target), ...this.hitMarkers.map(mark => mark.id)])
             : null;
@@ -909,20 +951,7 @@ export class ColorClearView extends Component {
             const end = this.projectCell(target);
             const x = -245 + flight.slot * 98, y = SLOT_Y + 34;
             const t = Math.max(0, Math.min(1, 1 - flight.time / (flight.duration ?? FLIGHT_SECONDS)));
-            const tail = Math.max(0, t - .16);
-            const dx = end.x - x, dy = end.y - y;
-            const px = x + dx * t, py = y + dy * t + 36 * (1 - t) * t;
-            pen.strokeColor = this.reticleInk;
-            pen.lineWidth = 6;
-            pen.moveTo(x + dx * tail, y + dy * tail + 36 * (1 - tail) * tail);
-            pen.lineTo(px, py);
-            pen.stroke();
-            pen.fillColor = this.reticleInk;
-            pen.circle(px, py, 6);
-            pen.fill();
-            pen.fillColor = this.shotColors[flight.color];
-            pen.circle(px, py, 4.3);
-            pen.fill();
+            this.drawShotVolley(x, y, end.x, end.y, t, this.shotColors[flight.color]);
             this.drawReticle(end.x, end.y, 11, false);
         }
         for (const mark of this.hitMarkers) {
@@ -930,9 +959,17 @@ export class ColorClearView extends Component {
             const fresh = mark.fresh;
             mark.fresh = false;
             if (!cell || !targetsInView?.has(mark.id)) continue;
-            if (fresh) this.burst(cell);
+            if (fresh) this.burst(cell, mark.finishing);
             const end = this.projectCell(cell);
-            this.drawReticle(end.x, end.y, 8 + 9 * (1 - mark.life / .18), true);
+            if (mark.finishing) {
+                const fade = mark.life / .34;
+                pen.strokeColor = fade > .55 ? this.reticleGold : this.burstHalo;
+                pen.lineWidth = 1 + fade * 4;
+                pen.circle(end.x, end.y, 12 + (1 - fade) * 26);
+                pen.stroke();
+            } else {
+                this.drawReticle(end.x, end.y, 8 + 9 * (1 - mark.life / .18), true);
+            }
         }
         for (let i = this.fragments.length - 1; i >= 0; i--) {
             const particle = this.fragments[i];
@@ -1132,6 +1169,7 @@ export class ColorClearView extends Component {
             this.world.setRotation(this.qModel);
         }
         const events = this.model.drainEvents();
+        const lastHits = new Map<number, number>();
         for (const event of events) {
             if (event.type === 'won') {
                 this.album.book.unlock(this.model.level.id);
@@ -1146,7 +1184,17 @@ export class ColorClearView extends Component {
                 if (detail) detail.active = false;
                 for (const key of this.blockIndex!.dirtyChunks(event.cell)) this.dirtyBatches.add(key);
             }
-            if (event.type === 'hit') this.playHitFeedback();
+            if (event.type === 'hit') {
+                this.playHitFeedback();
+                if (event.slot !== undefined && event.cell) lastHits.set(event.slot, event.cell.id);
+            } else if (event.type === 'empty' && event.slot !== undefined && event.color !== undefined) {
+                const target = lastHits.get(event.slot);
+                if (target !== undefined) {
+                    this.emptyBursts.set(event.slot, {until: this.clock + .34, color: event.color});
+                    const mark = this.hitMarkers.find(item => item.id === target);
+                    if (mark) { mark.life = .34; mark.finishing = true; }
+                }
+            }
             else if (event.type === 'fire' && event.slot !== undefined && event.color !== undefined) {
                 this.slots[event.slot].recoilAt = this.clock;
                 this.muzzleFlashes.set(event.slot, {until: this.clock + .105, color: event.color});
