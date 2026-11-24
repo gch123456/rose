@@ -63,6 +63,20 @@ tools/build-wechat-rescue.sh
 
 首个小游戏构建包含离线营地、雨衣鸭与法师鸭、单层本机图鉴和音效。法师鸭压缩资源可用 `node tools/build-color-clear-release.mjs` 从网页关卡和候选队列重新生成，生成时实际复放通路。每日本机补给、网页音乐及图鉴旋转预览尚未迁入，广告按钮为模拟，未接真实登录。
 
+### 生成微信预览码
+
+用有开发权限的微信账号登录微信开发者工具，导入构建日志最后显示的目录。确认项目类型为小游戏后，点击顶部「预览」，然后用手机微信扫一扫。预览码是临时的，过期后重新点「预览」生成。
+
+命令行也可以生成图片。在微信开发者工具中启用服务端口，并把命令中的端口换成工具显示的值：
+
+```bash
+"/Applications/wechatwebdevtools.app/Contents/MacOS/cli" preview \
+  --project "$PWD/build/wechat-rescue" --port 12671 \
+  --qr-format image --qr-output "$PWD/build/rescue-preview.png"
+```
+
+如果构建时设置了 `RESCUE_BUILD_OUTPUT`，将 `--project` 改为该目录。
+
 ## 验证与已知边界
 
 `npm test`（规则/旧项目回归）、`npm run check:color-clear`（共享规则严格类型检查）、`npm run preview:build`。
