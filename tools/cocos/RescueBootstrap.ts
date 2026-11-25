@@ -1,6 +1,7 @@
 // Used as the Home scene's existing GoDuck component only in the staged build.
 import { _decorator, Component, Node } from 'cc';
 import { ColorClearView } from './color-clear/ColorClearView';
+import { WaterRescueView } from './color-clear/WaterRescueView';
 
 const { ccclass } = _decorator;
 
@@ -16,6 +17,19 @@ export class GoDuck extends Component {
         // rescue view creates its own camera and UI under a scene-level root.
         const home = this.node.parent;
         if (home && home !== scene) home.active = false;
-        root.addComponent(ColorClearView);
+        const water = root.addComponent(WaterRescueView);
+        water.openLegacy = () => {
+            water.suspendForLegacy();
+            root.active = false;
+            const legacyRoot = new Node('DuckRescueLegacy');
+            scene.addChild(legacyRoot);
+            const legacy = legacyRoot.addComponent(ColorClearView);
+            legacy.addWaterEntry(() => {
+                legacyRoot.active = false;
+                legacyRoot.destroy();
+                root.active = true;
+                water.restoreFromLegacy();
+            });
+        };
     }
 }

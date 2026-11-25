@@ -610,11 +610,17 @@ export class ColorClearView extends Component {
     }
     private clearBatches(): void {
         for (const {node, mesh} of this.batches.values()) {
-            node.active = false;
-            node.destroy();
+            if (isValid(node)) {
+                node.active = false;
+                node.destroy();
+            }
             mesh.destroy();
         }
-        for (const owner of this.details.values()) { owner.active = false; owner.destroy(); }
+        for (const owner of this.details.values()) {
+            if (!isValid(owner)) continue;
+            owner.active = false;
+            owner.destroy();
+        }
         this.batches.clear();
         this.details.clear();
         this.dirtyBatches.clear();
@@ -918,6 +924,14 @@ export class ColorClearView extends Component {
         const album = this.button(this.camp, '救援图鉴', 0, -508, 335, 64, () => this.openAlbum(), '#e2eee4');
         album.label.isBold = true;
     }
+    addWaterEntry(onTap: () => void): void {
+        this.button(this.camp, '引水新版', -235, -508, 125, 60, () => {
+            this.audioReady = true;
+            this.music.pause();
+            onTap();
+        }, '#ffda89');
+    }
+
     private settingsButton(parent: Node, x: number, y: number): void {
         const gear = this.button(parent, '', x, y, 69, 69, () => this.openSettings(), '#e3efe5');
         this.outline(gear.pen, 69, 69, '#c7dacd', 20);

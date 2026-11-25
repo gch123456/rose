@@ -10,9 +10,9 @@ const empty=():BookData=>({entries:[],pending:[]});
 function entries(raw:unknown):AlbumEntry[]{
  if(!Array.isArray(raw))return[];const result=new Map<number,AlbumEntry>();
  for(const e of raw){if(!e||!validId(e.levelId)||typeof e.unlockedAt!=='string'||!Number.isFinite(Date.parse(e.unlockedAt)))continue;if(!result.has(e.levelId))result.set(e.levelId,{levelId:e.levelId,unlockedAt:e.unlockedAt});}
- return [...result.values()].sort((a,b)=>a.levelId-b.levelId);
+ return Array.from(result.values()).sort((a,b)=>a.levelId-b.levelId);
 }
-function data(raw:unknown):BookData{const value=raw as Partial<BookData>|null;return{entries:entries(value?.entries),pending:Array.isArray(value?.pending)?[...new Set(value!.pending.filter(validId))].sort((a,b)=>a-b):[]};}
+function data(raw:unknown):BookData{const value=raw as Partial<BookData>|null;return{entries:entries(value?.entries),pending:Array.isArray(value?.pending)?Array.from(new Set(value!.pending.filter(validId))).sort((a,b)=>a-b):[]};}
 export class AlbumBook{
  private storage:AlbumStorage;private clock:()=>string;private disk:Disk;private persistent=true;accountId:string|null=null;
  constructor(storage:AlbumStorage,clock=()=>new Date().toISOString()){
@@ -31,8 +31,8 @@ export class AlbumBook{
  useAccount(id:string):void{if(typeof id!=='string'||!id||id.length>200)throw new Error('Invalid account');this.accountId=id;}
  private persist():void{try{this.storage.setItem(KEY,JSON.stringify(this.disk));}catch{this.persistent=false;/* Memory remains usable in private mode or full storage. */}}
  unlock(levelId:number):boolean{if(!validId(levelId))throw new Error('Invalid model');this.refreshFromStorage();if(this.current.entries.some(e=>e.levelId===levelId))return false;this.current.entries.push({levelId,unlockedAt:this.clock()});this.current.entries.sort((a,b)=>a.levelId-b.levelId);if(this.accountId!==null)this.current.pending.push(levelId);this.persist();return true;}
- importGuest():void{if(this.accountId===null)return;this.refreshFromStorage();for(const e of this.disk.guest.entries)if(!this.current.entries.some(v=>v.levelId===e.levelId)){this.current.entries.push({...e});this.current.pending.push(e.levelId);}this.current.entries.sort((a,b)=>a.levelId-b.levelId);this.current.pending=[...new Set(this.current.pending)];this.persist();}
- mergeCloud(raw:unknown):void{if(this.accountId===null)return;this.refreshFromStorage();const cloud=entries(raw),merged=new Map(this.current.entries.map(e=>[e.levelId,e]));for(const e of cloud)merged.set(e.levelId,e);this.current.entries=[...merged.values()].sort((a,b)=>a.levelId-b.levelId);const acknowledged=new Set(cloud.map(e=>e.levelId));this.current.pending=this.current.pending.filter(id=>!acknowledged.has(id));this.persist();}
+ importGuest():void{if(this.accountId===null)return;this.refreshFromStorage();for(const e of this.disk.guest.entries)if(!this.current.entries.some(v=>v.levelId===e.levelId)){this.current.entries.push({...e});this.current.pending.push(e.levelId);}this.current.entries.sort((a,b)=>a.levelId-b.levelId);this.current.pending=Array.from(new Set(this.current.pending));this.persist();}
+ mergeCloud(raw:unknown):void{if(this.accountId===null)return;this.refreshFromStorage();const cloud=entries(raw),merged=new Map(this.current.entries.map(e=>[e.levelId,e]));for(const e of cloud)merged.set(e.levelId,e);this.current.entries=Array.from(merged.values()).sort((a,b)=>a.levelId-b.levelId);const acknowledged=new Set(cloud.map(e=>e.levelId));this.current.pending=this.current.pending.filter(id=>!acknowledged.has(id));this.persist();}
 }
 type Session={token:string;expiresAt:string;user:{id:string}};
 export class AlbumService{

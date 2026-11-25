@@ -78,6 +78,10 @@ function makeSurface(stage: HarborStage): Voxel[] {
     return shell;
 }
 
+export function makeRaincoatSurface(): Voxel[] {
+    return makeSurface(HARBOR_STAGES[0]);
+}
+
 function makeShell(stage: HarborStage, bridge: boolean): HarborStageData {
     const cells = makeSurface(stage);
     return {level: planShell(stage, cells, bridge ? 26 : 12), exitIds: new Set(cells.map(cell => cell.id))};
