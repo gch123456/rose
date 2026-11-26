@@ -8,7 +8,6 @@ import {wechatAlbumTransport} from './ColorClearWechat';
 import {fitRescueScreen} from './ColorClearNativeStyle';
 import {WaterRescueGame} from './WaterRescueGame';
 import type {Valve, WaterArrival} from './WaterRescueGame';
-import {DIR, PIPE_COLUMNS, PIPE_LAYOUTS, PIPE_ROWS, WaterRoutingGame} from './WaterRoutingGame';
 import {WaterRescueScene} from './WaterRescueScene';
 
 const {ccclass} = _decorator;
@@ -19,16 +18,6 @@ const INK = '#092d2c';
 const PAPER = '#fff4db';
 const MUSIC_KEY = 'color-clear.music';
 const EFFECTS_KEY = 'color-clear.muted';
-const ROUTING_BEST_KEY = 'color-clear.water-routing.best.';
-const PIPE_INK = '#0b3436';
-const FEED_COLORS = ['#9aab9a', '#76f4ce', '#88d9ff', '#ffe393'];
-const PIPE_ORIGIN_Y = -242;
-const PIPE_SPACING_X = 102;
-const PIPE_SPACING_Y = 91;
-const PIPE_ARMS = [
-    [DIR.north, 0, PIPE_SPACING_Y / 2], [DIR.east, PIPE_SPACING_X / 2, 0],
-    [DIR.south, 0, -PIPE_SPACING_Y / 2], [DIR.west, -PIPE_SPACING_X / 2, 0],
-] as const;
 const VALVES = [
     {id: 'left', name: '左水阀', color: '#7ad8cb'},
     {id: 'right', name: '右水阀', color: '#83cbee'},
@@ -44,10 +33,6 @@ export class WaterRescueView extends Component {
     openLegacy?: () => void;
     private readonly albumApiOrigin = '';
     private level = new WaterRescueGame();
-    private routing: WaterRoutingGame | null = null;
-    private nextLayout = 0;
-    private routingLayout = 0;
-    private bestMoves = 0;
     private sculpture!: WaterRescueScene;
     private album!: AlbumService;
     private camera!: Camera;
@@ -60,15 +45,6 @@ export class WaterRescueView extends Component {
     private modalType: Modal | null = null;
     private sceneState: Screen = 'home';
     private status!: Label;
-    private playTitle!: Label;
-    private tutorialPanel!: Node;
-    private routingPanel!: Node;
-    private routingCanvas!: Graphics;
-    private routingStatus!: Label;
-    private routingSteps!: Label;
-    private routingDrain!: Button;
-    private victoryRecord!: Label;
-    private nextRoutingButton!: Button;
     private eventLabel!: Label;
     private eventAt = -Infinity;
     private resultAt = Infinity;
@@ -121,6 +97,7 @@ export class WaterRescueView extends Component {
             this.syncMusic();
         });
         this.readPreferences();
+        this.layout();
         this.show('home');
         view.on('canvas-resize', this.layout, this);
         view.on('design-resolution-changed', this.layout, this);
@@ -242,16 +219,15 @@ export class WaterRescueView extends Component {
         this.label(this.home, '鸭鸭救援', 0, 490, 53, true);
         this.label(this.home, '温室水池', 0, 445, 22, false, '#9fd5c2');
         this.panel(this.home, 0, -430, 596, 208, 28, '#0d3938ee');
-        this.button(this.home, '开始接管挑战', 0, -391, 540, 75, () => this.startRescue(true), '#ffda89');
-        this.button(this.home, '放水教学', -207, -478, 126, 56, () => this.startRescue(false), '#b4e0cf');
-        this.button(this.home, '图鉴', -69, -478, 126, 56, () => this.openModal('album'), '#b4e0cf');
-        this.button(this.home, '设置', 69, -478, 126, 56, () => this.openModal('settings'), '#b4e0cf');
-        this.button(this.home, '原版试玩', 207, -478, 126, 56, () => this.openLegacy?.(), '#b4e0cf');
+        this.button(this.home, '打开水阀，救出雨衣鸭', 0, -391, 540, 75, () => this.startRescue(), '#ffda89');
+        this.button(this.home, '图鉴', -186, -478, 146, 53, () => this.openModal('album'), '#b4e0cf');
+        this.button(this.home, '设置', 0, -478, 146, 53, () => this.openModal('settings'), '#b4e0cf');
+        this.button(this.home, '原版试玩', 186, -478, 146, 53, () => this.openLegacy?.(), '#b4e0cf');
     }
 
     private createPlay(): void {
         this.panel(this.play, 0, 477, 600, 95, 25, '#0d3938eb');
-        this.playTitle = this.label(this.play, '雨衣鸭', 0, 478, 43, true);
+        this.label(this.play, '雨衣鸭', 0, 478, 43, true);
         this.button(this.play, '设置', -231, 477, 103, 54, () => this.openModal('settings'), '#b4e0cf');
         this.button(this.play, '营地', 231, 477, 103, 54, () => this.goHome(), '#b4e0cf');
         const event = this.label(this.play, '', 0, 369, 48, true, '#fff0b7');
@@ -261,115 +237,24 @@ export class WaterRescueView extends Component {
         event.node.active = false;
         this.eventLabel = event;
 
-        const tutorial = this.tutorialPanel = this.layer(this.play, 'Water lesson controls');
-        this.panel(tutorial, 0, -410, 600, 235, 29, '#143e3bf2');
-        this.status = this.label(tutorial, '', 0, -332, 26, true, '#fff1d5');
+        this.panel(this.play, 0, -410, 600, 235, 29, '#143e3bf2');
+        this.status = this.label(this.play, '', 0, -332, 26, true, '#fff1d5');
         VALVES.forEach((valve, i) => {
-            const button = this.button(tutorial, valve.name, (i - 1) * 184, -417, 162, 118,
+            const button = this.button(this.play, valve.name, (i - 1) * 184, -417, 162, 118,
                 () => this.openValve(valve.id), valve.color, '开启');
             button.title.node.setPosition(0, -16);
             button.note.node.setPosition(0, -43);
             this.controls.set(valve.id, button);
         });
-        this.label(tutorial, '拖动鸭鸭看水路', 0, -494, 21, false, '#afcfbf');
-        this.createRoutingPanel();
-    }
-
-    private pipePosition(index: number): {x: number; y: number} {
-        return {
-            x: (index % PIPE_COLUMNS - (PIPE_COLUMNS - 1) / 2) * PIPE_SPACING_X,
-            y: PIPE_ORIGIN_Y - Math.floor(index / PIPE_COLUMNS) * PIPE_SPACING_Y,
-        };
-    }
-
-    private createRoutingPanel(): void {
-        const panel = this.routingPanel = this.layer(this.play, 'Water routing panel');
-        this.panel(panel, 0, -338, 596, 425, 29, '#103836f5');
-        this.routingStatus = this.label(panel, '', 0, -151, 25, true);
-        this.routingSteps = this.label(panel, '', 0, -183, 18, false, '#acdad0');
-        this.routingCanvas = this.layer(panel, 'Pipe artwork').addComponent(Graphics);
-        for (let index = 0; index < PIPE_COLUMNS * PIPE_ROWS; index++) {
-            const position = this.pipePosition(index);
-            const tile = this.layer(panel, 'Pipe ' + index);
-            tile.setPosition(position.x, position.y);
-            tile.addComponent(UITransform).setContentSize(96, 87);
-            tile.on(Node.EventType.TOUCH_END, () => this.turnPipe(index));
-        }
-        this.label(panel, '左', -244, PIPE_ORIGIN_Y, 19, true, INK);
-        this.label(panel, '右', 244, PIPE_ORIGIN_Y, 19, true, INK);
-        this.routingDrain = this.button(panel, '等待两路水', 0, -519, 250, 45, () => this.openValve('drain'), '#a6b9ac');
-    }
-
-    private turnPipe(index: number): void {
-        if (this.sceneState !== 'play' || this.modalType || !this.routing?.turn(index)) return;
-        this.playSound('water-valve', .33);
-        if (this.routing.solved) {
-            this.level.open('left');
-            this.level.open('right');
-        }
-        this.renderRouting();
-    }
-
-    private pipeStroke(pen: Graphics, x: number, y: number, endX: number, endY: number, width: number, color: string): void {
-        pen.strokeColor = new Color(color);
-        pen.lineWidth = width;
-        pen.moveTo(x, y);
-        pen.lineTo(endX, endY);
-        pen.stroke();
-    }
-
-    private renderRouting(): void {
-        const routing = this.routing!;
-        const pen = this.routingCanvas;
-        pen.clear();
-        for (let index = 0; index < routing.tiles.length; index++) {
-            const {x, y} = this.pipePosition(index);
-            this.rect(pen, x, y - 3, 91, 82, 16, '#091f20');
-            this.rect(pen, x, y, 91, 82, 16, routing.feeds[index] ? '#255b55' : '#314b43');
-        }
-        for (let index = 0; index < routing.tiles.length; index++) {
-            const {x, y} = this.pipePosition(index);
-            const fill = FEED_COLORS[routing.feeds[index]];
-            for (const [side, dx, dy] of PIPE_ARMS) {
-                if (!(routing.tiles[index] & side)) continue;
-                this.pipeStroke(pen, x, y, x + dx, y + dy, 23, PIPE_INK);
-                this.pipeStroke(pen, x, y, x + dx, y + dy, 14, fill);
-            }
-            for (const [radius, color] of [[13, PIPE_INK], [7, fill]] as const) {
-                pen.fillColor = new Color(color);
-                pen.circle(x, y, radius);
-                pen.fill();
-            }
-        }
-        for (const [side, fill] of [[-1, FEED_COLORS[1]], [1, FEED_COLORS[2]]] as const) {
-            this.pipeStroke(pen, side * 244, PIPE_ORIGIN_Y, side * 204, PIPE_ORIGIN_Y, 23, PIPE_INK);
-            this.pipeStroke(pen, side * 244, PIPE_ORIGIN_Y, side * 204, PIPE_ORIGIN_Y, 14, fill);
-            pen.fillColor = new Color(fill);
-            pen.circle(side * 244, PIPE_ORIGIN_Y, 19);
-            pen.fill();
-        }
-        const exit = this.pipePosition(routing.exit);
-        const outlet = FEED_COLORS[routing.outletFeed];
-        this.pipeStroke(pen, exit.x, exit.y - 46, exit.x, exit.y - 62, 23, PIPE_INK);
-        this.pipeStroke(pen, exit.x, exit.y - 46, exit.x, exit.y - 62, 14, outlet);
-        this.rect(pen, exit.x, exit.y - 61, 60, 24, 8, outlet);
-        this.routingStatus.string = this.level.won ? '排洪成功' : this.level.opened('drain') ? '洪水正在冲开出口'
-            : routing.solved ? '两股水已接通！' : routing.outletFeed ? '已接通一路，再接另一路' : '点管件转向，把两股水引到出口';
-        const best = this.bestMoves ? ' · 最佳 ' + this.bestMoves : '';
-        this.routingSteps.string = '布局 ' + (this.routingLayout + 1) + ' · ' + routing.moves + ' 步' + best;
-        const ready = this.level.available('drain');
-        this.routingDrain.title.string = this.level.opened('drain') ? '排洪中'
-            : ready ? '打开排洪阀' : routing.solved ? '正在汇流' : '等待两路水';
-        this.paintButton(this.routingDrain, ready ? '#ffd883' : '#a6b9ac');
-
+        this.label(this.play, '拖动鸭鸭看水路', 0, -494, 21, false, '#afcfbf');
     }
 
     private createVictory(): void {
         this.panel(this.won, 0, 475, 600, 106, 28, '#0d3938eb');
         this.label(this.won, '雨衣鸭获救！', 0, 477, 48, true);
         this.panel(this.won, 0, -419, 596, 193, 28, '#0d3938ee');
-        this.victoryRecord = this.label(this.won, '', 0, -376, 23, true, '#bdedcd');
-        this.nextRoutingButton = this.button(this.won, '挑战下一张', -132, -454, 235, 77, () => this.startRescue(true), '#ffda89');
+        this.label(this.won, '已收录到救援图鉴', 0, -376, 23, true, '#bdedcd');
+        this.button(this.won, '再冲一次', -132, -454, 235, 77, () => this.startRescue(), '#ffda89');
         this.button(this.won, '回营地', 132, -454, 235, 77, () => this.goHome(), '#b4e0cf');
     }
 
@@ -384,10 +269,9 @@ export class WaterRescueView extends Component {
         const window = screen.windowSize;
         const width = Math.max(window.width / view.getScaleX(), window.height / view.getScaleY() * aspect);
         this.landscape.node.getComponent(UITransform)!.setContentSize(width, width / aspect);
-        const expanded = this.routing !== null && this.sceneState === 'play';
-        const ratio = (expanded ? .0165 : .0135) / scale;
+        const ratio = .0135 / scale;
         this.camera.orthoHeight = HEIGHT / 2 * ratio;
-        this.camera.node.setPosition(-x * ratio, -(y + (expanded ? 138 : 63) * scale) * ratio, 20);
+        this.camera.node.setPosition(-x * ratio, -(y + 63 * scale) * ratio, 20);
     }
 
     private show(state: Screen): void {
@@ -395,32 +279,18 @@ export class WaterRescueView extends Component {
         this.home.active = state === 'home';
         this.play.active = state === 'play';
         this.won.active = state === 'won';
-        this.layout();
     }
 
     private goHome(): void {
         this.level = new WaterRescueGame();
-        this.routing = null;
         this.sculpture.reset();
         this.dragId = null;
         this.resultAt = Infinity;
         this.show('home');
     }
 
-    private startRescue(challenge: boolean): void {
+    private startRescue(): void {
         this.level = new WaterRescueGame();
-        this.routingLayout = this.nextLayout;
-        this.routing = challenge ? new WaterRoutingGame(this.routingLayout) : null;
-        this.bestMoves = 0;
-        if (challenge) {
-            try {
-                const saved = Number(sys.localStorage.getItem(ROUTING_BEST_KEY + this.routingLayout));
-                if (Number.isSafeInteger(saved) && saved > 0) this.bestMoves = saved;
-            } catch { /* storage optional */ }
-        }
-        this.tutorialPanel.active = !challenge;
-        this.routingPanel.active = challenge;
-        this.playTitle.string = challenge ? '双流接管' : '雨衣鸭';
         this.sculpture.reset();
         this.resultAt = Infinity;
         this.eventAt = -Infinity;
@@ -434,16 +304,12 @@ export class WaterRescueView extends Component {
     }
 
     private openValve(valve: Valve): void {
-        if (this.sceneState !== 'play' || this.modalType || (this.routing && valve !== 'drain') || !this.level.open(valve)) return;
+        if (this.sceneState !== 'play' || this.modalType || !this.level.open(valve)) return;
         this.playSound('water-valve', .65);
         this.renderControls();
     }
 
     private renderControls(): void {
-        if (this.routing) {
-            this.renderRouting();
-            return;
-        }
         this.status.string = this.level.won ? '雨衣鸭出水啦' : this.level.opened('drain') ? '洪水正在冲开出口'
             : this.level.merged ? '两股水已汇合 · 打开排洪阀'
             : this.level.opened('left') && this.level.opened('right') ? '两股水正在靠近'
@@ -560,7 +426,7 @@ export class WaterRescueView extends Component {
         const point = event.getUILocation(), {x, y, scale} = this.fit;
         if (Math.abs((point.x - WIDTH / 2 - x) / scale) > 298) return;
         const row = (point.y - HEIGHT / 2 - y) / scale;
-        if (row < (this.routing && this.sceneState === 'play' ? -122 : -243) || row > 423) return;
+        if (row < -243 || row > 423) return;
         this.dragId = event.getID();
     }
 
@@ -591,17 +457,6 @@ export class WaterRescueView extends Component {
         if (event === 'drain') {
             this.album.refresh();
             this.album.book.unlock(11);
-            this.victoryRecord.string = '已收录到救援图鉴';
-            this.nextRoutingButton.title.string = this.routing ? '挑战下一张' : '开始接管挑战';
-            if (this.routing) {
-                const moves = this.routing.moves;
-                if (!this.bestMoves || moves < this.bestMoves) {
-                    this.bestMoves = moves;
-                    try { sys.localStorage.setItem(ROUTING_BEST_KEY + this.routingLayout, String(moves)); } catch { /* storage optional */ }
-                }
-                this.victoryRecord.string = '本轮 ' + moves + ' 步 · 最佳 ' + this.bestMoves + ' 步';
-                this.nextLayout = (this.routingLayout + 1) % PIPE_LAYOUTS;
-            }
             this.dragId = null;
             this.resultAt = this.clock + 1.45;
         }
